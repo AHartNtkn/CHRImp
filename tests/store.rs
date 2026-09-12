@@ -119,6 +119,29 @@ fn collection_preserves_snapshot_and_cursor_roots_and_reclaims_dead_versions() {
 }
 
 #[test]
+fn collection_rejects_foreign_and_reclaimed_roots_before_marking() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    let mut store = Store::default();
+    let live = store.insert(store.empty(), key(1), 10);
+    let mut foreign = Store::default();
+    let foreign_root = foreign.insert(foreign.empty(), key(1), 20);
+    let mut gc = store.collect([foreign_root].into_iter());
+    assert!(catch_unwind(AssertUnwindSafe(|| gc.tick(&mut store))).is_err());
+    drop(gc);
+    assert_eq!(store.get(live, &key(1)), Some(10));
+    let mut gc = store.collect(std::iter::empty());
+    while !gc.done() {
+        gc.tick(&mut store);
+    }
+    drop(gc);
+    let mut gc = store.collect([live].into_iter());
+    assert!(catch_unwind(AssertUnwindSafe(|| gc.tick(&mut store))).is_err());
+    drop(gc);
+    let fresh = store.insert(store.empty(), key(1), 30);
+    assert_eq!(store.get(fresh, &key(1)), Some(30));
+}
+
+#[test]
 fn boundary_bits_and_sparse_range_seek_do_not_scan_unrelated_rows() {
     let mut store = Store::default();
     let mut root = store.empty();

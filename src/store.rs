@@ -536,9 +536,12 @@ impl<I: Iterator<Item = Root>> Collector<I> {
         }
         if self.marking {
             if let Some(root) = self.pending.pop().or_else(|| self.roots.next()) {
-                assert!(store.contains(root), "stale or foreign collection root");
                 if root != EMPTY {
-                    let record = store.nodes.get_mut(&root.id).expect("live root");
+                    assert_eq!(root.owner, store.owner, "stale or foreign collection root");
+                    let record = store
+                        .nodes
+                        .get_mut(&root.id)
+                        .expect("stale or foreign collection root");
                     if record.marked != self.epoch {
                         record.marked = self.epoch;
                         match record.node {
