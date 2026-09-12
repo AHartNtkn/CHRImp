@@ -53,6 +53,7 @@ enum Task {
     Init(Vec<u64>),
     Body(Box<Body>),
     Activate {
+        identity_only: bool,
         root: Root,
         occurrence: u64,
         reader_scope: Condition,
@@ -386,6 +387,7 @@ impl Engine {
                 done
             }
             Task::Activate {
+                identity_only,
                 root,
                 occurrence,
                 reader_scope,
@@ -394,7 +396,11 @@ impl Engine {
                 let Some(fact) = self.graph.fact(*root, *occurrence) else {
                     return true;
                 };
-                let triggers = &self.code.triggers[fact.relation];
+                let triggers = if *identity_only {
+                    &self.code.merge_triggers[fact.relation]
+                } else {
+                    &self.code.triggers[fact.relation]
+                };
                 if *next == triggers.len() {
                     true
                 } else {
@@ -506,9 +512,18 @@ impl Engine {
                     occurrence,
                     support,
                 } => {
+                    let relation = self
+                        .graph
+                        .fact(w.root(), occurrence)
+                        .expect("wake occurrence")
+                        .relation;
+                    if self.code.merge_triggers[relation].is_empty() {
+                        return false;
+                    }
                     self.spawn_in_epoch(
                         s.scope,
                         Task::Activate {
+                            identity_only: true,
                             root: w.root(),
                             reader_scope: support,
                             occurrence,
@@ -615,6 +630,7 @@ impl Engine {
                     self.spawn(
                         b.scope,
                         Task::Activate {
+                            identity_only: false,
                             root,
                             reader_scope: b.scope,
                             occurrence,

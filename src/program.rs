@@ -43,6 +43,8 @@ pub struct Prepared {
     pub rules: Vec<RulePlan>,
     /// Relation signature -> (rule index, head position) activation targets.
     pub triggers: Vec<Vec<(usize, usize)>>,
+    /// Merges can enable only heads participating in repeated-variable tests.
+    pub(crate) merge_triggers: Vec<Vec<(usize, usize)>>,
     pub query: usize,
     pub query_variables: Vec<String>,
 }
@@ -150,9 +152,19 @@ pub fn prepare(program: &Program, query: &Body) -> Result<Prepared, ParseError> 
     let mut variables = Variables::default();
     let query = builder.body(query, &mut variables);
     let mut triggers = vec![Vec::new(); builder.signatures.len()];
+    let mut merge_triggers = vec![Vec::new(); builder.signatures.len()];
     for (r, rule) in rules.iter().enumerate() {
+        let mut uses = vec![0; rule.head_variables];
+        for head in &rule.heads {
+            for &slot in &head.args {
+                uses[slot] += 1;
+            }
+        }
         for (h, head) in rule.heads.iter().enumerate() {
             triggers[head.relation].push((r, h));
+            if head.args.iter().any(|&slot| uses[slot] > 1) {
+                merge_triggers[head.relation].push((r, h));
+            }
         }
     }
     Ok(Prepared {
@@ -160,6 +172,7 @@ pub fn prepare(program: &Program, query: &Body) -> Result<Prepared, ParseError> 
         instructions: builder.instructions,
         rules,
         triggers,
+        merge_triggers,
         query,
         query_variables: variables.names,
     })

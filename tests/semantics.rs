@@ -2,6 +2,62 @@ mod support;
 use support::{Reader, engine, facts, finish};
 
 #[test]
+fn merges_do_not_reconsider_identity_independent_propagation() {
+    let n = 32;
+    let mut query = (0..=n).map(|i| format!("tag(V{i})")).collect::<Vec<_>>();
+    query.extend((0..n).map(|i| format!("merge(V{i},V{})", i + 1)));
+    let mut e = engine(
+        "tag(X) ==> marked(X). merge(X,Y) <=> X=Y.",
+        &query.join(","),
+    );
+    let mut reader = Reader::default();
+    let mut answers = 0;
+    for _ in 0..50_000 {
+        e.advance(1);
+        if let Some(answer) = reader.next(&mut e) {
+            answers += 1;
+            assert_eq!(answer.variables.len(), n + 1);
+            assert!(answer.variables.iter().all(|&v| v == answer.variables[0]));
+            for name in ["tag", "marked"] {
+                let rows = answer
+                    .rows
+                    .iter()
+                    .filter(|row| e.program().signatures[row.relation].name == name)
+                    .collect::<Vec<_>>();
+                assert_eq!(rows.len(), n + 1);
+                assert!(rows.iter().all(|row| row.ports == [answer.variables[0]]));
+            }
+            assert_eq!(answer.rows.len(), 2 * (n + 1));
+        }
+        if e.delivery_done() {
+            break;
+        }
+    }
+    assert!(
+        e.delivery_done(),
+        "merges must not repeatedly retry already-fired identity-independent heads"
+    );
+    assert_eq!(answers, 1);
+    assert_eq!(e.applications(), (2 * n + 1) as u64);
+}
+
+#[test]
+fn merge_activation_keeps_repeated_ports_and_consuming_partner_heads() {
+    let mut e = engine(
+        "p(X,X),q(Y) <=> hit(X,Y). merge(X,Y) <=> X=Y.",
+        "p(A,B),q(C),merge(A,B)",
+    );
+    let answer = finish(&mut e);
+    assert_eq!(facts(&e, &answer), ["hit"]);
+    assert_eq!(answer.variables[0], answer.variables[1]);
+    assert_ne!(answer.variables[0], answer.variables[2]);
+    assert_eq!(
+        answer.rows[0].ports,
+        [answer.variables[0], answer.variables[2]]
+    );
+}
+
+#[test]
 fn proof_example_preserves_direct_and_composed_derivations() {
     let mut e = engine(
         include_str!("../examples/proofs.chr"),
