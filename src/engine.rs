@@ -432,7 +432,15 @@ impl Engine {
                 // Keep each runnable class's reserved share. Fill other slots
                 // with source work first, then completion or observation.
                 if let Some(mut task) = self.queue.pop_front() {
-                    if self.task(&mut task) {
+                    debug_assert!(!self.requested.contains(&Owner::Task(task.id)));
+                    let done = self.task(&mut task);
+                    // A runnable task can only append its own request during this tick.
+                    // Handoff removes the request before requeuing a parked task.
+                    debug_assert_eq!(
+                        self.requested.contains(&Owner::Task(task.id)),
+                        self.waiting.back() == Some(&Owner::Task(task.id)),
+                    );
+                    if done {
                         self.pending_root = self
                             .obligations
                             .index
@@ -440,7 +448,7 @@ impl Engine {
                         if self.lane == Some(Owner::Task(task.id)) {
                             self.release_lane();
                         }
-                    } else if self.requested.contains(&Owner::Task(task.id)) {
+                    } else if self.waiting.back() == Some(&Owner::Task(task.id)) {
                         self.parked.insert(task.id, task);
                     } else {
                         self.queue.push_back(task);
@@ -1042,5 +1050,84 @@ mod balanced_phase_tests {
                 phase as u8
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod parking_tail_tests {
+    use super::*;
+    #[test]
+    fn failed_acquires_park_and_fifo_handoffs_survive_collection() {
+        let code = crate::program::prepare(
+            &crate::syntax::parse_program("p(X) <=> done(X).").unwrap(),
+            &crate::syntax::parse_query("p(A),p(B),p(C),p(D)").unwrap(),
+        )
+        .unwrap();
+        let mut e = Engine::new(Arc::new(code));
+        let mut collected = false;
+        let mut handoffs = 0;
+        let mut answers = 0;
+        let mut variables = Vec::new();
+        let mut ports = Vec::new();
+        let mut facts = 0;
+        for _ in 0..100000 {
+            if !collected && e.parked.len() >= 2 {
+                e.request_collection();
+                collected = true;
+            }
+            let previous_lane = e.lane;
+            let first = e.waiting.front().copied();
+            e.advance(1);
+            if previous_lane.is_some() && previous_lane != e.lane && first.is_some() {
+                assert!(
+                    e.lane == first,
+                    "waiting owner must receive next reservation"
+                );
+                handoffs += 1;
+            }
+            let waiting = e.waiting.iter().copied().collect::<BTreeSet<_>>();
+            assert_eq!(waiting.len(), e.waiting.len());
+            assert!(waiting == e.requested);
+            assert!(
+                e.queue
+                    .iter()
+                    .all(|s| !e.requested.contains(&Owner::Task(s.id)))
+            );
+            for owner in &waiting {
+                if let Owner::Task(id) = owner {
+                    assert!(e.parked.contains_key(id));
+                }
+            }
+            for id in e.parked.keys() {
+                assert!(waiting.contains(&Owner::Task(*id)));
+            }
+            if let Some(owner) = e.lane {
+                assert!(!waiting.contains(&owner));
+            }
+            if let Some(event) = e.take_output() {
+                match event {
+                    Output::Variable { variable, .. } => variables.push(variable),
+                    Output::Fact { relation, .. } => {
+                        assert_eq!(e.program().signatures[relation].name, "done");
+                        facts += 1;
+                    }
+                    Output::Port { variable } => ports.push(variable),
+                    Output::End => answers += 1,
+                    _ => {}
+                }
+            }
+            if e.delivery_done() {
+                break;
+            }
+        }
+        assert!(collected && e.collections() > 0 && handoffs >= 2);
+        assert!(e.delivery_done());
+        assert_eq!(e.applications(), 4);
+        assert_eq!(answers, 1);
+        assert_eq!(facts, 4);
+        variables.sort();
+        ports.sort();
+        assert_eq!(variables, ports);
+        assert_eq!(variables.iter().collect::<BTreeSet<_>>().len(), 4);
     }
 }

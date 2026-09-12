@@ -139,13 +139,20 @@ impl Engine {
                     || (self.graph.semantic_debt() > 0
                         && (self.requested.contains(&Owner::Collection)
                             || self.lane == Some(Owner::Collection)
-                            || self.graph.semantic_debt()
-                                >= self
-                                    .graph
-                                    .occurrence_frontier(&self.state.graph)
-                                    .saturating_add(self.variables.len())
+                            || {
+                                let minimum = self
+                                    .variables
+                                    .len()
                                     .saturating_add(self.pending_tasks())
-                                    .saturating_add(CLEANUP_ALLOWANCE))));
+                                    .saturating_add(CLEANUP_ALLOWANCE);
+                                // Occurrence counts cannot lower this frontier.
+                                self.graph.semantic_debt() >= minimum
+                                    && self.graph.semantic_debt()
+                                        >= self
+                                            .graph
+                                            .occurrence_frontier(&self.state.graph)
+                                            .saturating_add(minimum)
+                            })));
             if !explicit
                 && !semantic_due
                 && memory <= self.collection_limit
@@ -877,6 +884,56 @@ mod tests {
             eprintln!(
                 "pressure explicit={explicit}: peak={peak}, physical={physical}, deferred_ticks={deferred_ticks}, max_source_growth={max_growth}"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod frontier_tests {
+    use super::*;
+    fn engine(debt: usize) -> Engine {
+        let code = crate::program::prepare(
+            &crate::syntax::parse_program("p(X) ==> q(X).").unwrap(),
+            &crate::syntax::parse_query("true").unwrap(),
+        )
+        .unwrap();
+        let mut e = Engine::new(Arc::new(code));
+        let x = e.ids.variable();
+        e.variables = Arc::new(vec![x]);
+        let mut post = e
+            .graph
+            .post(e.state.graph.clone(), 0, vec![x], Condition::TRUE)
+            .unwrap();
+        loop {
+            if let UpdateStatus::Complete(root) = post.tick(&mut e.graph) {
+                e.state.graph = root;
+                break;
+            }
+        }
+        for _ in 0..debt {
+            e.graph.retire_scope();
+        }
+        e.collection_limit = usize::MAX;
+        e
+    }
+    #[test]
+    fn exact_frontier_boundary_and_explicit_region_requests_are_preserved() {
+        let e = engine(0);
+        let minimum = e.variables.len() + e.pending_tasks() + CLEANUP_ALLOWANCE;
+        let full = minimum + e.graph.occurrence_frontier(&e.state.graph);
+        for debt in [minimum - 1, minimum, full - 1, full, full + 1] {
+            let mut e = engine(debt);
+            assert_eq!(e.collect_heap(), debt >= full, "debt {debt}");
+        }
+        for region in [false, true] {
+            let mut e = engine(1);
+            if region {
+                e.semantic_regions = true;
+            } else {
+                e.request_collection();
+            }
+            assert!(e.collect_heap());
+            assert!(e.collector.is_some());
         }
     }
 }
