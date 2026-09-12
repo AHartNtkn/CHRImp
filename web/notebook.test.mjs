@@ -2127,4 +2127,30 @@ await test('switch waits for the Step driver before loading another run', async 
   assert.deepEqual((await session.store.recovery('live:run:2')).stepChoices,{'41':true});
 });
 
+
+for (const fails of [false, true]) await test(`inspection ${fails ? 'failure' : 'completion'} unlocks alternative controls`, async () => {
+  const controls = new Map();
+  const element = () => ({children:[], append(...items){this.children.push(...items);}, replaceChildren(...items){this.children=items;}});
+  const $ = name => {if (!controls.has(name)) controls.set(name,element()); return controls.get(name);};
+  const selection = new InspectionSelection();
+  selection.update([{id:'1',label:'Choice'}],[]);
+  selection.navigation.next_choice='2';
+  let finish;
+  const c = createContext({$,el:element,session:{run:1,recordHistory:true},inspectionSelection:selection,
+    inspecting:false,launching:false,renderRun(){},
+    inspectOnce(){c.renderInspectionControls();return new Promise((resolve,reject)=>{finish=()=>fails?reject(Error('inspection failed')):resolve();});}});
+  runInContext(productionSection('  function renderInspectionControls()', "  for (const name of ['program', 'query'])")
+    +productionSection('  async function inspect()', '  async function inspectOnce()'),c);
+  c.renderInspectionControls();
+  const choice = () => $('choices').children[0].children[0];
+  assert.equal(choice().disabled,false);
+  const pending = c.inspect();
+  assert.equal(choice().disabled,true);
+  assert.equal($('choice-next').disabled,true);
+  finish();
+  if (fails) await assert.rejects(pending,/inspection failed/); else await pending;
+  assert.equal(choice().disabled,false);
+  assert.equal($('choice-next').disabled,false);
+});
+
 });

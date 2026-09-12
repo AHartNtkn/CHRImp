@@ -904,8 +904,8 @@ function mountNotebook() {
   async function inspect() {
     check(!session.stepOperation, 'Finish or cancel the selected step before inspecting.');
     check(!inspecting, 'An inspection is already in progress.');
-    inspecting = true; renderRun();
-    try { await inspectOnce(); } finally { inspecting = false; renderRun(); }
+    inspecting = true; renderRun(); renderInspectionControls();
+    try { await inspectOnce(); } finally { inspecting = false; renderRun(); renderInspectionControls(); }
   }
   async function inspectOnce() {
     await restoreInspection();
