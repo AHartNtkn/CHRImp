@@ -1,0 +1,11 @@
+[package]
+name="chr-variable-comparison"
+version="0.1.0"
+edition="2024"
+[dependencies]
+chr={path="../current"}
+chr-compiled={path="../older/research/chr-compiled",default-features=false}
+chr-syntax={path="../older/crates/chr-syntax"}
+[build-dependencies]
+chr-compiled={path="../older/research/chr-compiled",default-features=false}
+chr-syntax={path="../older/crates/chr-syntax"}

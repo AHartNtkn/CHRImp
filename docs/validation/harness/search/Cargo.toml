@@ -1,0 +1,10 @@
+[package]
+name="chr-search-qualification"
+version="0.1.0"
+edition="2024"
+[dependencies]
+chr={path="../current"}
+chr-compiled={path="../older/research/chr-compiled",default-features=false}
+chr-syntax={path="../older/crates/chr-syntax"}
+[features]
+cow=["chr-compiled/arena-cow"]

@@ -1,0 +1,4 @@
+case,n,rep,runner,parse_us,prepare_us,translation_us,init_us,runtime_output_us,observe_us,engine_drop_us,output_drop_us,qualified_physical_source_apps,admission_apps,ticks,ast_drop_us,source_exhausted_us,delivery_tail_us,answers,facts,ports,query_bindings
+common-wide,8,0,current,6.635,7.320,0.000,1.768,433.789,NaN,4.761,1.927,16,0,3475,0.628,325.187,108.602,8,64,64,64
+common-wide,8,0,old-active,6.635,5.373,6.844,4.743,137.167,4.120,5.384,7.013,128,1,475,0.628,NaN,NaN,8,64,64,64
+common-wide,8,0,old-global,6.635,5.373,6.844,5.750,149.852,4.091,4.843,5.781,128,1,565,0.628,NaN,NaN,8,64,64,64

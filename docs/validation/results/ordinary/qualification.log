@@ -1,0 +1,6 @@
+semantic_check=nonbinding:pass
+semantic_check=alias-wake:pass
+semantic_check=duplicate-occurrences:pass
+semantic_check=fresh-body-locals:pass
+semantic_check=ordered-self-join-same-false:pass
+semantic_check=ordered-self-join-same-true:pass

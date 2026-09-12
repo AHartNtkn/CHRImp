@@ -1,0 +1,60 @@
+MODE traced=true output_oracle=true
+PREP alias 8 parse_us=22.033 current_prepare_us=29.295 old_ast_convert_us=8.802 old_prepare_us=25.993
+AST_DROP alias 8 us=1.905
+PREP_DROP alias 8 old_us=2.332 current_us=1.316
+MODE traced=true output_oracle=true
+PREP alias 32 parse_us=42.859 current_prepare_us=46.873 old_ast_convert_us=21.064 old_prepare_us=22.895
+AST_DROP alias 32 us=3.568
+PREP_DROP alias 32 old_us=2.225 current_us=2.196
+MODE traced=true output_oracle=true
+PREP alias 128 parse_us=104.933 current_prepare_us=113.805 old_ast_convert_us=71.312 old_prepare_us=19.961
+AST_DROP alias 128 us=9.537
+PREP_DROP alias 128 old_us=2.744 current_us=4.470
+MODE traced=true output_oracle=true
+PREP degree 8 parse_us=20.680 current_prepare_us=31.188 old_ast_convert_us=8.341 old_prepare_us=26.168
+AST_DROP degree 8 us=1.867
+PREP_DROP degree 8 old_us=1.566 current_us=1.280
+MODE traced=true output_oracle=true
+PREP degree 32 parse_us=42.583 current_prepare_us=44.307 old_ast_convert_us=51.740 old_prepare_us=18.832
+AST_DROP degree 32 us=3.126
+PREP_DROP degree 32 old_us=1.867 current_us=2.081
+MODE traced=true output_oracle=true
+PREP degree 128 parse_us=95.998 current_prepare_us=110.434 old_ast_convert_us=58.894 old_prepare_us=18.419
+AST_DROP degree 128 us=8.460
+PREP_DROP degree 128 old_us=2.771 current_us=4.317
+MODE traced=true output_oracle=true
+PREP sparse 8 parse_us=19.548 current_prepare_us=22.649 old_ast_convert_us=6.427 old_prepare_us=20.322
+AST_DROP sparse 8 us=1.311
+PREP_DROP sparse 8 old_us=1.660 current_us=1.214
+MODE traced=true output_oracle=true
+PREP sparse 32 parse_us=36.491 current_prepare_us=41.141 old_ast_convert_us=13.182 old_prepare_us=16.802
+AST_DROP sparse 32 us=2.304
+PREP_DROP sparse 32 old_us=1.553 current_us=1.544
+MODE traced=true output_oracle=true
+PREP sparse 128 parse_us=90.515 current_prepare_us=99.589 old_ast_convert_us=55.122 old_prepare_us=17.528
+AST_DROP sparse 128 us=7.029
+PREP_DROP sparse 128 old_us=2.260 current_us=4.081
+MODE traced=true output_oracle=true
+PREP dense 8 parse_us=24.523 current_prepare_us=27.417 old_ast_convert_us=8.709 old_prepare_us=15.537
+AST_DROP dense 8 us=1.791
+PREP_DROP dense 8 old_us=1.596 current_us=1.335
+MODE traced=true output_oracle=true
+PREP dense 32 parse_us=55.374 current_prepare_us=63.784 old_ast_convert_us=25.550 old_prepare_us=16.139
+AST_DROP dense 32 us=3.903
+PREP_DROP dense 32 old_us=2.697 current_us=3.658
+MODE traced=true output_oracle=true
+PREP dense 128 parse_us=151.983 current_prepare_us=173.095 old_ast_convert_us=109.002 old_prepare_us=25.113
+AST_DROP dense 128 us=11.231
+PREP_DROP dense 128 old_us=3.116 current_us=8.024
+MODE traced=true output_oracle=true
+PREP cyclic 8 parse_us=28.821 current_prepare_us=29.129 old_ast_convert_us=13.947 old_prepare_us=14.997
+AST_DROP cyclic 8 us=2.233
+PREP_DROP cyclic 8 old_us=1.609 current_us=1.159
+MODE traced=true output_oracle=true
+PREP cyclic 32 parse_us=81.481 current_prepare_us=81.297 old_ast_convert_us=52.811 old_prepare_us=17.100
+AST_DROP cyclic 32 us=6.396
+PREP_DROP cyclic 32 old_us=2.128 current_us=2.589
+MODE traced=true output_oracle=true
+PREP cyclic 128 parse_us=219.629 current_prepare_us=212.806 old_ast_convert_us=188.309 old_prepare_us=15.464
+AST_DROP cyclic 128 us=46.075
+PREP_DROP cyclic 128 old_us=2.163 current_us=8.882

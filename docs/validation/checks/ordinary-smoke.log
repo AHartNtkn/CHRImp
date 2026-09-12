@@ -1,0 +1,4 @@
+MODE traced=false output_oracle=true
+PREP sparse 8 parse_us=17.494 current_prepare_us=20.374 old_ast_convert_us=4.708 old_prepare_us=21.913
+AST_DROP sparse 8 us=1.035
+PREP_DROP sparse 8 old_us=0.770 current_us=0.859
