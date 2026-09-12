@@ -205,7 +205,7 @@ export function layoutScene(scene, positions = new Map()) {
       return;
     }
     for(const boundary of ancestors){const right=Math.max(boundary.x+boundary.width,x+node.width+28),bottom=Math.max(boundary.y+boundary.height,y+node.height+28);boundary.x=Math.min(boundary.x,x-28);boundary.y=Math.min(boundary.y,y-48);boundary.width=right-boundary.x;boundary.height=bottom-boundary.y;}
-    const label=node.kind==='atom'?`${node.relation} / ${node.args.length}`:node.kind==='equal'?`${node.args[0]} = ${node.args[1]}`:node.kind;
+    const label=node.kind==='atom'?`${node.relation} / ${node.args.length}`:node.kind==='equal'?'=':node.kind;
     add({type:'node',...node,id,x,y,width:node.width,height:62,label});
     (node.args??[]).forEach((name,port)=>{
       const item=add({type:'port',escape:ancestors[root.kind==='rule'?1:0],name,relation:node.relation,path:node.path,id:`${id}:${port}`,port,x:x+20+28*port-10,y:y+62-10,width:20,height:20});
@@ -221,7 +221,7 @@ export function layoutScene(scene, positions = new Map()) {
     let slot=Math.round(x/64),trail=[];while(previous.has(slot)){trail.push(slot);slot=previous.get(slot);}
     for(const seen of trail)previous.set(seen,slot+1);previous.set(slot,slot+1);occupied.set(row,previous);x=slot*64;y+=(previous.level??0)*18;previous.level=(previous.level??0)+1;
     const offset=positions.get(`variable:${name}`)??{x:0,y:0};x+=offset.x;y+=offset.y;
-    add({type:'junction',name,id:`variable:${name}`,x:x-24,y:y-12,width:Math.max(48,name.length*7),height:38});
+    add({type:'junction',name,id:`variable:${name}`,x:x-24,y:y-12,width:48,height:24});
     for(const port of ends) {
       if(!lanes.has(port.escape))lanes.set(port.escape,new Map());
       const routes=lanes.get(port.escape);
@@ -333,9 +333,10 @@ function drawScene(svg,state) {
     const boundaries=svgNode('g'),wires=svgNode('g',{'aria-hidden':'true'}),nodes=svgNode('g');svg.append(boundaries,wires,nodes);
     for(const item of visibleItems(state.layout,view)) {
       const {x,y,width,height}=item;
-      if(item.type==='wire'){wires.append(svgNode('path',{d:item.d,class:`wire ${relationColor(item.relation??'equal')}`,'data-variable':item.name,'data-from':item.from,'data-points':item.points.join(',')}));continue;}
+      if(item.type==='wire'){const wire=svgNode('path',{d:item.d,class:`wire ${relationColor(item.relation??'equal')}`,'data-variable':item.name,'data-from':item.from,'data-points':item.points.join(',')});wire.append(svgNode('title',{},item.name));wires.append(wire);continue;}
       const selected=options.selected&&keyOf(options.selected.path)===keyOf(item.path);
       const group=svgNode('g',{'data-item':item.id,'data-type':item.type,...(item.name?{'data-variable':item.name}:{})});
+      if(item.name)group.append(svgNode('title',{},item.name));
       if(item.type==='boundary') {
         group.setAttribute('class',`diagram-boundary ${item.kind}${selected?' selected':''}`);
         group.append(svgNode('rect',{x,y,width,height,rx:10}),svgNode('text',{x:x+14,y:y+25,class:'boundary-label'},item.label));
@@ -345,6 +346,7 @@ function drawScene(svg,state) {
       if(item.type==='node') {
         group.setAttribute('class',`relation-node ${relationColor(item.relation??'equal')}${selected?' selected':''}`);
         group.append(svgNode('rect',{x,y,width,height,rx:6}),svgNode('text',{x:x+12,y:y+28,class:'node-name'},item.label));
+        if(item.kind==='equal')group.append(svgNode('title',{},`${item.args[0]} = ${item.args[1]}`));
         if(item.occurrence!==undefined)group.append(svgNode('text',{x:x+12,y:y+47,class:'node-note'},`occurrence ${item.occurrence}`));
         if(!options.readonly)interactive(group,`Select ${item.label}`,()=>{if(!state.moved)options.onSelect?.({path:item.path});});
       } else if(item.type==='port') {
@@ -352,7 +354,7 @@ function drawScene(svg,state) {
         group.append(svgNode('circle',{cx:x+10,cy:y+10,r:10}),svgNode('text',{x:x+10,y:y+13.5,'text-anchor':'middle'},item.port+1));
         if(!options.readonly&&item.relation)interactive(group,`Select port ${item.port+1} of ${item.relation}, connected to ${item.name}`,()=>{if(!state.moved)options.onSelect?.({path:item.path,port:item.port});});
       } else {
-        group.setAttribute('class','junction');group.append(svgNode('rect',{x,y,width,height,fill:'transparent'}),svgNode('circle',{cx:x+24,cy:y+12,r:5}),svgNode('text',{x:x+24,y:y+33,'text-anchor':'middle'},item.name));
+        group.setAttribute('class','junction');group.append(svgNode('rect',{x,y,width,height,fill:'transparent'}),svgNode('circle',{cx:x+24,cy:y+12,r:5}));
         if(!options.readonly)interactive(group,`Connect selected port to ${item.name}`,()=>{if(!state.moved)options.onConnect?.(item.name);});
       }
       nodes.append(group);

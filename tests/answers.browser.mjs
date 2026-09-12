@@ -50,6 +50,10 @@ async function diagramChecks(log) {
     equal(svg.querySelectorAll('.relation-node').length,4,'Whole rule rendered by worker');
     equal(svg.querySelectorAll('.junction').length,1,'Shared variable across all rule sides');
     equal(svg.querySelectorAll('.wire').length,4,'All connections across alternatives');
+    equal(svg.querySelectorAll('.junction text').length,0,'Junctions have no visible name labels');
+    equal(svg.querySelector('.junction title').textContent,'X','Junction name is hover information');
+    equal(svg.querySelector('.wire title').textContent,'X','Wire name is hover information');
+    equal(svg.querySelector('.port title').textContent,'X','Port name is hover information');
     assert(svg.textContent.includes('Alternative 1')&&svg.textContent.includes('Alternative 2'),'Nested alternatives labeled');
     const before=svg.getAttribute('viewBox').split(' ').map(Number);diagramControl(svg,'in');
     const zoomed=svg.getAttribute('viewBox').split(' ').map(Number);assert(zoomed[2]<before[2],'Zoom changes spatial viewport');

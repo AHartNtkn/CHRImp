@@ -8,6 +8,7 @@ const layout = layoutScene(scene);
 assert.deepEqual(model,before);
 assert.deepEqual(layout.items.filter(n=>n.type==='boundary').map(n=>n.label).filter(n=>['Kept','Removed','Body','Or','And'].includes(n)),['Kept','Removed','Body','Or','And']);
 assert.equal(layout.items.filter(n=>n.type==='node').length,5);
+assert.equal(layout.items.find(n=>n.type==='node'&&n.kind==='equal').label,'=');
 assert.equal(layout.items.filter(n=>n.type==='junction'&&n.name==='X').length,1);
 assert.equal(layout.items.filter(n=>n.type==='wire'&&n.name==='X').length,3);
 assert.equal(layout.items.filter(n=>n.type==='wire'&&n.name==='Z').length,3);
