@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test as runTest} from 'node:test';
-import { applyEdit, at, sceneEntries, validateNotebook } from './graph.mjs';
+import { applyEdit, at, validateNotebook } from './graph.mjs';
 import { RunSession, InspectionSelection, deliverCachedOutput } from './notebook.mjs';
 import { OutputAssembler } from './answers.mjs';
 import { NotebookConnection } from './connection.mjs';
@@ -353,14 +353,14 @@ edited = applyEdit(edited, { type: 'remove-port', path: ['query', 'items', 0], i
 edited = applyEdit(edited, { type: 'rename-relation', path: ['query', 'items', 0], relation: 'edge' });
 assert.deepEqual(edited.query.items[0], atom('edge', 'C', 'A'));
 edited = applyEdit(edited, { type: 'equal', path: ['query', 'items', 1, 'items', 0], left: 'C', right: 'A' });
-edited = applyEdit(edited, { type: 'wrap', path: ['query', 'items', 0], kind: 'or' });
+edited = applyEdit(edited, { type: 'replace', path: ['query', 'items', 0], node:{kind:'or',items:[edited.query.items[0]]} });
 assert.equal(edited.query.items[0].kind, 'or');
 assert.equal(edited.query.items[0].items.length, 1);
 assert.throws(() => applyEdit(edited, { type: 'remove', path: ['query', 'items', 0, 'items', 0] }), /branch/);
-edited = applyEdit(edited, { type: 'append', path: ['query', 'items', 0], node: { kind: 'fail' } });
+edited = applyEdit(edited, { type: 'add-alternative', path: ['query', 'items', 0] });
+edited = applyEdit(edited, { type: 'replace', path: ['query', 'items', 0,'items',1], node:{kind:'fail'} });
 edited = applyEdit(edited, { type: 'remove', path: ['query', 'items', 0, 'items', 0] });
 assert.deepEqual(edited.query.items[0], { kind: 'or', items: [{ kind: 'fail' }] });
-assert.equal(sceneEntries(edited, ['query']).length, 2);
 assert.equal(at(edited, ['program', 'rules', 0, 'kept', 0]).relation, 'p');
 edited = applyEdit(edited, { type: 'append', path: ['program', 'rules', 0, 'kept'], node: atom('s', 'Z') });
 assert.deepEqual(edited.program.rules[0].kept[1], { relation: 's', args: ['Z'] });
@@ -1051,7 +1051,7 @@ function renderingHarness() {
     toggleAttribute() {},
   });
   const $ = name => { if (!elements.has(name)) elements.set(name, element()); return elements.get(name); };
-  const context = createContext({$, el:element, button:element,
+  const context = createContext({$, el:element, button:element, observedCollection:null,
     uint(value) { assert.ok(Number.isSafeInteger(value) && value >= 0); return value; },
     safe(action) { const task = Promise.resolve().then(action).catch(error => { errors.push(error); }); tasks.push(task); return task; },
     store:{scene(collection, number, options) { return new Promise(resolve => reads.push({collection,number,options,resolve})); }},
@@ -1329,6 +1329,14 @@ await test('cancel persists buffered summaries while omitting already consumed q
   assert.equal(store.archives.get(archive).parts.size, 10);
   assert.equal(stream.current, null);
   assert.equal(stream.writes.length, 0);
+});
+
+await test('refreshing answers respects a collapsed Observation panel',async()=>{
+  const h=renderingHarness();await h.start();
+  h.$('observations').open=false;
+  h.context.renderResults();
+  assert.equal(h.$('observations').open,false);
+  h.reads[0].resolve(h.scene());await Promise.all(h.tasks);
 });
 
 await test('changing the selected archive cannot reload stale saved summaries', async () => {

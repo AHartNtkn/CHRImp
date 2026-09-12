@@ -1,4 +1,4 @@
-import { clone, at, atomOf, applyEdit, validateNotebook, renderGraph, renderScene, diagramControl } from './graph.mjs';
+import { clone, at, atomOf, applyEdit, validateNotebook, renderGraph, renderScene, diagramControl, freshVariables, insertionPath } from './graph.mjs';
 import { OutputAssembler, IndexedAnswerStore } from './answers.mjs';
 import { NotebookConnection } from './connection.mjs';
 
@@ -542,7 +542,7 @@ function mountNotebook() {
   const $ = name => document.getElementById(name);
   const el = (tag, text, attrs = {}) => {
     const node = document.createElement(tag); if (text !== undefined) node.textContent = text;
-    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+    for (const [key, value] of Object.entries(attrs)) {if(typeof value==='boolean')node.toggleAttribute(key,value);else node.setAttribute(key,value);}
     return node;
   };
   const button = (text, action, disabled = false) => {
@@ -561,7 +561,7 @@ function mountNotebook() {
   let connected = false, restoring = true, editorWriting = null, editorDirty = false;
   let displayWriting = null, displayDirty = false, displayStamp = null;
   let savedView = null, savedSelection = '', answerPage = 0, inspectionPending = null, inspecting = false, launching = false;
-  let bindingPage = 0;
+  let bindingPage = 0, observedCollection = null;
   let pendingNumber = 0;
   let catalog = {records:[], next:null, prev:null}, catalogCursor = null, catalogDirection = 'next', catalogDirty = true, catalogStamp = '';
   let refreshing = null, refreshAgain = false, sceneLoading = false, desiredScene = null, loadedSceneKey = null;
@@ -678,6 +678,7 @@ function mountNotebook() {
   }
   const edit = op => commit(applyEdit(model, op));
   const select = value => { selected = value; renderWorkspace(); };
+  const destination=()=>selected?insertionPath(model,selected.path):path;
   function navigate(next) { path = next; selected = null; renderWorkspace(); }
   function renderWorkspace() {
     const disabled = !connected || restoring || dirty || busy;
@@ -687,22 +688,17 @@ function mountNotebook() {
     $('target').replaceChildren(el('option', 'Query', { value: 'query' }), ...model.program.rules.map((rule, i) => el('option', rule.name || `Rule ${i + 1}`, { value: String(i) })));
     const ruleIndex = path[0] === 'program' ? path[2] : null;
     $('target').value = ruleIndex === null ? 'query' : String(ruleIndex);
-    $('rule-sides').hidden = ruleIndex === null;
-    for (const control of $('rule-sides').querySelectorAll('[data-side]')) control.setAttribute('aria-pressed', String(path[3] === control.dataset.side));
     $('rule-name').hidden = ruleIndex === null;
     $('rule-name-input').value = ruleIndex === null ? '' : model.program.rules[ruleIndex].name ?? '';
     $('remove-rule').disabled = ruleIndex === null || disabled;
-    $('breadcrumb').replaceChildren();
-    const rootLength = ruleIndex === null ? 1 : 4;
-    $('breadcrumb').append(button(ruleIndex === null ? 'Query' : `${model.program.rules[ruleIndex].name || `Rule ${ruleIndex + 1}`} / ${path[3]}`, () => navigate(path.slice(0, rootLength))));
-    for (let i = rootLength; i < path.length; i += 2) {
-      const prefix = path.slice(0, i + 2), node = at(model, prefix);
-      $('breadcrumb').append(el('span', ' / '), button(`${node.kind} ${Number(path[i + 1]) + 1}`, () => navigate(prefix)));
-    }
-    const scope = at(model, path);
-    if (scope.kind) $('breadcrumb').append(el('span', ` · ${scope.kind === 'or' ? 'Or alternatives' : scope.kind === 'and' ? 'And conjunction' : 'expression'} `), button('Select expression', () => select({ path: [...path] }), disabled));
+    const scope=destination();
+    const head=['kept','removed'].includes(scope.at(-1));
+    for(const option of $('add-kind').options)option.disabled=head&&option.value!=='atom';
+    if(head)$('add-kind').value='atom';
+    const branch=scope.at(-2)==='items'?`Alternative ${Number(scope.at(-1))+1}`:scope.at(-1)==='query'?'Query':scope.at(-1)[0].toUpperCase()+scope.at(-1).slice(1);
+    $('insertion-target').textContent=`In ${branch}`;
     renderGraph($('editor-graph'), model, path, {
-      selected, readonly: disabled, label: 'Editable query or whole rule diagram',
+      selected, insertion:scope, readonly: disabled, label: 'Editable query or whole rule diagram',
       onSelect: select,
       onConnect: variable => safe(() => { check(selected?.port !== undefined, 'Select a numbered relation port first.'); return edit({ type: 'set-port', path: selected.path, index: selected.port, variable }); }),
       onWire: (port, variable) => safe(() => edit({type:'set-port',path:port.path,index:port.port,variable})),
@@ -714,15 +710,19 @@ function mountNotebook() {
     const panel = $('selection'); panel.replaceChildren();
     if (!selected) { panel.append(el('p', 'Select a relation, group or numbered port.')); return; }
     let node;
-    try { node = at(model, selected.path); } catch { selected = null; return; }
+    try { node = at(model, selected.path); } catch { selected = null; $('selection-panel').hidden=true; return; }
     if (node.kept) { panel.append(el('p','Select a head, body, relation or port to edit this rule.')); return; }
     const atom = atomOf(node), target = selected.path;
+    if(selected.compartment){
+      panel.append(el('h3','Compartment'),el('p','Use Add above to place an item in this highlighted compartment.'));
+      if(target.at(-2)==='items'&&at(model,target.slice(0,-2)).kind==='or')panel.append(button('Remove alternative',async()=>{await edit({type:'remove',path:target});select(null);}));
+      return;
+    }
     panel.append(el('h3', atom ? 'Relation & ordered ports' : 'Expression'));
     if (atom) {
       panel.append(field('Relation', atom.relation, relation => edit({ type: 'rename-relation', path: target, relation })));
-      const start = Math.floor((selected.port ?? 0) / 8) * 8;
-      atom.args.slice(start, start + 8).forEach((variable, offset) => {
-        const index = start + offset, row = el('div', undefined, { class: 'port-row' });
+      atom.args.forEach((variable, index) => {
+        const row = el('div', undefined, { class: 'port-row' });
         row.append(field(`Port ${index + 1}`, variable, variable => edit({ type: 'set-port', path: target, index, variable })),
           button('↑', () => edit({ type: 'move-port', path: target, index, to: index - 1 }), index === 0),
           button('↓', () => edit({ type: 'move-port', path: target, index, to: index + 1 }), index === atom.args.length - 1),
@@ -731,21 +731,25 @@ function mountNotebook() {
         row.children[2].setAttribute('aria-label', `Move port ${index + 1} later`);
         row.children[3].setAttribute('aria-label', `Remove port ${index + 1}`); panel.append(row);
       });
-      if (atom.args.length > 8) panel.append(button('Previous ports', () => select({path:target,port:start-8}),start===0),button('Next ports', () => select({path:target,port:start+8}),start+8>=atom.args.length));
-      panel.append(button('Add port', () => edit({ type: 'insert-port', path: target, variable: 'X' })));
-      panel.append(el('p', selected.port === undefined ? 'Select a port, then a wire or junction to connect it.' : `Port ${selected.port + 1} selected. Choose a variable junction.`));
+      panel.append(button('Add port', () => edit({ type: 'insert-port', path: target })));
+      panel.append(el('p', selected.port === undefined ? 'Select a port, then a wire or junction to connect it.' : `Port ${selected.port + 1} selected. Choose a wire or junction.`));
+      if(selected.port!==undefined)panel.append(button('Disconnect port',()=>edit({type:'set-port',path:target,index:selected.port,variable:freshVariables(model,target)[0]})));
     } else if (node.kind === 'equal') {
+      if(selected.port!==undefined)panel.append(button('Disconnect port',()=>edit({type:'set-port',path:target,index:selected.port,variable:freshVariables(model,target)[0]})));
       panel.append(field('Left variable', node.left, left => edit({ type: 'equal', path: target, left, right: node.right })), field('Right variable', node.right, right => edit({ type: 'equal', path: target, left: node.left, right })));
-    } else if (node.items) {
-      panel.append(button('Add here', () => navigate(target)), button(node.kind === 'and' ? 'Change to Or' : 'Change to And', () => edit({ type: 'replace', path: target, node: { ...node, kind: node.kind === 'and' ? 'or' : 'and' } })));
-    } else if (Array.isArray(node)) { panel.append(button('Add here', () => navigate(target))); return;
-    } else panel.append(button(node.kind === 'true' ? 'Change to fail' : 'Change to true', () => edit({ type: 'replace', path: target, node: { kind: node.kind === 'true' ? 'fail' : 'true' } })));
-    if (node.kind) panel.append(button('Wrap in And', () => edit({ type: 'wrap', path: target, kind: 'and' })), button('Wrap in Or', () => edit({ type: 'wrap', path: target, kind: 'or' })));
+    } else if (node.kind==='or') {
+      panel.append(button('Add alternative',async()=>{const added=[...target,'items',node.items.length];await edit({type:'add-alternative',path:target});select({path:added,compartment:true});}));
+    } else if(Array.isArray(node)||selected.compartment) {
+      panel.append(el('p','Use Add above to place a relation or disjunction in this compartment.'));
+    } else if(node.kind==='fail')panel.append(button('Make empty',()=>edit({type:'replace',path:target,node:{kind:'true'}})));
+    if(node.kind&&node.kind!=='or'&&!selected.compartment)panel.append(button('Create alternatives',()=>edit({type:'replace',path:target,node:{kind:'or',items:[node,{kind:'true'}]}})));
+    if(Array.isArray(node))return;
     const parent = at(model, target.slice(0, -1));
     if (Array.isArray(parent)) {
       const index = target.at(-1);
       panel.append(button('Move earlier', () => edit({ type: 'move-item', path: target, to: index - 1 }), index === 0), button('Move later', () => edit({ type: 'move-item', path: target, to: index + 1 }), index === parent.length - 1));
     }
+    if(selected.port!==undefined)panel.querySelectorAll('.port-row')[selected.port]?.scrollIntoView({block:'nearest'});
     panel.append(button('Remove item', async () => { await edit({ type: 'remove', path: target }); selected = null; renderWorkspace(); }));
   }
   function renderRun() {
@@ -833,8 +837,8 @@ function mountNotebook() {
     let answer = answers.find(answer => answer.number === answerNumber) ?? answers.at(-1);
     // A loading render has no authority to replace the restored answer locator.
     if (stream) answerNumber = answer?.number ?? null;
-    if (answer) $('observations').open = true;
-    $('alternatives').replaceChildren(...answers.map(answer => el('option', `Answer ${answer.number} · completion ${answer.completion} / alternative ${answer.alternative}`, { value: answer.number })));
+    if(answer&&observedCollection!==collection){$('observations').open=true;observedCollection=collection;}
+    $('alternatives').replaceChildren(...answers.map(answer => el('option', `Answer ${answer.number}`, { value: answer.number, title:`Completion ${answer.completion}, alternative ${answer.alternative}` })));
     $('alternatives').value = answerNumber ?? '';
     $('answer-count').textContent = stream ? `${stream.total} saved · ${answers.length} on this page${session.stream?.current && outputMode === 'answers' && !savedSelection ? ' · receiving an alternative…' : ''}` : 'No answers yet';
     const index = answers.indexOf(answer);
@@ -883,7 +887,7 @@ function mountNotebook() {
     if (!body) return;
     pendingNumber = body.index;
     $('pending-body-number').value = pendingNumber + 1; $('pending-body-number').max = body.count;
-    $('pending-body-count').textContent = `/ ${body.count} · event ${body.event}`;
+    $('pending-body-count').textContent = `/ ${body.count}`;
     const choose = number => { pendingNumber = Math.min(uint(number), body.count - 1); renderResults(); };
     $('pending-body-prev').disabled = pendingNumber === 0; $('pending-body-next').disabled = pendingNumber + 1 === body.count;
     $('pending-body-prev').onclick = () => choose(body.index - 1); $('pending-body-next').onclick = () => choose(body.index + 1);
@@ -1042,14 +1046,16 @@ function mountNotebook() {
   $('close-selection').onclick = () => select(null);
   $('sync').onclick = () => safe(syncSource);
   $('target').onchange = () => navigate($('target').value === 'query' ? ['query'] : ['program', 'rules', Number($('target').value), 'body']);
-  for (const control of $('rule-sides').querySelectorAll('[data-side]')) control.onclick = () => navigate(['program', 'rules', Number($('target').value), control.dataset.side]);
   $('rule-name-input').onchange = () => safe(() => edit({ type: 'rule-name', path: path.slice(0, 3), name: $('rule-name-input').value }));
   $('add-rule').onclick = () => safe(async () => { await edit({ type: 'add-rule' }); navigate(['program', 'rules', model.program.rules.length - 1, 'body']); });
   $('remove-rule').onclick = () => safe(async () => { await edit({ type: 'remove-rule', index: path[2] }); navigate(['query']); });
-  $('add').onclick = () => safe(() => {
+  $('add').onclick = () => safe(async () => {
     const kind = $('add-kind').value;
-    const node = kind === 'atom' ? { kind, atom: { relation: 'relation', args: ['X', 'Y'] } } : kind === 'equal' ? { kind, left: 'X', right: 'Y' } : kind === 'and' || kind === 'or' ? { kind, items: [{ kind: 'true' }] } : { kind };
-    return edit({ type: 'append', path, node });
+    const scope=destination(),[left,right]=freshVariables(model,scope,2);
+    const node=kind==='atom'?{kind,atom:{relation:'relation',args:[left,right]}}:kind==='equal'?{kind,left,right}:kind==='or'?{kind,items:[{kind:'true'},{kind:'true'}]}:{kind};
+    const container=at(model,scope);
+    const added=Array.isArray(container)?[...scope,container.length]:container.kind==='true'?scope:[...scope,'items',container.kind==='and'?container.items.length:1];
+    await edit({type:'append',path:scope,node});select({path:added});
   });
   $('undo').onclick = () => safe(() => commit(clone(undo.at(-1)), 'undo'));
   $('redo').onclick = () => safe(() => commit(clone(redo.at(-1)), 'redo'));

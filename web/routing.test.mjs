@@ -4,6 +4,7 @@ const atom=(relation,...args)=>({kind:'atom',atom:{relation,args}});
 const scene=items=>diagramScene({query:{kind:'and',items}},['query']);
 const key=p=>p.join(',');
 function verify(layout) {
+  assert.equal(layout.routingError,null,'Routing succeeds');
   const wires=layout.items.filter(i=>i.type==='wire'),nodes=layout.items.filter(i=>i.type==='node');
   const segments=wires.flatMap(w=>w.points.slice(1).map((p,i)=>({a:w.points[i],b:p,name:w.name})));
   for(const {a,b} of segments) {
@@ -48,3 +49,8 @@ verify(layoutScene(obstruction,new Map([[JSON.stringify(['query','items',2]),{x:
 verify(layoutScene(scene(Array.from({length:20},()=>atom('wide',...Array.from({length:10},(_,i)=>`V${i}`))))));
 verify(layoutScene(scene([atom('repeated',...Array(30).fill('X'))])));
 console.log('Connected acyclic trees, direct pairs, obstacle avoidance, distinct nets and moved nodes passed.');
+
+const blocked=layoutScene(scene([atom('a','X'),atom('b','X')]),new Map([[JSON.stringify(['query','items',1]),{x:-200,y:30}]]));
+assert.match(blocked.routingError,/Connections unavailable/);
+assert.equal(blocked.items.filter(i=>i.type==='node').length,2,'Relations remain available for repairing an obstructed layout');
+assert.equal(blocked.items.filter(i=>i.type==='wire').length,0,'A routing failure never presents a partial tree as a valid graph');

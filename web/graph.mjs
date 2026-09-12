@@ -64,8 +64,10 @@ export function applyEdit(model, op) {
   const port = () => require(atom && Number.isInteger(op.index) && op.index >= 0 && op.index < atom.args.length, 'Select a numbered port.');
   switch (op.type) {
     case 'rename-relation': require(atom, 'Select a relation.'); atom.relation = op.relation; break;
-    case 'set-port': port(); atom.args[op.index] = op.variable; break;
-    case 'insert-port': require(atom, 'Select a relation.'); atom.args.push(op.variable); break;
+    case 'set-port':
+      if(node.kind==='equal'){require(op.index===0||op.index===1,'Select an equality port.');node[op.index===0?'left':'right']=op.variable;}
+      else {port();atom.args[op.index]=op.variable;}break;
+    case 'insert-port': require(atom, 'Select a relation.'); atom.args.push(op.variable??freshVariables(next,path,1)[0]); break;
     case 'remove-port': port(); atom.args.splice(op.index, 1); break;
     case 'move-port': {
       port(); require(Number.isInteger(op.to) && op.to >= 0 && op.to < atom.args.length, 'Choose a port position.');
@@ -73,14 +75,13 @@ export function applyEdit(model, op) {
     }
     case 'equal': require(node.kind === 'equal', 'Select an equality.'); node.left = op.left; node.right = op.right; break;
     case 'replace': replace(clone(op.node)); break;
-    case 'wrap':
-      require(node.kind && ['and', 'or'].includes(op.kind), 'Only body expressions can be grouped.');
-      replace({ kind: op.kind, items: [node] }); break;
+    case 'add-alternative': require(node.kind==='or','Select a disjunction.');node.items.push({kind:'true'});break;
     case 'append': {
       if (Array.isArray(node)) {
         require(['kept', 'removed'].includes(path.at(-1)) && op.node.kind === 'atom', 'Rule heads contain relations only.');
         node.push(clone(op.node.atom));
-      } else if (node.kind === 'and' || node.kind === 'or') node.items.push(clone(op.node));
+      } else if (node.kind === 'and') node.items.push(clone(op.node));
+      else if(node.kind==='true')replace(clone(op.node));
       else { require(node.kind, 'Select a body or head list.'); replace({ kind: 'and', items: [node, clone(op.node)] }); }
       break;
     }
@@ -120,12 +121,19 @@ export function variablesIn(node) {
   return [...names];
 }
 
-export function sceneEntries(model, path) {
-  const node = at(model, path);
-  if (Array.isArray(node)) return node.map((node, i) => ({ node, path: [...path, i] }));
-  if (node.kind === 'and' || node.kind === 'or') return node.items.map((node, i) => ({ node, path: [...path, 'items', i] }));
-  return [{ node, path }];
+// Variables are local to a query or a rule, including all its alternatives.
+export function freshVariables(model,path,count=1) {
+  const scope=path[0]==='program'?path.slice(0,3):['query'];
+  const used=new Set(variablesIn(at(model,scope))),names=[];
+  for(let i=0;names.length<count;i++){const name=`V${i}`;if(!used.has(name)){used.add(name);names.push(name);}}
+  return names;
 }
+export function insertionPath(model,path) {
+  let scope=path[0]==='program'?[...path.slice(0,3),['kept','removed'].includes(path[3])?path[3]:'body']:['query'];
+  for(let i=scope.length;i<path.length;i++)if(path[i]==='items'&&at(model,path.slice(0,i)).kind==='or')scope=path.slice(0,i+2);
+  return scope;
+}
+
 export function relationColor(name) {
   let hash = 0;
   for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) | 0;
@@ -145,7 +153,8 @@ export function diagramScene(model, path) {
       args:node.kind==='equal'?[node.left,node.right]:[],
       ...(children ? {children:children.map((child,i)=>build(child,[...path,...(Array.isArray(node)?[]:['items']),i]))} : {})};
   }
-  return build(at(model,rootPath),rootPath);
+  const result=build(at(model,rootPath),rootPath);
+  return rootPath[0]==='query'?{kind:'and',path:rootPath,label:'Query',children:[result]}:result;
 }
 const keyOf = path => JSON.stringify(path);
 const overlaps = (a,b) => a.x <= b.x+b.width && a.x+a.width >= b.x && a.y <= b.y+b.height && a.y+a.height >= b.y;
@@ -170,10 +179,12 @@ function connectedOrder(children) {
 }
 export function layoutScene(scene, positions = new Map()) {
   function measure(node) {
+    if(node.kind==='and'&&!node.label)node={...node,compact:true};
     let children=(node.children??[]).map(child=>measure(node.kind==='or'&&child.kind==='and'?{...child,compact:true}:child));
     const names=new Set(node.args??[]);
     children.forEach(c=>c.names.forEach(n=>names.add(n)));
     if(node.kind==='and')children=connectedOrder(children);
+    if(node.kind==='true')return {...node,names,children:[],compact:true,width:0,height:0};
     if(!node.children)return {...node,names,width:Math.max(node.kind==='atom'?166:92,(node.args?.length??0)*28+24,(node.relation?.length??0)*9+48),height:86};
     if(node.kind==='or') {
       const width=children.reduce((width,child)=>Math.max(width,child.width+48),190);let y=38;
@@ -233,7 +244,9 @@ export function layoutScene(scene, positions = new Map()) {
     });
   }
   place(root,28,28);
-  routeTrees(items,ports,add);
+  let routingError=null;const routes=[];
+  try{routeTrees(items,ports,item=>routes.push(item));routes.forEach(add);}
+  catch(error){if(!error.routing)throw error;routingError=error.message;}
   // A balanced bounding-volume tree makes repaint proportional to visible geometry.
   function index(objects,depth=0) {
     if(!objects.length)return null;
@@ -245,7 +258,7 @@ export function layoutScene(scene, positions = new Map()) {
     return {...box,left:index(objects.slice(0,middle),depth+1),right:index(objects.slice(middle),depth+1)};
   }
   const tree=index([...items]);
-  return {items,index:tree,width:Math.max(root.width+56,(tree?.x??0)+(tree?.width??0)+28),height:Math.max(root.height+56,(tree?.y??0)+(tree?.height??0)+28)};
+  return {items,index:tree,routingError,width:Math.max(root.width+56,(tree?.x??0)+(tree?.width??0)+28),height:Math.max(root.height+56,(tree?.y??0)+(tree?.height??0)+28)};
 }
 export function visibleItems(layout,view) {
   const result=[],pending=[layout.index];
@@ -309,7 +322,7 @@ function routeTrees(items, ports, add) {
           push({x,y,axis,cost,id,score:cost+heuristic(x,y),serial:serial++});
         }
       }
-      require(found,`No route for ${name}: the diagram needs more space around its ports.`);
+      if(!found)throw Object.assign(new Error(`Connections unavailable for ${name}. Move relations apart or use Arrange.`),{routing:true});
       for(let current=found;current;current=parents.get(current.id)) {
         const k=key(current.x,current.y),previous=parents.get(current.id);
         cells.add(k);minX=Math.min(minX,current.x);maxX=Math.max(maxX,current.x);minY=Math.min(minY,current.y);maxY=Math.max(maxY,current.y);
@@ -413,34 +426,37 @@ function drawScene(svg,state) {
     const boundaries=svgNode('g'),wires=svgNode('g',{'aria-hidden':'true'}),nodes=svgNode('g');svg.append(boundaries,wires,nodes);
     for(const item of visibleItems(state.layout,view)) {
       const {x,y,width,height}=item;
-      if(item.type==='wire'){const wire=svgNode('path',{d:item.d,class:`wire ${relationColor(item.name)}`,'data-variable':item.name,'data-from':item.from,'data-to':item.to,'data-points':JSON.stringify(item.points)});wire.append(svgNode('title',{},item.name));if(!options.readonly)wire.addEventListener('click',()=>options.onConnect?.(item.name));wires.append(svgNode('path',{d:item.d,class:'wire-clearance'}),wire);continue;}
-      const selected=options.selected&&keyOf(options.selected.path)===keyOf(item.path);
+      if(item.type==='wire'){const wire=svgNode('path',{d:item.d,class:`wire ${relationColor(item.name)}`,'data-variable':item.name,'data-from':item.from,'data-to':item.to,'data-points':JSON.stringify(item.points)});wire.append(svgNode('title',{},item.name));if(!options.readonly&&options.selected?.port!==undefined)wire.addEventListener('click',()=>options.onConnect?.(item.name));wires.append(svgNode('path',{d:item.d,class:'wire-clearance'}),wire);continue;}
+      const selected=options.selected&&keyOf(options.selected.path)===keyOf(item.path)&&(!options.selected.compartment||item.type==='boundary');
       const group=svgNode('g',{'data-item':item.id,'data-type':item.type,...(item.name?{'data-variable':item.name}:{})});
       if(item.name)group.append(svgNode('title',{},item.name));
       if(item.type==='boundary') {
-        group.setAttribute('class',`diagram-boundary ${item.kind}${item.region?' region':''}${selected?' selected':''}`);
+        group.setAttribute('class',`diagram-boundary ${item.kind}${item.region?' region':''}${selected?' selected':''}${options.insertion&&keyOf(options.insertion)===keyOf(item.path)&&(item.region||item.kind==='branch')?' insertion-target':''}`);
+        if(item.kind==='branch')group.append(svgNode('rect',{x,y,width,height,fill:'transparent',class:'compartment-hit'}));
         if(item.kind==='branch')group.append(svgNode('line',{x1:x,y1:y,x2:x+width,y2:y,class:'branch-divider'}));
         else group.append(svgNode('rect',{x,y,width,height,rx:10}));
         group.append(svgNode('text',{x:x+14,y:y+23,class:'boundary-label'},item.label));
-        if(!options.readonly)interactive(group,`Select ${item.label}`,()=>options.onSelect?.({path:item.path}));
+        if(!options.readonly)interactive(group,`Select ${item.label}`,()=>options.onSelect?.({path:item.path,compartment:item.region||item.kind==='branch'}));
         boundaries.append(group);continue;
       }
       if(item.type==='node') {
         group.setAttribute('class',`relation-node ${relationColor(item.relation??'equal')}${selected?' selected':''}`);
         group.append(svgNode('rect',{x,y,width,height,rx:6}),svgNode('text',{x:x+12,y:y+28,class:'node-name'},item.label));
         if(item.kind==='equal')group.append(svgNode('title',{},`${item.args[0]} = ${item.args[1]}`));
-        if(item.occurrence!==undefined)group.append(svgNode('text',{x:x+12,y:y+47,class:'node-note'},`occurrence ${item.occurrence}`));
+        if(item.occurrence!==undefined)group.append(svgNode('title',{},`Occurrence ${item.occurrence}`));
         if(!options.readonly)interactive(group,`Select ${item.label}`,()=>{if(!state.moved)options.onSelect?.({path:item.path});});
       } else if(item.type==='port') {
         group.setAttribute('class',`port ${relationColor(item.relation??'equal')}${selected&&options.selected.port===item.port?' selected':''}`);
         group.append(svgNode('circle',{cx:x+10,cy:y+10,r:10}),svgNode('text',{x:x+10,y:y+13.5,'text-anchor':'middle'},item.port+1));
-        if(!options.readonly&&item.relation)interactive(group,`Select port ${item.port+1} of ${item.relation}, connected to ${item.name}`,()=>{if(!state.moved)options.onSelect?.({path:item.path,port:item.port});});
+        if(!options.readonly)interactive(group,`Select port ${item.port+1} of ${item.relation??'equality'}, connected to ${item.name}`,()=>{if(!state.moved)options.onSelect?.({path:item.path,port:item.port});});
       } else {
         group.setAttribute('class','junction');group.append(svgNode('rect',{x,y,width,height,fill:'transparent'}),svgNode('circle',{cx:x+24,cy:y+12,r:5}));
-        if(!options.readonly)interactive(group,`Connect selected port to ${item.name}`,()=>{if(!state.moved)options.onConnect?.(item.name);});
+        if(!options.readonly&&options.selected?.port!==undefined)interactive(group,`Connect selected port to ${item.name}`,()=>{if(!state.moved)options.onConnect?.(item.name);});
       }
       nodes.append(group);
     }
+    if(state.layout.routingError)svg.append(svgNode('text',{x:x+12,y:y+24,class:'graph-error',role:'alert'},state.layout.routingError));
+    if(!state.layout.items.length)nodes.append(svgNode('text',{x:x+view.width/2,y:y+view.height/2,class:'graph-empty','text-anchor':'middle'},'Empty state'));
     options.onView?.(Math.round(scale*100));
   }
   const zoom=(factor,point={x:size().width/2,y:size().height/2})=>{
@@ -482,7 +498,7 @@ function drawScene(svg,state) {
     const dx=(event.clientX-drag.startX)/state.camera.scale,dy=(event.clientY-drag.startY)/state.camera.scale;
     if(Math.abs(dx)+Math.abs(dy)<4&&!state.moved)return;
     state.moved=true;svg.setPointerCapture(event.pointerId);
-    if(drag.item?.type==='port'&&!options.readonly&&drag.item.relation) {
+    if(drag.item?.type==='port'&&!options.readonly) {
       paint();const rect=svg.getBoundingClientRect(),x=state.camera.x+(event.clientX-rect.left)/state.camera.scale,y=state.camera.y+(event.clientY-rect.top)/state.camera.scale;
       svg.append(svgNode('path',{d:`M${drag.item.x+10},${drag.item.y+10} L${x},${y}`,class:'wire connection-preview'}));
     } else if(drag.offset) {
@@ -496,7 +512,7 @@ function drawScene(svg,state) {
   };
   svg.onpointerup=event=>{
     const drag=state.drag;state.drag=null;
-    if(drag?.item?.type==='port'&&state.moved&&!options.readonly&&drag.item.relation) {
+    if(drag?.item?.type==='port'&&state.moved&&!options.readonly) {
       const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-variable]');
       if(target)options.onWire?.({path:drag.item.path,port:drag.item.port},target.dataset.variable);
     }

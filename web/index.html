@@ -34,11 +34,9 @@
         <fieldset id="graph-tools">
           <legend class="sr-only">Graph editing controls</legend>
           <div class="graph-toolbar"><label class="sr-only" for="target">Query or rule</label><select id="target"><option value="query">Query</option></select><button id="add-rule">+ Rule</button><span class="spacer"></span><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button></div>
-          <div id="rule-sides" class="tabs" hidden aria-label="Add to rule side"><button data-side="kept">Add to kept</button><button data-side="removed">Add to removed</button><button data-side="body" aria-pressed="true">Add to body</button></div>
           <details class="rule-settings"><summary>Rule settings</summary><label id="rule-name" hidden>Rule name <input id="rule-name-input" placeholder="Unnamed rule"></label><button id="remove-rule" disabled>Remove rule</button></details>
-          <div class="graph-toolbar"><label for="add-kind">Add</label><select id="add-kind"><option value="atom">Relation</option><option value="equal">Equality</option><option value="and">And group</option><option value="or">Or group</option><option value="true">True</option><option value="fail">Fail</option></select><button id="add">+ Add item</button></div>
+          <div class="graph-toolbar"><label for="add-kind">Add</label><select id="add-kind"><option value="atom">Relation</option><option value="equal">Equality</option><option value="or">Disjunction</option><option value="fail">Fail</option></select><button id="add">+ Add item</button><span id="insertion-target" role="status"></span></div>
         </fieldset>
-        <nav id="breadcrumb" class="breadcrumb" aria-label="Expression location"></nav>
         <div class="graph-scroll"><svg id="editor-graph" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Editable hypergraph"></svg></div>
         <div class="canvas-tools" aria-label="Diagram navigation"><button data-diagram="editor-graph" data-action="out">−</button><button data-diagram="editor-graph" data-action="in">+</button><button data-diagram="editor-graph" data-action="fit">Fit</button><button data-diagram="editor-graph" data-action="layout">Arrange</button><button data-diagram="editor-graph" data-action="expand">Expand</button><span>Drag to move · scroll to zoom · drag a port to connect</span></div>
       </section>
