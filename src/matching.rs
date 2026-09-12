@@ -197,6 +197,14 @@ impl Source {
             }
         };
         if let Some((id, scope, support)) = next {
+            // This row is read at the source's pinned root.
+            if let Some(c) = a.direct(Operation::And(scope, support)) {
+                return if c == Condition::FALSE {
+                    SourceStatus::Pending
+                } else {
+                    SourceStatus::Found(id, c)
+                };
+            }
             self.occurrence = id;
             self.boolean = Some(a.start(Operation::And(scope, support)));
         }

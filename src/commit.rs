@@ -152,6 +152,12 @@ impl Commit {
         CommitStatus::Rejected
     }
     fn boolean(&mut self, a: &mut Arena, op: Operation) -> Option<Condition> {
+        // Operands come from the transaction's current scope and pinned records.
+        if self.job.is_none()
+            && let Some(c) = a.direct(op)
+        {
+            return Some(c);
+        }
         let job = self.job.get_or_insert_with(|| a.start(op));
         match job.tick(a) {
             Progress::Pending => None,

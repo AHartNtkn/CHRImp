@@ -202,7 +202,7 @@ impl Arena {
         self.cache_order.push_back(pair);
     }
 
-    pub fn start(&self, operation: Operation) -> Job {
+    fn operands(&self, operation: Operation) -> (Pair, bool) {
         let (a, b, negative) = match operation {
             Operation::And(a, b) => (a, b, false),
             Operation::Or(a, b) => (a.not(), b.not(), true),
@@ -212,7 +212,18 @@ impl Arena {
             self.contains(a) && self.contains(b),
             "stale or foreign condition operand"
         );
-        let pair = ordered(a, b);
+        (ordered(a, b), negative)
+    }
+
+    /// Exact identities on validated operands; no job or operation cache.
+    pub(crate) fn direct(&self, operation: Operation) -> Option<Condition> {
+        let (pair, negative) = self.operands(operation);
+        GcLease::assert_mutable(&self.frozen);
+        simple(pair).map(|c| if negative { c.not() } else { c })
+    }
+
+    pub fn start(&self, operation: Operation) -> Job {
+        let (pair, negative) = self.operands(operation);
         let known = self.cached(pair);
         Job {
             owner: self.owner,
@@ -892,5 +903,128 @@ impl Trace for Transform {
             5 => cursor.optional(self.job.as_ref()),
             _ => Step::Done,
         }
+    }
+}
+
+#[cfg(test)]
+mod direct_tests {
+    use super::*;
+    #[test]
+    fn direct_identities_match_truth_tables_and_leave_mixed_operands_resumable() {
+        let mut a = Arena::default();
+        let (x, c) = a.fresh_choice();
+        let (_, d) = a.fresh_choice();
+        let values = [Condition::FALSE, Condition::TRUE, c, c.not(), d, d.not()];
+        for left in values {
+            for right in values {
+                for op in [
+                    Operation::And(left, right),
+                    Operation::Or(left, right),
+                    Operation::Difference(left, right),
+                ] {
+                    let nodes = a.node_count();
+                    let cache = a.cache_len();
+                    if let Some(result) = a.direct(op) {
+                        for bits in 0..4 {
+                            let eval =
+                                |v| a.evaluate(v, |id| bits & (if id == x { 1 } else { 2 }) != 0);
+                            let expected = match op {
+                                Operation::And(_, _) => eval(left) && eval(right),
+                                Operation::Or(_, _) => eval(left) || eval(right),
+                                Operation::Difference(_, _) => eval(left) && !eval(right),
+                            };
+                            assert_eq!(eval(result), expected);
+                        }
+                    }
+                    assert_eq!(a.node_count(), nodes);
+                    assert_eq!(a.cache_len(), cache);
+                }
+            }
+        }
+        assert!(a.direct(Operation::And(c, d)).is_none());
+        assert!(a.direct(Operation::Or(c, d)).is_none());
+        assert!(a.direct(Operation::Difference(c, d)).is_none());
+    }
+    #[test]
+    fn direct_checks_authority_before_false_or_identical_shortcuts() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        for stale in [false, true] {
+            let mut owner = Arena::default();
+            let c = owner.fresh_choice().1;
+            let foreign = Arena::default();
+            if stale {
+                let mut gc = owner.collect(std::iter::empty());
+                while !gc.tick(&mut owner) {}
+            }
+            let arena = if stale { &owner } else { &foreign };
+            assert!(!arena.contains(c));
+            for op in [
+                Operation::And(c, Condition::FALSE),
+                Operation::And(Condition::FALSE, c),
+                Operation::And(c, c),
+                Operation::Or(c, c),
+                Operation::Difference(c, c),
+            ] {
+                assert!(catch_unwind(AssertUnwindSafe(|| arena.direct(op))).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn direct_rejects_frozen_arena_for_simple_and_mixed_operands() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        let mut a = Arena::default();
+        let c = a.fresh_choice().1;
+        let d = a.fresh_choice().1;
+        let gc = a.collect([c, d].into_iter());
+        for op in [
+            Operation::And(c, c),
+            Operation::And(c, Condition::FALSE),
+            Operation::And(c, d),
+        ] {
+            assert!(catch_unwind(AssertUnwindSafe(|| a.direct(op))).is_err());
+        }
+        drop(gc);
+        assert_eq!(a.direct(Operation::And(c, c)), Some(c));
+    }
+
+    #[test]
+    fn mixed_direct_fallback_resumes_and_discards_with_collection_each_tick() {
+        let mut resumed = 0;
+        let mut discarded = 0;
+        for discard_at in 0..16 {
+            let mut a = Arena::default();
+            let (x, c) = a.fresh_choice();
+            let (_, d) = a.fresh_choice();
+            let op = Operation::And(c, d);
+            assert_eq!(a.direct(op), None);
+            let mut job = a.start(op);
+            let mut finished = false;
+            for tick in 0..100 {
+                let roots: Vec<_> = job.roots().chain([c, d]).collect();
+                let mut gc = a.collect(roots.into_iter());
+                while !gc.tick(&mut a) {}
+                drop(gc);
+                if tick >= discard_at {
+                    if job.discard_tick() {
+                        discarded += 1;
+                        finished = true;
+                        break;
+                    }
+                } else if let Progress::Complete(result) = job.tick(&mut a) {
+                    resumed += 1;
+                    for bits in 0..4 {
+                        assert_eq!(
+                            a.evaluate(result, |id| bits & if id == x { 1 } else { 2 } != 0),
+                            bits == 3
+                        );
+                    }
+                    finished = true;
+                    break;
+                }
+            }
+            assert!(finished);
+        }
+        assert!(resumed > 0 && discarded > 0);
     }
 }
