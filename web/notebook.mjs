@@ -1,4 +1,5 @@
-import { clone, at, atomOf, applyEdit, validateNotebook, renderGraph, renderScene, diagramControl, disposeGraph, freshVariables, insertionPath } from './graph.mjs';
+import {emptyNotebook,validateDocument,serializeDocument,parseDocument,executionModel,replaceExecutionModel,fragmentFor,pasteFragment,removeSelection,searchNotebook} from './documents.mjs';
+import { clone, at, atomOf, applyEdit, validateNotebook, renderGraph, renderScene, diagramControl, disposeGraph, exportGraphSvg, exportAnswerSvg, focusGraphPath, freshVariables, insertionPath } from './graph.mjs';
 import { OutputAssembler, IndexedAnswerStore } from './answers.mjs';
 import { NotebookConnection } from './connection.mjs';
 
@@ -553,7 +554,8 @@ function mountNotebook() {
     const wrapper = el('label', label), input = el('input'); input.value = value;
     input.onchange = () => safe(() => action(input.value)); wrapper.append(input); return wrapper;
   };
-  let model = { program: { rules: [] }, query: { kind: 'true' } };
+  let notebookDoc=emptyNotebook(),model=executionModel(notebookDoc);
+  let fileHandle=null,fileName='',fileDirty=false,fileBusy=false,selection=[],clipboard=null,needsQueryRun=false;
   let path = ['query'], selected = null, dirty = false, busy = false, revision = 0;
   let undo = [], redo = [], debounce, inspected = null, outputMode = 'answers', answerNumber = null;
   const store = new IndexedAnswerStore();
@@ -568,6 +570,7 @@ function mountNotebook() {
   let inspectionCanceled = false, runNotice = null;
   $('query-section').append($('observations'));
   $('query-section').insertBefore(document.querySelector('.runbar'),$('query-editor'));
+  const editingControls=$('graph-tools');
   const ruleCards=new Map();
   const ruleObserver=new IntersectionObserver(entries=>{for(const entry of entries){const card=ruleCards.get(Number(entry.target.dataset.rule));if(card){card.visible=entry.isIntersecting;if(card.visible)card.paint?.();}}},{rootMargin:'300px'});
   const session = new RunSession(request, renderRun, store);
@@ -580,7 +583,7 @@ function mountNotebook() {
       try {
         while (editorDirty) {
           editorDirty = false;
-          await store.saveRecovery('editor', {model,program:$('program').value,query:$('query').value,dirty,
+          await store.saveRecovery('editor', {document:currentDocument(),fileHandle,fileName,fileDirty,needsQueryRun,program:$('program').value,query:$('query').value,dirty,
             history:$('history').checked,run:session.run,boot:connection.state.boot,selection:inspectionSelection.checkpoint()});
         }
       } finally { editorWriting = null; }
@@ -621,7 +624,8 @@ function mountNotebook() {
   async function initialize() {
     const editor = await store.recovery('editor'), display = await store.recovery('display');
     if (editor) {
-      model = clone(validateNotebook(editor.model)); $('program').value = editor.program; $('query').value = editor.query;
+      notebookDoc=editor.document?validateDocument(editor.document):replaceExecutionModel(emptyNotebook(),validateNotebook(editor.model));
+      model=executionModel(notebookDoc);fileHandle=editor.fileHandle??null;fileName=editor.fileName??'';fileDirty=editor.fileDirty??!editor.document;needsQueryRun=editor.needsQueryRun??false; $('program').value = editor.program; $('query').value = editor.query;
       dirty = editor.dirty; $('source-view').open=dirty; $('history').checked = editor.history;
     }
     try {
@@ -651,43 +655,165 @@ function mountNotebook() {
   }
   function message(text, error = false) { $('message').textContent = text; $('message').classList.toggle('error', error); }
   async function safe(action) { try { return await action(); } catch (error) { message(error.message, true); } }
-  function remember() { undo.push(clone(model)); if (undo.length > 40) undo.shift(); redo = []; }
+  function currentDocument() {
+    return {...notebookDoc,program:model.program,queries:notebookDoc.queries.map(q=>q.id===notebookDoc.activeQuery?{...q,body:model.query}:q)};
+  }
+  function fileState() {
+    $('file-status').textContent=fileBusy?'Working…':fileDirty?'Unsaved file changes':fileName?`Saved · ${fileName}`:'Not saved to a file';
+    document.querySelector('.notebook').inert=fileBusy;
+    for(const id of ['run','step','resume','inspect'])if(fileBusy)$(id).disabled=true;
+    document.title=`${fileDirty?'• ':''}${notebookDoc.title||'Untitled notebook'} · CHR`;
+  }
+  function changed() {fileDirty=true;fileState();}
+  const layoutKey=root=>root[0]==='query'?`query:${notebookDoc.activeQuery}`:`rule:${root[2]}`;
+  const activeSvg=() => path[0]==='query'?$('editor-graph'):ruleCards.get(path[2])?.svg;
+  function updateLayouts(root,positions) {
+    const key=layoutKey(root);
+    if(JSON.stringify(notebookDoc.layouts[key]??[])===JSON.stringify(positions))return;
+    remember();notebookDoc={...currentDocument(),layouts:{...notebookDoc.layouts,[key]:positions}};changed();safe(saveEditor);
+  }
+  async function commitDocument(next,history='edit') {return commit(executionModel(next),history,next);}
+  async function changeQuery(id) {
+    if(id===notebookDoc.activeQuery)return;
+    if(dirty)await syncSource();
+    const next=currentDocument();next.activeQuery=id;
+    needsQueryRun=true;selected=null;selection=[];path=['query'];
+    await commitDocument(next);
+  }
+  async function saveFile(as=false) {
+    if(fileBusy)return;
+    let handle=fileHandle;
+    try {
+      if((as||!handle)&&window.showSaveFilePicker)handle=await window.showSaveFilePicker({suggestedName:`${notebookDoc.title||'notebook'}.chrnb`,types:[{description:'CHR notebook',accept:{'application/json':['.chrnb']}}]});
+      if(handle&&await handle.queryPermission({mode:'readwrite'})!=='granted')check(await handle.requestPermission({mode:'readwrite'})==='granted','File write permission was not granted.');
+      if(dirty)await syncSource();
+      fileBusy=true;renderWorkspace();fileState();
+      const contents=serializeDocument(currentDocument());
+      if(handle){const writer=await handle.createWritable();try{await writer.write(contents);await writer.close();}catch(error){await writer.abort().catch(()=>{});throw error;}fileHandle=handle;fileName=handle.name;}
+      else {fileName=`${notebookDoc.title||'notebook'}.chrnb`;download(fileName,contents,'application/json');}
+      fileDirty=false;await saveEditor();message(handle?`Saved ${fileName}.`:`Downloaded ${fileName}. Use Open to reopen it.`);
+    } catch(error){if(error.name!=='AbortError')throw error;}
+    finally{fileBusy=false;renderWorkspace();fileState();}
+  }
+  function download(name,contents,type) {
+    const blob=contents instanceof Blob?contents:new Blob([contents],{type});
+    const url=URL.createObjectURL(blob),link=el('a',undefined,{href:url,download:name.replace(/[\\/:*?"<>|]/g,'_')});
+    document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);message(`Prepared ${link.download} for download.`);
+  }
+  async function openDocument(next,handle=null,name='') {
+    next=validateDocument(next);
+    if((fileDirty||dirty)&&!window.confirm('Replace this notebook? Save it first if you want a separate file copy.'))return;
+    if(dirty)clearTimeout(debounce);
+    fileBusy=true;renderWorkspace();fileState();
+    try {
+    const formatted=await request('format',executionModel(next));
+    session.pause();
+    notebookDoc=next;model=executionModel(next);$('program').value=formatted.program;$('query').value=formatted.query;
+    dirty=false;revision++;undo=[];redo=[];selected=null;selection=[];path=['query'];needsQueryRun=true;
+    for(const card of ruleCards.values()){ruleObserver.unobserve(card.element);disposeGraph(card.svg);card.element.remove();}ruleCards.clear();
+    // The editing controls must stay mounted while rule canvases are released.
+    $('query-editor').prepend(editingControls);disposeGraph($('editor-graph'));
+    fileHandle=handle;fileName=name;fileDirty=!name;observedCollection=null;savedSelection='';inspected=null;outputMode='answers';
+    renderWorkspace();renderRun();await saveEditor();await saveDisplay();fileState();message(name?`Opened ${name}.`:'New notebook.');
+    } finally {fileBusy=false;renderWorkspace();fileState();}
+  }
+  async function openFile() {
+    if(window.showOpenFilePicker){try{const [handle]=await window.showOpenFilePicker({types:[{description:'CHR notebook',accept:{'application/json':['.chrnb','.json']}}],multiple:false});const file=await handle.getFile();await openDocument(parseDocument(await file.text()),handle,file.name);}catch(error){if(error.name!=='AbortError')throw error;}}
+    else {$('open-file').value='';$('open-file').click();}
+  }
+  function chosenPaths() {return (selection.length?selection:selected?[selected]:[]).filter(item=>item.port===undefined).map(item=>item.path);}
+  function copiedFragment() {check(!dirty&&!busy,'Finish editing the source first.');return fragmentFor(model,chosenPaths());}
+  async function copySelection(cut=false) {
+    const fragment=copiedFragment(),text=JSON.stringify(fragment),version=revision;
+    clipboard=text;
+    let system=true;try{await navigator.clipboard.writeText(text);}catch{system=false;}
+    if(cut){check(version===revision,'The diagram changed while copying; select it again to cut.');await deleteSelection();}
+    message(`${cut?'Cut':'Copied'} ${fragment.items.length} item(s)${system?'':' to the notebook clipboard'}.`);
+  }
+  async function pasteSelection(fragment=null) {
+    check(!dirty&&!busy,'Finish editing the source first.');
+    if(!fragment){let text;try{text=await navigator.clipboard.readText();}catch{text=clipboard;}check(text,'The clipboard is empty or unavailable.');fragment=JSON.parse(text);}
+    const destination=fragment.kind==='rules'?['program','rules']:insertionPath(model,selected?.path??path);
+    const pasted=pasteFragment(model,destination,fragment);
+    await commit(pasted.model);selection=pasted.paths.map(path=>({path}));selected=selection[0]??null;
+    if(selected)path=selected.path[0]==='program'?['program','rules',selected.path[2],'body']:['query'];renderWorkspace();
+  }
+  async function deleteSelection() {
+    check(!dirty&&!busy,'Finish editing the source first.');
+    if(selected?.port!==undefined&&!selection.length){await edit({type:'set-port',path:selected.path,index:selected.port,variable:freshVariables(model,selected.path)[0]});}
+    else {const paths=chosenPaths();check(paths.length,'Select items to delete.');await commit(removeSelection(model,paths));}
+    selected=null;selection=[];renderWorkspace();
+  }
+  async function moveRule(index,to) {
+    const next=currentDocument();next.program=clone(next.program);next.layouts={...next.layouts};
+    [next.program.rules[index],next.program.rules[to]]=[next.program.rules[to],next.program.rules[index]];
+    const first=next.layouts[`rule:${index}`]??[],second=next.layouts[`rule:${to}`]??[];
+    const repath=(entries,from,to)=>entries.map(([id,offset])=>{try{const p=JSON.parse(id);if(p[0]==='program'&&p[2]===from)p[2]=to;return [JSON.stringify(p),offset];}catch{return [id,offset];}});
+    next.layouts[`rule:${index}`]=repath(second,to,index);next.layouts[`rule:${to}`]=repath(first,index,to);
+    selected=null;selection=[];path=['program','rules',to,'body'];await commitDocument(next);
+  }
+  async function findResult(match) {
+    if(dirty)await syncSource();
+    if(match.queryId&&match.queryId!==notebookDoc.activeQuery)await changeQuery(match.queryId);
+    path=match.path[0]==='query'?['query']:['program','rules',match.path[2],'body'];selected={path:match.path};selection=[];renderWorkspace();
+    const svg=activeSvg();svg.scrollIntoView({block:'center'});focusGraphPath(svg,match.path);$('search-results').hidden=true;
+  }
+  function renderSearch() {
+    const text=$('notebook-search').value;$('search-results').replaceChildren();$('search-results').hidden=!text;
+    if(!text)return;
+    const matches=searchNotebook(currentDocument(),text);
+    let shown=0;
+    const more=button('Show more matches',()=>{append();});
+    function append(){more.remove();for(const match of matches.slice(shown,shown+100)){const owner=match.queryId?notebookDoc.queries.find(q=>q.id===match.queryId)?.name:model.program.rules[match.path[2]]?.name||`Rule ${match.path[2]+1}`;$('search-results').append(button(`${owner} · ${match.label}`,()=>findResult(match)));}shown+=100;if(shown<matches.length)$('search-results').append(more);}
+    append();
+    if(!matches.length)$('search-results').append(el('p','No matches.'));
+  }
+  async function exportAnswers(all=false) {
+    const collection=outputMode==='inspect'?inspected?.archive:savedSelection||(needsQueryRun?null:session.archive);check(collection,'Choose saved answers first.');
+    if(all){const chunks=['{"format":"chr-answers","version":1,"answers":['];let first=true;for await(const answer of store.iterateAnswers(collection)){chunks.push((first?'':',')+JSON.stringify(answer));first=false;}chunks.push(']}');download('answers.json',new Blob(chunks,{type:'application/json'}));}
+    else {check(answerNumber!==null,'Select an answer.');const answer=await store.exportAnswer(collection,answerNumber);check(answer,'This answer is unavailable.');download(`answer-${answerNumber}.json`,JSON.stringify(answer,null,2),'application/json');}
+  }
+  function remember() { undo.push(clone(currentDocument())); if (undo.length > 40) undo.shift(); redo = []; }
   async function syncSource() {
     clearTimeout(debounce);
     const version = revision;
     const response = await request('parse', { program: $('program').value, query: $('query').value });
     check(version === revision, 'Source changed while parsing. Sync the latest text.');
     validateNotebook(response);
-    if (JSON.stringify(model) !== JSON.stringify(response)) remember();
-    model = clone({ program: response.program, query: response.query }); revision++; dirty = false; selected = null;
+    const modified=JSON.stringify(model)!==JSON.stringify(response);
+    if(modified)remember();
+    model = clone({ program: response.program, query: response.query });notebookDoc=replaceExecutionModel(notebookDoc,model);if(modified){changed();needsQueryRun=true;} revision++; dirty = false; selected = null;
     try { at(model, path); } catch { path = ['query']; }
-    renderWorkspace(); await saveEditor(); message('Text and graph are in sync.');
+    renderWorkspace();renderRun(); await saveEditor(); message('Text and graph are in sync.');
   }
-  async function commit(next, history = 'edit') {
+  async function commit(next, history = 'edit', nextDocument = null) {
     check(!dirty && !busy, 'Sync the source before editing the diagram.');
     const version = ++revision; busy = true; renderWorkspace();
     try {
       const formatted = await request('format', next);
       check(typeof formatted.program === 'string' && typeof formatted.query === 'string', 'Format response needs program and query source.');
       check(version === revision, 'Source changed while formatting. Sync the latest text.');
-      if (history === 'undo') { redo.push(clone(model)); undo.pop(); }
-      else if (history === 'redo') { undo.push(clone(model)); redo.pop(); }
+      if (history === 'undo') { redo.push(clone(currentDocument())); undo.pop(); }
+      else if (history === 'redo') { undo.push(clone(currentDocument())); redo.pop(); }
       else remember();
-      model = next; $('program').value = formatted.program; $('query').value = formatted.query;
+      if(nextDocument&&nextDocument.activeQuery!==notebookDoc.activeQuery){disposeGraph($('editor-graph'));needsQueryRun=true;}
+      if(JSON.stringify(next)!==JSON.stringify(model))needsQueryRun=true;
+      notebookDoc=nextDocument?validateDocument(nextDocument):replaceExecutionModel(currentDocument(),next);
+      model = next; changed(); $('program').value = formatted.program; $('query').value = formatted.query;
       try { at(model, path); } catch { path = ['query']; }
       if (selected) { try { at(model, selected.path); } catch { selected = null; } }
       message(session.run === null ? 'Text and graph are in sync.' : 'Edits apply to the next run.');
     } finally { busy = false; renderWorkspace(); }
-    await saveEditor();
+    renderRun();await saveEditor();
   }
   const edit = op => commit(applyEdit(model, op));
-  const select = value => { selected = value; renderWorkspace(); };
+  const select = value => { selected = value;selection=[]; renderWorkspace(); };
   const destination=()=>selected?insertionPath(model,selected.path):path;
-  function navigate(next) { path = next; selected = null; renderWorkspace(); }
+  function navigate(next) { path = next; selected = null;selection=[]; renderWorkspace(); }
   function renderWorkspace() {
-    const disabled = !connected || restoring || dirty || busy;
-    $('query-editor').prepend($('graph-tools'));
-    for (const name of ['program','query','sync','history']) $(name).disabled = !connected || restoring;
+    const disabled = !connected || restoring || dirty || busy || fileBusy;
+    $('query-editor').prepend(editingControls);
+    for (const name of ['program','query','sync','history']) $(name).disabled = !connected || restoring || fileBusy;
     $('graph-tools').disabled = disabled; $('inspector').disabled = disabled;
     $('undo').disabled = disabled || !undo.length; $('redo').disabled = disabled || !redo.length;
     const ruleIndex = path[0] === 'program' ? path[2] : null;
@@ -705,7 +831,8 @@ function mountNotebook() {
     const paint=(svg,root,label)=>renderGraph(svg,model,root,{
       selected:root[0]===path[0]&&(root[0]==='query'||root[2]===path[2])?selected:null,
       insertion:root[0]===path[0]&&(root[0]==='query'||root[2]===path[2])?scope:null,
-      readonly:disabled,label,
+      readonly:disabled,label,key:layoutKey(root),selection:root[0]===path[0]&&(root[0]==='query'||root[2]===path[2])?(selection.length?selection:selected?[selected]:[]):[],positions:notebookDoc.layouts[layoutKey(root)]??[],onLayout:positions=>updateLayouts(root,positions),
+      onSelection:items=>{path=root;selection=items;selected=items[0]??null;renderWorkspace();},
       onSelect:value=>{path=root;select(value);},
       onConnect:variable=>safe(()=>{check(selected?.port!==undefined,'Select a numbered port first.');return edit({type:'set-port',path:selected.path,index:selected.port,variable});}),
       onWire:(port,variable)=>safe(()=>edit({type:'set-port',path:port.path,index:port.port,variable})),
@@ -716,14 +843,15 @@ function mountNotebook() {
       let card=ruleCards.get(index);
       if(!card){
         const element=el('li',undefined,{class:'rule-card','data-rule':index}),heading=el('div',undefined,{class:'section-heading'});
-        const title=button('',()=>navigate(['program','rules',index,'body']));heading.append(title);
+        const title=button('',()=>{path=['program','rules',index,'body'];select({path:['program','rules',index]});});
+        const up=button('↑',()=>moveRule(index,index-1)),down=button('↓',()=>moveRule(index,index+1));up.setAttribute('aria-label','Move rule earlier');down.setAttribute('aria-label','Move rule later');heading.append(title,up,down);
         const viewport=el('div',undefined,{class:'graph-scroll'}),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.id=`rule-graph-${index}`;viewport.append(svg);
         const navigation=el('div',undefined,{class:'canvas-tools','aria-label':`Rule ${index+1} navigation`});
         for(const [label,action] of [['−','out'],['+','in'],['Fit','fit'],['Arrange','layout'],['Expand','expand']])navigation.append(button(label,()=>diagramControl(svg,action)));
         element.append(heading,viewport,navigation);$('rule-list').append(element);
-        card={element,title,svg,viewport,visible:false};ruleCards.set(index,card);ruleObserver.observe(element);
+        card={element,title,up,down,svg,viewport,visible:false};ruleCards.set(index,card);ruleObserver.observe(element);
       }
-      const label=rule.name||`Rule ${index+1}`;card.title.textContent=label;card.title.disabled=disabled;
+      const label=rule.name||`Rule ${index+1}`;card.title.textContent=label;card.title.disabled=disabled;card.up.disabled=disabled||index===0;card.down.disabled=disabled||index===model.program.rules.length-1;
       card.element.classList.toggle('active',ruleIndex===index);
       card.paint=()=>paint(card.svg,['program','rules',index,'body'],`Rule ${label}`);
       if(ruleIndex===index)card.element.insertBefore($('graph-tools'),card.viewport);
@@ -732,12 +860,20 @@ function mountNotebook() {
     if(ruleIndex===null)$('query-editor').prepend($('graph-tools'));
     $('query-editor').classList.toggle('active',ruleIndex===null);
     paint($('editor-graph'),['query'],'Query');
-    renderInspector();
+    if(document.activeElement!==$('notebook-title'))$('notebook-title').value=notebookDoc.title;
+    $('query-list').replaceChildren(...notebookDoc.queries.map(q=>el('option',q.name,{value:q.id})));$('query-list').value=notebookDoc.activeQuery;
+    if(document.activeElement!==$('query-name'))$('query-name').value=notebookDoc.queries.find(q=>q.id===notebookDoc.activeQuery).name;
+    for(const id of ['query-list','query-name','new-query','duplicate-query','remove-query','notebook-title','new-notebook','open-notebook','save-notebook','save-as-notebook'])$(id).disabled=busy||fileBusy||restoring||!connected;
+    $('remove-query').disabled ||= notebookDoc.queries.length===1;
+    for(const id of ['copy-selection','cut-selection','duplicate-selection','delete-selection'])$(id).disabled=disabled||!selected||selected.compartment===true;
+    $('paste-selection').disabled=disabled;
+    fileState();renderInspector();
   }
   function renderInspector() {
     $('selection-panel').hidden = !selected;
     const panel = $('selection'); panel.replaceChildren();
     if (!selected) { panel.append(el('p', 'Select a relation, group or numbered port.')); return; }
+    if(selection.length>1){panel.append(el('h3',`${selection.length} selected`),el('p','Drag to move together. Copy, cut, duplicate or delete with the editing controls.'));return;}
     let node;
     try { node = at(model, selected.path); } catch { selected = null; $('selection-panel').hidden=true; return; }
     if (node.kept) { panel.append(el('p','Select a head, body, relation or port to edit this rule.')); return; }
@@ -804,7 +940,7 @@ function mountNotebook() {
       if (session.status === 'done') message(`Run ${session.run} completed. Answers are saved.`);
       else if (session.status === 'canceled') message(`Run ${session.run} canceled. Completed answers are saved.`);
     }
-    if (!connected || restoring) for (const name of ['execution','release-run','run','pause','resume','step','cancel','inspect','snapshot']) $(name).disabled = true;
+    if (!connected || restoring || fileBusy) for (const name of ['execution','release-run','run','pause','resume','step','cancel','inspect','snapshot']) $(name).disabled = true;
     renderResults(); safe(refreshSaved);
   }
   function refreshSaved() {
@@ -823,10 +959,10 @@ function mountNotebook() {
             if (cursor !== catalogCursor || direction !== catalogDirection) { refreshAgain = true; continue; }
             catalog = page; catalogDirty = false;
           }
-          const collection = outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive;
+          const collection = outputMode === 'inspect' ? inspected?.archive : savedSelection || (needsQueryRun?null:session.archive);
           const requestedPage = answerPage;
           const view = collection ? await store.page(collection, requestedPage) : null;
-          if (collection !== (outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive) || requestedPage !== answerPage) {
+          if (collection !== (outputMode === 'inspect' ? inspected?.archive : savedSelection || (needsQueryRun?null:session.archive)) || requestedPage !== answerPage) {
             refreshAgain = true; continue;
           }
           // An archive locator is not a loaded view. Reconcile only a definitive
@@ -859,7 +995,7 @@ function mountNotebook() {
     return refreshing;
   }
   function renderResults() {
-    const collection = outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive;
+    const collection = outputMode === 'inspect' ? inspected?.archive : savedSelection || (needsQueryRun?null:session.archive);
     const stream = savedView?.id === collection && savedView.page === answerPage ? savedView : null;
     $('output-mode').value = outputMode;
     const answers = stream?.answers ?? [];
@@ -874,6 +1010,7 @@ function mountNotebook() {
     $('answer-prev').disabled = index <= 0; $('answer-next').disabled = index < 0 || index === answers.length - 1;
     $('answer-prev').onclick = () => { answerNumber = answers[index - 1].number; resetResultPages(); renderResults(); };
     $('answer-next').onclick = () => { answerNumber = answers[index + 1].number; resetResultPages(); renderResults(); };
+    $('export-answer').disabled=!answer;$('export-answer-svg').disabled=!answer;$('export-all-answers').disabled=!stream?.total;
     $('result-empty').hidden = !!answer;
     $('result-graph').toggleAttribute('hidden', !answer);
     if (!answer) {
@@ -1068,11 +1205,56 @@ function mountNotebook() {
     try { await pending; } finally { renderInspectionControls(); }
   });
   for (const name of ['program', 'query']) $(name).addEventListener('input', () => {
-    revision++; dirty = true; renderWorkspace(); safe(saveEditor); clearTimeout(debounce);
+    revision++; dirty = true; changed(); renderWorkspace(); safe(saveEditor); clearTimeout(debounce);
     debounce = setTimeout(() => safe(syncSource), 650);
   });
   for (const control of document.querySelectorAll('[data-diagram]')) control.onclick = () => diagramControl($(control.dataset.diagram),control.dataset.action);
   $('close-selection').onclick = () => select(null);
+  $('new-notebook').onclick=()=>safe(()=>openDocument(emptyNotebook()));
+  $('open-notebook').onclick=()=>safe(openFile);
+  $('open-file').onchange=()=>safe(async()=>{const file=$('open-file').files[0];if(file)await openDocument(parseDocument(await file.text()),null,file.name);});
+  $('save-notebook').onclick=()=>safe(()=>saveFile());
+  $('save-as-notebook').onclick=()=>safe(()=>saveFile(true));
+  function renameDocumentField(field,value) {
+    const next=currentDocument();
+    if(field==='title'){if(next.title===value)return;next.title=value;}
+    else {const q=next.queries.find(q=>q.id===next.activeQuery);if(!value.trim()||q.name===value)return;q.name=value;}
+    remember();notebookDoc=next;changed();renderWorkspace();safe(saveEditor);
+  }
+  $('notebook-title').oninput=()=>renameDocumentField('title',$('notebook-title').value);
+  $('query-list').onchange=()=>safe(()=>changeQuery($('query-list').value));
+  $('query-name').oninput=()=>renameDocumentField('query',$('query-name').value);
+  async function addQuery(duplicate=false){
+    if(dirty)await syncSource();const next=currentDocument(),old=next.queries.find(q=>q.id===next.activeQuery),id=crypto.randomUUID();
+    let n=1;while(next.queries.some(q=>q.name===`Query ${n}`))n++;
+    next.queries=[...next.queries,{id,name:duplicate?`${old.name} copy`:`Query ${n}`,body:duplicate?clone(old.body):{kind:'true'}}];
+    if(duplicate)next.layouts={...next.layouts,[`query:${id}`]:clone(next.layouts[`query:${old.id}`]??[])};
+    next.activeQuery=id;path=['query'];selected=null;selection=[];await commitDocument(next);
+  }
+  $('new-query').onclick=()=>safe(()=>addQuery());
+  $('duplicate-query').onclick=()=>safe(()=>addQuery(true));
+  $('remove-query').onclick=()=>safe(async()=>{if(dirty)await syncSource();const next=currentDocument();check(next.queries.length>1,'Keep at least one query.');next.queries=next.queries.filter(q=>q.id!==next.activeQuery);next.layouts={...next.layouts};delete next.layouts[`query:${next.activeQuery}`];next.activeQuery=next.queries[0].id;path=['query'];selected=null;selection=[];await commitDocument(next);});
+  $('copy-selection').onclick=()=>safe(()=>copySelection());
+  $('cut-selection').onclick=()=>safe(()=>copySelection(true));
+  $('paste-selection').onclick=()=>safe(()=>pasteSelection());
+  $('duplicate-selection').onclick=()=>safe(()=>pasteSelection(copiedFragment()));
+  $('delete-selection').onclick=()=>safe(deleteSelection);
+  $('export-diagram').onclick=()=>safe(()=>download(`${notebookDoc.title}.svg`,exportGraphSvg(activeSvg()),'image/svg+xml'));
+  $('export-answer-svg').onclick=()=>safe(async()=>{const collection=outputMode==='inspect'?inspected?.archive:savedSelection||(needsQueryRun?null:session.archive);check(collection&&answerNumber!==null,'Select an answer.');const answer=await store.exportAnswer(collection,answerNumber);check(answer,'This answer is unavailable.');download('answer.svg',await exportAnswerSvg(answer),'image/svg+xml');});
+  $('export-answer').onclick=()=>safe(()=>exportAnswers());
+  $('export-all-answers').onclick=()=>safe(()=>exportAnswers(true));
+  let searchTimer;
+  $('notebook-search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(renderSearch,120);};
+  window.addEventListener('beforeunload',event=>{if(fileDirty||dirty){event.preventDefault();event.returnValue='';}});
+  document.addEventListener('keydown',event=>{
+    const mod=event.ctrlKey||event.metaKey,key=event.key.toLowerCase(),editing=event.target.closest('input,textarea,select,[contenteditable="true"]');
+    if(mod&&['s','o','f'].includes(key)){event.preventDefault();if(key==='s')safe(()=>saveFile(event.shiftKey));else if(key==='o')safe(openFile);else $('notebook-search').focus();return;}
+    if(editing||fileBusy||busy||dirty)return;
+    const actions={c:'copy-selection',x:'cut-selection',v:'paste-selection',d:'duplicate-selection',z:event.shiftKey?'redo':'undo',y:'redo'};
+    if(mod&&actions[key]){event.preventDefault();$(actions[key]).click();}
+    else if(key==='delete'||key==='backspace'){event.preventDefault();$('delete-selection').click();}
+    else if(key==='escape'){selection=[];selected=null;$('search-results').hidden=true;renderWorkspace();}
+  });
   $('sync').onclick = () => safe(syncSource);
   $('edit-query').onclick=()=>navigate(['query']);
   $('rule-name-input').onchange = () => safe(() => edit({ type: 'rule-name', path: path.slice(0, 3), name: $('rule-name-input').value }));
@@ -1086,13 +1268,13 @@ function mountNotebook() {
     const added=Array.isArray(container)?[...scope,container.length]:container.kind==='true'?scope:[...scope,'items',container.kind==='and'?container.items.length:1];
     await edit({type:'append',path:scope,node});select({path:added});
   });
-  $('undo').onclick = () => safe(() => commit(clone(undo.at(-1)), 'undo'));
-  $('redo').onclick = () => safe(() => commit(clone(redo.at(-1)), 'redo'));
+  $('undo').onclick = () => safe(() => commitDocument(clone(undo.at(-1)), 'undo'));
+  $('redo').onclick = () => safe(() => commitDocument(clone(redo.at(-1)), 'redo'));
   $('run').onclick = () => safe(async () => {
     check(!launching, 'A run is already starting.'); launching = true; renderRun();
     try {
     await syncSource(); await finishInspection(); inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; resetResultPages();
-    await session.start(model, $('history').checked); renderInspectionControls(); message('Running the submitted notebook.');
+    await session.start(model, $('history').checked);needsQueryRun=false; renderInspectionControls(); message('Running the submitted notebook.');
     } finally { launching = false; renderInspectionControls(); renderRun(); await saveEditor(); }
   });
   async function runStep(resume = false) {
@@ -1100,7 +1282,7 @@ function mountNotebook() {
     try {
     if (!session.stepOperation && !session.stepPending) await finishInspection();
     await session.finishClose();
-    if (session.run === null) { savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; await syncSource(); await session.start(model, $('history').checked, false); renderInspectionControls(); }
+    if (session.run === null || needsQueryRun) { savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; await syncSource(); await session.start(model, $('history').checked, false);needsQueryRun=false; renderInspectionControls(); }
     const response = resume ? await session.resume() : await session.step(inspectionSelection.payload(session.run).choices);
     if (!response || session.status === 'canceled') return;
     if (response.stepChoices) inspectionSelection.assignments = new Map(Object.entries(response.stepChoices).map(([key,value]) => [key,value ? 'first' : 'second']));
@@ -1119,7 +1301,7 @@ function mountNotebook() {
     if (!$('execution').value) return;
     const run = Number($('execution').value);
     await finishInspection();
-    await session.switchRun(run);
+    await session.switchRun(run);needsQueryRun=false;
     inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0;
     answerNumber = null; resetResultPages(); renderResults();
     await restoreInspection(); renderInspectionControls(); await refreshSaved(); await saveEditor();

@@ -334,6 +334,26 @@ export class IndexedAnswerStore {
     return this.flush(collection, assembler, {discard:true, recovery});
   }
   scene(collection, number, options = {}) {
+    return this.readScene(collection, number, options);
+  }
+  // Explicit export may materialize a whole answer. IDs remain lossless strings;
+  // facts and pending scenes use the same ordered expression shape as scene().
+  exportAnswer(collection, number) {
+    return this.readScene(collection, number, {}, true);
+  }
+  // Capture the published total on the first next(); retain only one answer at
+  // a time, even if execution publishes more answers while the consumer writes.
+  async *iterateAnswers(collection) {
+    const page = await this.page(collection, 0, 1);
+    if (!page) return;
+    const total = uint(page.total);
+    for (let offset = 0; offset < total; offset++) {
+      const answer = await this.exportAnswer(collection, offset + 1);
+      check(answer, 'Saved answer is missing during export.');
+      yield answer;
+    }
+  }
+  readScene(collection, number, options = {}, exporting = false) {
     uint(number);
     const {bindingPage=0,pendingNumber=0}=options;
     [bindingPage,pendingNumber].forEach(uint);
@@ -363,10 +383,18 @@ export class IndexedAnswerStore {
         await rows('fact',row=>{const node=nodes.get(row.target);check(node,'Missing saved fact.');facts.children[row.slot]=node;});
         await rows('pending',row=>{const scene=nodes.get(row.target);check(scene,'Missing saved body.');bodies[row.slot]={scene,event:row.event};});
         for(const node of nodes.values())check(node.args.length===node.arity&&(!node.children||node.children.length===node.count),'Incomplete saved diagram.');
+        const binding = row => ({slot:row.slot,name:record.tables.variables[row.slot],variable:row.variable});
+        if (exporting) {
+          const bindings=[];
+          await rows('binding',row=>{bindings[row.slot]=binding(row);});
+          result({number:summary.number,completion:summary.completion,alternative:summary.alternative,
+            bindings,facts:facts.children,pending:bodies});
+          return;
+        }
         const bindingPages=Math.max(1,Math.ceil(summary.variables/24)),page=Math.min(bindingPage,bindingPages-1);
         const bindings=await read(parts.getAll(this.ranges.bound([collection,number,'binding',0,page*24],[collection,number,'binding',0,page*24+23]),24));
         const index=Math.min(pendingNumber,Math.max(0,bodies.length-1));
-        result({facts,bindings:bindings.map(row=>({slot:row.slot,name:record.tables.variables[row.slot],variable:row.variable})),bindingPage:page,bindingPages,
+        result({facts,bindings:bindings.map(binding),bindingPage:page,bindingPages,
           pending:bodies.length?{...bodies[index],index,count:bodies.length}:null});
       };
       work().catch(fail);

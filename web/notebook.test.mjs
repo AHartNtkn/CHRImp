@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import {test as runTest} from 'node:test';
-import { applyEdit, at, validateNotebook } from './graph.mjs';
+import { applyEdit, at, validateNotebook, disposeGraph } from './graph.mjs';
 import { RunSession, InspectionSelection, deliverCachedOutput } from './notebook.mjs';
 import { OutputAssembler } from './answers.mjs';
 import { NotebookConnection } from './connection.mjs';
+import * as documents from './documents.mjs';
 
 function memorySink() {
   let next = 0;
@@ -1011,12 +1012,16 @@ function createContext(values) {
     return response;
   });
   const context = rawCreateContext({connected:true, restoring:false, connection:{state:null}, check:assert.ok, store,
+    ...documents,clone:structuredClone,validateNotebook,at,disposeGraph,
+    notebookDoc:documents.emptyNotebook(),model:documents.executionModel(documents.emptyNotebook()),
+    fileHandle:null,fileName:'',fileDirty:false,fileBusy:false,needsQueryRun:false,
     runNotice:null, displayWriting:null,displayDirty:false,displayStamp:null,message(){},async saveDisplay(){},
     inspected:null,outputMode:'answers',savedSelection:'',answerNumber:null,answerPage:0,
     bindingPage:0,pendingNumber:0, session:values.session ?? {run:null},
     request:values.request ?? Object.assign(api ?? (()=>{}), {checkpoint:action => action()}), async saveEditor() {}, async restoreInspection() {}, async finishInspection() {}, ...values,
     ...(api ? {liveRequest:api} : {})});
-  runInContext(productionSection('function attachBatch(', '// A cached response'),context);
+  runInContext(productionSection('function attachBatch(', '// A cached response')
+    + productionSection('  function currentDocument()', '  function fileState()'),context);
   return context;
 }
 const notebookSource = readFileSync(new URL('./notebook.mjs', import.meta.url), 'utf8');
@@ -1025,6 +1030,151 @@ function productionSection(start, end) {
   assert.ok(first >= 0 && last > first, `Production section ${start} is available`);
   return notebookSource.slice(first, last);
 }
+function documentHarness(doc, values={}) {
+  const controls=new Map(),calls=[];
+  const $=name=>{if(!controls.has(name))controls.set(name,{value:'',checked:false,prepend(...children){this.children=children;}});return controls.get(name);};
+  const context=createContext({$,notebookDoc:structuredClone(doc),model:documents.executionModel(doc),
+    document:{title:'',querySelector:selector=>$(selector)},window:{},dirty:false,busy:false,revision:0,undo:[],redo:[],selected:null,selection:[],path:['query'],
+    editorWriting:null,editorDirty:false,inspectionSelection:new InspectionSelection(),connection:{state:{boot:'a'.repeat(32)}},
+    ruleCards:new Map(),editingControls:{},debounce:null,clearTimeout,Blob,
+    renderWorkspace(){},renderRun(){},safe:action=>action(),
+    request:async(route,model)=>{assert.equal(route,'format');calls.push(structuredClone(model));return {program:'formatted program',query:'formatted query'};},
+    ...values});
+  runInContext(productionSection('  function saveEditor()', '  function displayState()')
+    +productionSection('  function currentDocument()', '  async function openFile()')
+    +productionSection('  function remember()', '  const edit ='),context);
+  return {context,$,calls};
+}
+function twoQueryDocument() {
+  return {...documents.emptyNotebook(),title:'Two experiments',activeQuery:'second',
+    queries:[{id:'first',name:'First',body:{kind:'atom',atom:{relation:'first',args:['A']}}},
+      {id:'second',name:'Second',body:{kind:'atom',atom:{relation:'second',args:['B']}}}],
+    layouts:{'query:first':[['["query"]',{x:10,y:20}]],'query:second':[['["query"]',{x:-30,y:40}]]}};
+}
+await test('document recovery preserves inactive queries, layout, file identity and unsynced source',async()=>{
+  const doc=twoQueryDocument(),store=memorySink(),handle={name:'experiments.chrnb'};
+  await store.saveRecovery('editor',{document:doc,fileHandle:handle,fileName:handle.name,fileDirty:true,needsQueryRun:true,
+    program:'unsynced program',query:'unsynced query',dirty:true,history:true,run:null,boot:'a'.repeat(32)});
+  const {context:c,$}=documentHarness(doc,{store,connected:false,restoring:true,
+    connection:{state:{boot:'a'.repeat(32)},async initialize(){}},session:{run:null,async restore(){}},
+    renderInspectionControls(){},async refreshSaved(){}});
+  runInContext(productionSection('  function saveEditor()', '  function message('),c);
+  await c.initialize();
+  assert.deepEqual(structuredClone(c.currentDocument()),doc);
+  assert.deepEqual(structuredClone(c.model.query),doc.queries[1].body);
+  assert.equal($('query').value,'unsynced query');assert.equal(c.dirty,true);assert.equal(c.needsQueryRun,true);
+  const saved=await store.recovery('editor');
+  assert.deepEqual(saved.document,doc);assert.deepEqual(saved.fileHandle,handle);
+  assert.equal(saved.fileDirty,true);assert.equal(saved.fileName,handle.name);assert.equal(saved.program,'unsynced program');
+});
+await test('query switching and undo preserve both bodies and their independent layouts',async()=>{
+  const doc=twoQueryDocument(),{context:c,calls,$}=documentHarness(doc);
+  await c.changeQuery('first');
+  assert.equal(c.notebookDoc.activeQuery,'first');assert.equal(c.needsQueryRun,true);
+  assert.deepEqual(calls,[{program:{rules:[]},query:doc.queries[0].body}]);
+  assert.deepEqual(structuredClone(c.notebookDoc.queries),doc.queries);
+  assert.deepEqual(structuredClone(c.notebookDoc.layouts),doc.layouts);
+  assert.deepEqual(structuredClone(c.undo),[doc]);assert.equal($('query').value,'formatted query');
+  await c.commitDocument(structuredClone(c.undo.at(-1)),'undo');
+  assert.deepEqual(structuredClone(c.currentDocument()),doc);assert.equal(c.undo.length,0);
+  assert.equal(c.redo.length,1);assert.equal(c.redo[0].activeQuery,'first');
+  await c.commitDocument(structuredClone(c.redo.at(-1)),'redo');
+  assert.equal(c.notebookDoc.activeQuery,'first');assert.equal(c.redo.length,0);
+  assert.equal((await c.store.recovery('editor')).document.activeQuery,'first');
+});
+await test('completed layout persists once and undo restores the previous query positions',async()=>{
+  const doc=twoQueryDocument(),{context:c}=documentHarness(doc),positions=[['["query"]',{x:70,y:-80}]];
+  c.updateLayouts(['query'],positions);await c.editorWriting;
+  assert.equal(c.undo.length,1);assert.deepEqual(structuredClone(c.undo[0]),doc);
+  const saved=await c.store.recovery('editor');
+  assert.deepEqual(saved.document.layouts['query:second'],positions);
+  assert.deepEqual(saved.document.layouts['query:first'],doc.layouts['query:first']);assert.equal(saved.fileDirty,true);
+  c.updateLayouts(['query'],structuredClone(positions));assert.equal(c.undo.length,1,'An echoed layout is not another edit');
+  await c.commitDocument(structuredClone(c.undo.at(-1)),'undo');
+  assert.deepEqual((await c.store.recovery('editor')).document.layouts,doc.layouts);
+});
+await test('file save serializes the whole document and a failed write retains dirty state',async()=>{
+  const doc=twoQueryDocument(),written=[];let fail=true,aborted=0,closed=0;
+  const handle={name:'experiments.chrnb',async queryPermission(){return 'granted';},async createWritable(){return {
+    async write(text){written.push(text);if(fail)throw Error('Disk full');},async close(){closed++;},async abort(){aborted++;}};}};
+  const {context:c}=documentHarness(doc,{fileHandle:handle,fileDirty:true});
+  // File-system handles are structured-cloneable in browsers, unlike this Node test double.
+  let persisted;
+  c.store.saveRecovery=async(_key,value)=>{persisted={...value,fileHandle:value.fileHandle.name};};
+  await assert.rejects(c.saveFile(),/Disk full/);
+  assert.deepEqual(documents.parseDocument(written[0]),doc,'Even the failed write receives the full serialized document');
+  assert.deepEqual(structuredClone(c.currentDocument()),doc,'A failed write preserves the current document');
+  assert.equal(aborted,1);assert.equal(closed,0);assert.equal(c.fileDirty,true);assert.equal(c.fileBusy,false);
+  assert.equal(persisted,undefined,'Failed file writes must not publish a saved checkpoint');
+  fail=false;await c.saveFile();
+  assert.deepEqual(documents.parseDocument(written.at(-1)),doc);assert.equal(closed,1);
+  assert.equal(c.fileDirty,false);assert.equal(c.fileBusy,false);assert.equal(persisted.fileName,handle.name);
+  assert.deepEqual(structuredClone(persisted.document),doc);
+});
+for(const phase of ['picker','write','close'])await test(`save ${phase} cancellation preserves the current document and file identity`,async()=>{
+  const doc=twoQueryDocument(),oldHandle={name:'original.chrnb'},abort=Object.assign(Error('Canceled'),{name:'AbortError'});
+  const written=[];let aborted=0,closed=0;
+  const newHandle={name:'replacement.chrnb',async queryPermission(){return 'granted';},async createWritable(){return {
+    async write(text){written.push(text);if(phase==='write')throw abort;},
+    async close(){if(phase==='close')throw abort;closed++;},async abort(){aborted++;}};}};
+  const {context:c,$}=documentHarness(doc,{fileHandle:oldHandle,fileName:oldHandle.name,fileDirty:true,dirty:phase==='picker',
+    window:{async showSaveFilePicker(){if(phase==='picker')throw abort;return newHandle;}}});
+  $('query').value='unsynced text';
+  await c.saveFile(true);
+  assert.deepEqual(structuredClone(c.currentDocument()),doc);assert.equal(c.fileHandle,oldHandle);
+  assert.equal(c.fileName,'original.chrnb');assert.equal(c.fileDirty,true);assert.equal(c.dirty,phase==='picker');
+  assert.equal($('query').value,'unsynced text');assert.equal(c.fileBusy,false);assert.equal(closed,0);
+  assert.equal(await c.store.recovery('editor'),null,'Canceled saving does not publish a saved checkpoint');
+  if(phase==='picker')assert.equal(written.length,0);
+  else {assert.deepEqual(documents.parseDocument(written[0]),doc);assert.equal(aborted,1);}
+});
+await test('fallback download contains a reopenable complete notebook with the expected filename and MIME type',async()=>{
+  const doc=twoQueryDocument(),links=[],timers=[];
+  const {context:c}=documentHarness(doc,{fileDirty:true,URL,setTimeout:callback=>{timers.push(callback);},
+    el:(tag,_text,attrs)=>{assert.equal(tag,'a');return {...attrs,click(){links.push(this);},remove(){}};}});
+  c.document.body={append(){}};
+  try {
+    await c.saveFile();assert.equal(links.length,1);
+    assert.equal(links[0].download,'Two experiments.chrnb');
+    const response=await fetch(links[0].href);
+    assert.equal(response.headers.get('content-type'),'application/json');
+    const reopened=documents.parseDocument(await response.text());
+    assert.deepEqual(reopened,doc);assert.equal(reopened.queries.length,2);
+    assert.deepEqual(reopened.layouts['query:second'],[['["query"]',{x:-30,y:40}]]);
+    assert.equal(c.fileHandle,null);assert.equal(c.fileName,'Two experiments.chrnb');assert.equal(c.fileDirty,false);
+    assert.deepEqual((await c.store.recovery('editor')).document,doc);
+  } finally {timers.forEach(callback=>callback());}
+});
+for(const outcome of ['invalid','declined','format failure'])await test(`open ${outcome} preserves unsaved source, document, layouts and file identity`,async()=>{
+  const doc=twoQueryDocument(),handle={name:'original.chrnb'};let formats=0,pauses=0;
+  const {context:c,$}=documentHarness(doc,{fileHandle:handle,fileName:handle.name,fileDirty:true,dirty:true,
+    window:{confirm:()=>outcome!=='declined'},session:{run:7,pause(){pauses++;}},
+    request:async()=>{formats++;throw Error('Format unavailable');}});
+  $('program').value='unsynced program';$('query').value='unsynced query';
+  c.undo=[structuredClone(doc)];c.selection=[{path:['query']}];
+  const incoming=outcome==='invalid'?{...doc,queries:[]}:documents.emptyNotebook();
+  if(outcome==='declined')await c.openDocument(incoming,null,'incoming.chrnb');
+  else await assert.rejects(c.openDocument(incoming,null,'incoming.chrnb'),outcome==='invalid'?/at least one query/:/Format unavailable/);
+  assert.deepEqual(structuredClone(c.currentDocument()),doc);assert.equal(c.fileHandle,handle);
+  assert.equal(c.fileName,'original.chrnb');assert.equal(c.fileDirty,true);assert.equal(c.dirty,true);assert.equal(c.fileBusy,false);
+  assert.equal($('program').value,'unsynced program');assert.equal($('query').value,'unsynced query');
+  assert.deepEqual(structuredClone(c.undo),[doc]);assert.deepEqual(structuredClone(c.selection),[{path:['query']}]);
+  assert.equal(pauses,0);assert.equal(formats,outcome==='format failure'?1:0);
+  assert.equal(await c.store.recovery('editor'),null);
+});
+await test('open a serialized notebook restores both query bodies, active query and layouts into editor recovery',async()=>{
+  const doc=twoQueryDocument(),contents=documents.serializeDocument(doc),handle={name:'roundtrip.chrnb'};let pauses=0;
+  const {context:c,$,calls}=documentHarness(documents.emptyNotebook(),{session:{run:7,pause(){pauses++;}}});
+  await c.openDocument(documents.parseDocument(contents),handle,handle.name);
+  assert.deepEqual(structuredClone(c.currentDocument()),doc);
+  assert.deepEqual(structuredClone(c.model),{program:{rules:[]},query:{kind:'atom',atom:{relation:'second',args:['B']}}});
+  assert.deepEqual(calls,[{program:{rules:[]},query:doc.queries[1].body}]);
+  assert.equal($('program').value,'formatted program');assert.equal($('query').value,'formatted query');
+  assert.equal(c.fileHandle,handle);assert.equal(c.fileName,'roundtrip.chrnb');assert.equal(c.fileDirty,false);
+  assert.equal(c.dirty,false);assert.equal(c.fileBusy,false);assert.equal(c.needsQueryRun,true);assert.equal(pauses,1);
+  const saved=await c.store.recovery('editor');assert.deepEqual(saved.document,doc);assert.equal(saved.fileName,handle.name);
+  assert.deepEqual(documents.parseDocument(documents.serializeDocument(c.currentDocument())),doc);
+});
 await test('Cancel remains available to recover a lost first Start response', async () => {
   await controlSession('cancel-button', async ({session, model, lose, runs}) => {
     lose('start'); await assert.rejects(session.start(model, false, false), /Lost start/);

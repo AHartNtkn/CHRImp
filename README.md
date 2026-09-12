@@ -8,6 +8,12 @@ cargo run --release --offline -- --notebook
 
 Open the printed URL. Program displays the editable rule diagrams; Query displays the editable query and its Run and Step controls, with answers underneath. Select a relation or compartment to edit it. Source text is available in the optional Source text section. History recording is optional and off by default. Saved answers remain in this browser; execution handles and recorded states last until released or the server stops. Use `--port PORT` to choose a port.
 
+Use **New**, **Open**, **Save**, and **Save as** for `.chrnb` notebook files containing the program, named queries, and diagram positions. Browsers with file-system pickers save back to the chosen file; other browsers download a notebook file and reopen it through Open. Browser recovery also keeps the working notebook between visits.
+
+Create, rename, duplicate, or switch queries above the query diagram. Shift-click relations or Shift-drag a selection rectangle to select a fragment; drag a selected relation to move the group. Copy, cut, paste, duplicate, and delete act on the selection. Pasted fragments keep their internal connections and receive fresh variables. Select a rule title to copy the whole rule; its arrow buttons change rule order. Find locates rules, relations, and named queries.
+
+Export SVG saves a whole diagram, including offscreen content. Answer exports contain complete bindings, facts, ordered ports, and pending alternatives; choose one answer, all saved answers, or a complete answer SVG. Ctrl/Cmd+C/X/V/D, Z, Shift+Z (or Y), and Delete/Backspace operate on diagram selections; text fields keep native editing. Ctrl/Cmd+S saves, Shift+S saves as, O opens, and F focuses Find.
+
 Reloading the same notebook restores its editor, saved inspection, and paused execution while the server remains running. Resume continues that execution. One browser tab controls the notebook at a time; other tabs can browse saved answers.
 
 Step pauses after one rule application in the selected alternative. Pause can suspend an unfinished step; Resume step continues that same application, including after reload. Choice and history selection stay fixed until the step finishes or is canceled.

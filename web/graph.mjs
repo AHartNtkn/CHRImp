@@ -157,6 +157,7 @@ export function diagramScene(model, path) {
   return rootPath[0]==='query'?{kind:'and',path:rootPath,label:'Query',children:[result]}:result;
 }
 const keyOf = path => JSON.stringify(path);
+const containsPath = (path,child) => Array.isArray(path)&&Array.isArray(child)&&path.length<=child.length&&path.every((key,i)=>key===child[i]);
 const overlaps = (a,b) => a.x <= b.x+b.width && a.x+a.width >= b.x && a.y <= b.y+b.height && a.y+a.height >= b.y;
 
 // Order connected siblings together in linear incidence work, without changing ports.
@@ -184,7 +185,7 @@ export function layoutScene(scene, positions = new Map()) {
     const names=new Set(node.args??[]);
     children.forEach(c=>c.names.forEach(n=>names.add(n)));
     if(node.kind==='and')children=connectedOrder(children);
-    if(node.kind==='true')return {...node,names,children:[],compact:true,width:0,height:0};
+    if(node.kind==='true'&&!node.label)return {...node,names,children:[],compact:true,width:0,height:0};
     if(!node.children)return {...node,names,width:Math.max(node.kind==='atom'?166:92,(node.args?.length??0)*28+24,(node.relation?.length??0)*9+48),height:86};
     if(node.kind==='or') {
       const width=children.reduce((width,child)=>Math.max(width,child.width+48),190);let y=38;
@@ -205,12 +206,13 @@ export function layoutScene(scene, positions = new Map()) {
       if(col===0&&row)y+=heights[row-1]+52;
       c.dx=padding+widths.slice(0,col).reduce((sum,w)=>sum+w+44,0);c.dy=y;
     });
-    return {...node,children,names,width:Math.max(166,2*padding+widths.reduce((s,w)=>s+w,0)+44*(columns-1)),height:Math.max(86,y+(heights.at(-1)??0)+(node.compact?0:22))};
+    return {...node,children,names,width:Math.max(166,(node.label?.length??0)*9+28,2*padding+widths.reduce((s,w)=>s+w,0)+44*(columns-1)),height:Math.max(86,y+(heights.at(-1)??0)+(node.compact?0:22))};
   }
   const root=measure(scene),items=[],ports=new Map();
   const add=item=>{item.order=items.length;items.push(item);return item;};
   function place(node,x,y,depth=0,ancestors=[]) {
-    const id=keyOf(node.path),offset=positions.get(id)??{x:0,y:0};
+    // Compartments can share their child's source path; offsets belong to nodes.
+    const id=keyOf(node.path),offset=(!node.children&&positions.get(id))||{x:0,y:0};
     x+=offset.x;y+=offset.y;
     if(node.children) {
       if(node.compact){node.children.forEach(c=>place(c,x+c.dx,y+c.dy,depth,ancestors));return;}
@@ -369,21 +371,24 @@ function svgNode(tag,attrs={},text) {
 }
 function interactive(node,label,action) {
   node.setAttribute('tabindex','0');node.setAttribute('role','button');node.setAttribute('aria-label',label);
-  node.addEventListener('click',event=>{event.stopPropagation();action();});
-  node.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();action();}});
+  node.addEventListener('click',event=>{event.stopPropagation();action(event);});
+  node.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();action(event);}});
 }
 const canvases=new WeakMap();
 let layoutWorker, nextCanvas=0;
 const requests=new Map();
 function computeLayout(state,scene,done) {
+  state.loading=true;state.svg.setAttribute('aria-busy','true');
   layoutWorker??=new Worker(new URL('./graph.mjs',import.meta.url),{type:'module'});
   layoutWorker.onmessage=({data})=>{const request=requests.get(data.id);if(request?.version===data.version){requests.delete(data.id);request.done(data.layout,data.error);}};
   const version=(state.version??0)+1;state.version=version;
   const finish=(layout,error)=>{
-    if(error){state.loading=false;state.svg.removeAttribute('aria-busy');state.svg.replaceChildren(svgNode('text',{x:20,y:35,class:'graph-empty'},`Diagram error: ${error}`));return;}
-    done(layout);
+    state.loading=false;state.svg.removeAttribute('aria-busy');
+    try {if(error)throw new Error(error);done(layout);}
+    catch(error){state.layout=null;state.svg.replaceChildren(svgNode('text',{x:20,y:35,class:'graph-empty'},`Diagram error: ${error.message}`));state.options.onReady?.(error,state);return;}
+    state.options.onReady?.(null,state);
   };
-  layoutWorker.onerror=event=>{for(const request of requests.values())request.done(null,event.message);requests.clear();layoutWorker.terminate();layoutWorker=undefined;};
+  layoutWorker.onerror=event=>{for(const request of requests.values())request.done(null,event.message||'Diagram worker failed.');requests.clear();layoutWorker.terminate();layoutWorker=undefined;};
   requests.set(state.id,{version,done:finish});
   layoutWorker.postMessage({id:state.id,version,scene,positions:[...state.positions]});
 }
@@ -398,18 +403,113 @@ export function disposeGraph(svg) {
   layoutWorker?.postMessage({dispose:state.id});
 }
 export function diagramControl(svg,action) {canvases.get(svg)?.control(action);}
+// Persist offsets from the automatic layout, keyed by JSON.stringify(sourcePath).
+export function graphPositions(svg) {return clone([...(canvases.get(svg)?.positions??[])]);}
+function positionMap(positions) {
+  require(Array.isArray(positions),'Positions must be an array of [id, {x, y}] pairs.');
+  const result=new Map();
+  for(const entry of positions) {
+    require(Array.isArray(entry)&&entry.length===2&&typeof entry[0]==='string'&&Number.isFinite(entry[1]?.x)&&Number.isFinite(entry[1]?.y),'Each position needs an id and finite x/y offsets.');
+    const path=JSON.parse(entry[0]);
+    require(Array.isArray(path)&&path.every(key=>typeof key==='string'||Number.isInteger(key)),'Position ids must encode source paths.');
+    result.set(keyOf(path),{x:entry[1].x,y:entry[1].y});
+  }
+  return result;
+}
+export function restoreGraphPositions(svg,positions) {
+  const state=canvases.get(svg);require(state,'Render a graph before restoring positions.');
+  const restored=positionMap(positions);
+  if(state.drag){state.pendingPositions=restored;return;}
+  state.positions=restored;
+  computeLayout(state,state.scene,layout=>{state.layout=layout;drawScene(svg,state);});
+}
+// A search issued while the worker is running is applied to its completed layout.
+export function focusGraphPath(svg,path) {
+  const state=canvases.get(svg);if(!state||!Array.isArray(path))return false;
+  if(state.loading||state.drag){state.focusPath=[...path];return true;}
+  const matches=state.layout?.items.filter(item=>(item.type==='node'||item.type==='boundary')&&keyOf(item.path)===keyOf(path))??[];
+  const item=matches.find(item=>item.type==='node')??matches[0];if(!item)return false;
+  const scale=state.camera.scale;
+  state.camera={x:item.x+item.width/2-(svg.clientWidth||800)/scale/2,y:item.y+item.height/2-(svg.clientHeight||480)/scale/2,scale};
+  drawScene(svg,state);
+  const target=[...svg.querySelectorAll('[data-item]')].find(element=>element.dataset.item===item.id&&element.dataset.type===item.type);
+  target?.setAttribute('tabindex','0');target?.focus({preventScroll:true});return true;
+}
+export function exportGraphSvg(svg) {return serializeGraphSvg(svg);}
+function serializeGraphSvg(svg,header=null) {
+  const state=canvases.get(svg);require(state?.layout&&!state.loading&&!state.drag,'Finish laying out or moving the graph before exporting.');
+  const box=state.layout.index??{x:0,y:0,width:state.layout.width,height:state.layout.height};
+  const view={x:box.x-28,y:box.y-28,width:box.width+56,height:box.height+56};
+  const output=svg.cloneNode(false);
+  output.removeAttribute('data-highlight');
+  output.style.cssText+=';position:fixed;left:-100000px;top:0;';
+  svg.parentNode.append(output);
+  try {
+    drawScene(output,{...state,camera:{x:view.x,y:view.y,scale:1},options:{label:state.options.label,readonly:true},selection:[]},view);
+    if(header) {
+      const height=20*(header.bindings.length+2)+20;
+      const heading=svgNode('g',{fill:'#203343','font-family':'ui-monospace,monospace','font-size':13});
+      heading.append(svgNode('text',{x:view.x+28,y:view.y-height+28},header.title));
+      const bindings=svgNode('g',{class:'bindings'});
+      header.bindings.forEach((line,i)=>bindings.append(svgNode('text',{x:view.x+28,y:view.y-height+68+i*20},line)));
+      heading.append(bindings);output.append(heading,svgNode('metadata',{},header.metadata));
+      view.y-=height;view.height+=height;view.width=Math.max(view.width,heading.getBBox().width+56);
+      output.setAttribute('viewBox',`${view.x} ${view.y} ${view.width} ${view.height}`);
+    }
+    const properties=['color','fill','fill-opacity','stroke','stroke-width','stroke-opacity','stroke-dasharray','stroke-linecap','stroke-linejoin','opacity','font-family','font-size','font-weight','font-style','text-anchor','dominant-baseline','paint-order','display','visibility'];
+    for(const element of [output,...output.querySelectorAll('*')]) {
+      const computed=svg.ownerDocument.defaultView.getComputedStyle(element);
+      const style=properties.map(name=>`${name}:${computed.getPropertyValue(name)}`).join(';');
+      element.setAttribute('style',style);
+      element.removeAttribute('tabindex');
+    }
+    output.removeAttribute('id');output.setAttribute('xmlns',NS);
+    output.setAttribute('width',view.width);output.setAttribute('height',view.height);
+    return new XMLSerializer().serializeToString(output);
+  } finally {output.remove();}
+}
+// Browser API: consumes one complete IndexedAnswerStore.exportAnswer() snapshot.
+export async function exportAnswerSvg(answer) {
+  require(answer&&Array.isArray(answer.facts)&&Array.isArray(answer.pending)&&Array.isArray(answer.bindings),'Expected a complete saved answer.');
+  const expression=(node,path)=>({...node,path,
+    ...(node.kind==='true'?{label:'true'}:{}),
+    ...(node.children?{children:node.children.map((child,i)=>expression(child,[...path,i])),
+      ...(!node.children.length?{label:node.kind==='or'?'Or (fail)':'And (true)'}:{})}:{})});
+  const section=(path,label,children)=>({kind:'and',path,label,children});
+  const title=`Answer ${answer.number} · Completion ${answer.completion} · Alternative ${answer.alternative}`;
+  const scene=section([], 'Answer',[
+    section(['facts'],answer.facts.length?'Facts':'No facts',answer.facts.map((node,i)=>expression(node,['facts',i]))),
+    ...answer.pending.map((body,i)=>section(['pending',i],`Pending event ${body.event}`,[expression(body.scene,['pending',i,'body'])])),
+    ...(!answer.pending.length?[section(['pending'],'No pending bodies',[])]:[])]);
+  const header={title,bindings:answer.bindings.length?answer.bindings.map(binding=>`${binding.name} = V${binding.variable}`):['No bindings'],metadata:JSON.stringify(answer)};
+  const svg=svgNode('svg');svg.style.cssText='position:fixed;left:-100000px;top:0;width:800px;height:480px;pointer-events:none';
+  document.body.append(svg);
+  try {
+    await new Promise((resolve,reject)=>renderScene(svg,scene,{readonly:true,label:title,
+      onReady:(error,state)=>error?reject(error):state.layout.routingError?reject(new Error(state.layout.routingError)):resolve()}));
+    return serializeGraphSvg(svg,header);
+  } finally {disposeGraph(svg);svg.remove();}
+}
 export function renderGraph(svg,model,path,options={}) {
-  const key=keyOf(path[0]==='program'?path.slice(0,3):path[0]==='query'?['query']:path),state=canvases.get(svg);
+  const key=options.key??keyOf(path[0]==='program'?path.slice(0,3):path[0]==='query'?['query']:path),state=canvases.get(svg);
   const scene=state?.model===model&&state.key===key?state.scene:diagramScene(model,path);
   const result=renderScene(svg,scene,{...options,key});result.model=model;return result;
 }
 export function renderScene(svg,scene,options={}) {
   let state=canvases.get(svg);
   const key=options.key??'scene';
-  if(!state){state={svg,id:++nextCanvas,positions:new Map(),camera:null};canvases.set(svg,state);state.resize=new ResizeObserver(()=>{if(state.layout&&!state.loading){state.camera=null;drawScene(svg,state);}});state.resize.observe(svg);}
-  if(state.key!==key){state.positions.clear();state.camera=null;state.key=key;}
-  const changed=state.scene!==scene;
+  if(!state){state={svg,id:++nextCanvas,positions:new Map(),camera:null};canvases.set(svg,state);state.resize=new ResizeObserver(()=>{if(state.layout&&!state.loading&&!state.drag){drawScene(svg,state);}});state.resize.observe(svg);}
+  const newKey=state.key!==key;
+  const supplied=options.positions===undefined?undefined:positionMap(options.positions);
+  const signature=supplied===undefined?undefined:JSON.stringify([...supplied]);
+  const positionsChanged=supplied!==undefined&&signature!==state.suppliedPositions&&signature!==JSON.stringify([...state.positions]);
+  if(newKey){state.positions=supplied??new Map();state.camera=null;state.key=key;state.selection=[];state.drag=null;state.pendingPositions=null;state.focusPath=null;}
+  else if(positionsChanged){if(state.drag)state.pendingPositions=supplied;else state.positions=supplied;}
+  state.suppliedPositions=signature;
+  const changed=newKey||state.scene!==scene||positionsChanged;
+  if(options.selection!==undefined||options.selected!==undefined)state.selection=clone(options.selection??(options.selected?[options.selected]:[])).filter(value=>containsPath(scene.path,value?.path));
   state.options=options;state.scene=scene;
+  if(state.drag)return state;
   if(changed) {
     state.loading=true;svg.setAttribute('aria-busy','true');svg.replaceChildren(svgNode('text',{x:20,y:35,class:'graph-empty'},'Laying out diagram…'));
     svg.onpointerdown=svg.onpointermove=svg.onpointerup=svg.onkeydown=null;state.control=null;
@@ -417,22 +517,23 @@ export function renderScene(svg,scene,options={}) {
   } else if(state.layout&&!state.loading)drawScene(svg,state);
   return state;
 }
-function drawScene(svg,state) {
+function drawScene(svg,state,exportView=null) {
   const {scene,options}=state;
   const size=()=>({width:svg.clientWidth||800,height:svg.clientHeight||480});
   const fit=()=>{const {width,height}=size();const scale=Math.max(.15,Math.min(1,width/state.layout.width,height/state.layout.height));state.camera={x:(state.layout.width-width/scale)/2,y:(state.layout.height-height/scale)/2,scale};};
   if(!state.camera)fit();
   function paint() {
     const {width,height}=size(),{x,y,scale}=state.camera;
-    const view={x,y,width:width/scale,height:height/scale};
+    const view=exportView??{x,y,width:width/scale,height:height/scale};
     svg.setAttribute('viewBox',`${x} ${y} ${view.width} ${view.height}`);
     svg.setAttribute('role','group');svg.setAttribute('tabindex','0');svg.setAttribute('aria-label',options.label??'Relational diagram');
     svg.replaceChildren(svgNode('title',{},options.label??'Relational diagram'));
     const boundaries=svgNode('g'),wires=svgNode('g',{'aria-hidden':'true'}),nodes=svgNode('g');svg.append(boundaries,wires,nodes);
-    for(const item of visibleItems(state.layout,view)) {
+    const selectedPort=state.selection?.length===1&&state.selection[0].port!==undefined;
+    for(const item of exportView?state.layout.items:visibleItems(state.layout,view)) {
       const {x,y,width,height}=item;
-      if(item.type==='wire'){const wire=svgNode('path',{d:item.d,class:`wire ${relationColor(item.name)}`,'data-variable':item.name,'data-from':item.from,'data-to':item.to,'data-points':JSON.stringify(item.points)});wire.append(svgNode('title',{},item.name));if(!options.readonly&&options.selected?.port!==undefined)wire.addEventListener('click',()=>options.onConnect?.(item.name));wires.append(svgNode('path',{d:item.d,class:'wire-clearance'}),wire);continue;}
-      const selected=options.selected&&keyOf(options.selected.path)===keyOf(item.path)&&(!options.selected.compartment||item.type==='boundary');
+      if(item.type==='wire'){const wire=svgNode('path',{d:item.d,class:`wire ${relationColor(item.name)}`,'data-variable':item.name,'data-from':item.from,'data-to':item.to,'data-points':JSON.stringify(item.points)});wire.append(svgNode('title',{},item.name));if(!options.readonly&&selectedPort)wire.addEventListener('click',()=>{if(!state.moved)options.onConnect?.(item.name);});wires.append(svgNode('path',{d:item.d,class:'wire-clearance'}),wire);continue;}
+      const selected=state.selection?.some(value=>keyOf(value.path)===keyOf(item.path)&&(!value.compartment||item.type==='boundary'));
       const group=svgNode('g',{'data-item':item.id,'data-type':item.type,...(item.name?{'data-variable':item.name}:{})});
       if(item.name)group.append(svgNode('title',{},item.name));
       if(item.type==='boundary') {
@@ -441,7 +542,7 @@ function drawScene(svg,state) {
         if(item.kind==='branch')group.append(svgNode('line',{x1:x,y1:y,x2:x+width,y2:y,class:'branch-divider'}));
         else group.append(svgNode('rect',{x,y,width,height,rx:10}));
         group.append(svgNode('text',{x:x+14,y:y+23,class:'boundary-label'},item.label));
-        if(!options.readonly)interactive(group,`Select ${item.label}`,()=>options.onSelect?.({path:item.path,compartment:item.region||item.kind==='branch'}));
+        if(!options.readonly)interactive(group,`Select ${item.label}`,event=>select({path:item.path,compartment:item.region||item.kind==='branch'},event));
         boundaries.append(group);continue;
       }
       if(item.type==='node') {
@@ -449,14 +550,14 @@ function drawScene(svg,state) {
         group.append(svgNode('rect',{x,y,width,height,rx:6}),svgNode('text',{x:x+12,y:y+28,class:'node-name'},item.label));
         if(item.kind==='equal')group.append(svgNode('title',{},`${item.args[0]} = ${item.args[1]}`));
         if(item.occurrence!==undefined)group.append(svgNode('title',{},`Occurrence ${item.occurrence}`));
-        if(!options.readonly)interactive(group,`Select ${item.label}`,()=>{if(!state.moved)options.onSelect?.({path:item.path});});
+        if(!options.readonly)interactive(group,`Select ${item.label}`,event=>select({path:item.path},event));
       } else if(item.type==='port') {
-        group.setAttribute('class',`port ${relationColor(item.relation??'equal')}${selected&&options.selected.port===item.port?' selected':''}`);
+        group.setAttribute('class',`port ${relationColor(item.relation??'equal')}${selected&&state.selection?.some(value=>keyOf(value.path)===keyOf(item.path)&&value.port===item.port)?' selected':''}`);
         group.append(svgNode('circle',{cx:x+10,cy:y+10,r:10}),svgNode('text',{x:x+10,y:y+13.5,'text-anchor':'middle'},item.port+1));
-        if(!options.readonly)interactive(group,`Select port ${item.port+1} of ${item.relation??'equality'}, connected to ${item.name}`,()=>{if(!state.moved)options.onSelect?.({path:item.path,port:item.port});});
+        if(!options.readonly)interactive(group,`Select port ${item.port+1} of ${item.relation??'equality'}, connected to ${item.name}`,event=>select({path:item.path,port:item.port},event));
       } else {
         group.setAttribute('class','junction');group.append(svgNode('rect',{x,y,width,height,fill:'transparent'}),svgNode('circle',{cx:x+24,cy:y+12,r:5}));
-        if(!options.readonly&&options.selected?.port!==undefined)interactive(group,`Connect selected port to ${item.name}`,()=>{if(!state.moved)options.onConnect?.(item.name);});
+        if(!options.readonly&&selectedPort)interactive(group,`Connect selected port to ${item.name}`,()=>{if(!state.moved)options.onConnect?.(item.name);});
       }
       nodes.append(group);
     }
@@ -464,11 +565,29 @@ function drawScene(svg,state) {
     if(!state.layout.items.length)nodes.append(svgNode('text',{x:x+view.width/2,y:y+view.height/2,class:'graph-empty','text-anchor':'middle'},'Empty state'));
     options.onView?.(Math.round(scale*100));
   }
+  if(exportView){paint();return state;}
+  // Compact conjunctions have no SVG boundary. Expand their paths only for movement.
+  const selectedNodes=()=>state.layout.items.filter(item=>item.type==='node'&&state.selection?.some(value=>containsPath(value.path,item.path)));
+  const same=(a,b)=>keyOf(a.path)===keyOf(b.path)&&a.port===b.port&&!!a.compartment===!!b.compartment;
+  const publish=values=>{
+    state.selection=values.filter((value,i)=>Array.isArray(value?.path)&&containsPath(scene.path,value.path)&&values.findIndex(other=>same(other,value))===i);
+    paint();options.onSelection?.(clone(state.selection));
+  };
+  const select=(value,event)=>{
+    if(state.moved)return;
+    const values=state.selection??[];
+    publish(event.shiftKey?(values.some(other=>same(other,value))?values.filter(other=>!same(other,value)):[...values,value]):[value]);
+    if(!event.shiftKey)options.onSelect?.(value);
+  };
+  const offsetsFor=item=>new Map((selectedNodes().some(node=>node.id===item.id)?selectedNodes():[item]).map(node=>[node.id,state.positions.get(node.id)]));
+  const move=(offsets,dx,dy)=>{for(const [id,offset] of offsets)state.positions.set(id,{x:(offset?.x??0)+dx,y:(offset?.y??0)+dy});};
+  const completed=layout=>{state.layout=layout;state.options.onLayout?.(graphPositions(svg));if(canvases.get(svg)===state&&!state.loading)drawScene(svg,state);};
+  const pendingRestore=()=>{if(!state.pendingPositions)return false;const positions=[...state.pendingPositions];state.pendingPositions=null;restoreGraphPositions(svg,positions);return true;};
   const zoom=(factor,point={x:size().width/2,y:size().height/2})=>{
     const old=state.camera.scale,next=Math.min(4,Math.max(.15,old*factor));
     state.camera.x+=point.x/old-point.x/next;state.camera.y+=point.y/old-point.y/next;state.camera.scale=next;paint();
   };
-  state.control=action=>{if(action==='expand'){svg.parentElement.requestFullscreen().then(()=>{fit();paint();svg.focus();}).catch(error=>{svg.append(svgNode('text',{x:state.camera.x+20,y:state.camera.y+35,class:'graph-empty'},error.message));});return;}if(action==='fit')fit();else if(action==='layout'){state.positions.clear();computeLayout(state,null,layout=>{state.layout=layout;fit();paint();});return;}else if(action==='in')return zoom(1.25);else if(action==='out')return zoom(.8);paint();};
+  state.control=action=>{if(action==='expand'){svg.parentElement.requestFullscreen().then(()=>{fit();paint();svg.focus();}).catch(error=>{svg.append(svgNode('text',{x:state.camera.x+20,y:state.camera.y+35,class:'graph-empty'},error.message));});return;}if(action==='fit')fit();else if(action==='layout'){state.positions.clear();computeLayout(state,null,layout=>{state.camera=null;completed(layout);});return;}else if(action==='in')return zoom(1.25);else if(action==='out')return zoom(.8);paint();};
   svg.onpointerover=event=>{
     const variable=event.target.closest('[data-variable]')?.dataset.variable;
     svg.toggleAttribute('data-highlight',variable!==undefined);
@@ -476,13 +595,13 @@ function drawScene(svg,state) {
   };
   svg.onpointerleave=()=>svg.removeAttribute('data-highlight');
   svg.onwheel=event=>{event.preventDefault();const rect=svg.getBoundingClientRect();zoom(Math.exp(-event.deltaY*.002),{x:event.clientX-rect.left,y:event.clientY-rect.top});};
-  const cancelDrag=()=>{if(state.drag?.offset)state.positions.set(state.drag.item.id,state.drag.offset);state.drag=null;state.moved=false;paint();};
+  const cancelDrag=()=>{if(state.drag?.offsets)for(const [id,offset] of state.drag.offsets){if(offset)state.positions.set(id,offset);else state.positions.delete(id);}state.drag=null;state.moved=false;if(!pendingRestore())drawScene(svg,state);};
   svg.onkeydown=event=>{
     const target=event.target.closest('[data-item]');
-    if(event.altKey&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)&&target?.dataset.type==='node') {
-      event.preventDefault();const id=target.dataset.item,offset=state.positions.get(id)??{x:0,y:0};
-      state.positions.set(id,{x:offset.x+(event.key==='ArrowLeft'?-20:event.key==='ArrowRight'?20:0),y:offset.y+(event.key==='ArrowUp'?-20:event.key==='ArrowDown'?20:0)});
-      computeLayout(state,null,layout=>{state.layout=layout;drawScene(svg,state);for(const element of svg.querySelectorAll('[data-item]'))if(element.dataset.item===id&&element.dataset.type===target.dataset.type)element.focus();});return;
+    if(!options.readonly&&!state.loading&&event.altKey&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)&&target?.dataset.type==='node') {
+      event.preventDefault();const id=target.dataset.item,item=state.layout.items.find(item=>item.type==='node'&&item.id===id);
+      move(offsetsFor(item),event.key==='ArrowLeft'?-20:event.key==='ArrowRight'?20:0,event.key==='ArrowUp'?-20:event.key==='ArrowDown'?20:0);
+      computeLayout(state,null,layout=>{completed(layout);for(const element of svg.querySelectorAll('[data-item]'))if(element.dataset.item===id&&element.dataset.type===target.dataset.type)element.focus();});return;
     }
     if(event.key==='Escape'){cancelDrag();return;}
     if(event.target!==svg)return;
@@ -491,26 +610,32 @@ function drawScene(svg,state) {
     else {const delta=64/state.camera.scale;if(event.key==='ArrowLeft')state.camera.x-=delta;if(event.key==='ArrowRight')state.camera.x+=delta;if(event.key==='ArrowUp')state.camera.y-=delta;if(event.key==='ArrowDown')state.camera.y+=delta;paint();}
   };
   svg.onpointerdown=event=>{
-    if(event.button!==0&&event.button!==1)return;
+    if(state.loading||(event.button!==0&&event.button!==1))return;
     const target=event.target.closest('[data-item]');const item=target&&state.layout.items.find(i=>i.id===target.dataset.item&&i.type===target.dataset.type);
-    const movable=item&&item.type==='node';
+    const movable=!options.readonly&&event.button===0&&item?.type==='node';
+    const rect=svg.getBoundingClientRect();
     state.moved=false;
     state.drag={startX:event.clientX,startY:event.clientY,x:state.camera.x,y:state.camera.y,item:event.button===1?null:item,
-      offset:movable?(state.positions.get(item.id)??{x:0,y:0}):null};
+      offsets:movable?offsetsFor(item):null,
+      marquee:!options.readonly&&event.button===0&&event.shiftKey&&(!item||item.type==='boundary')?{x:state.camera.x+(event.clientX-rect.left)/state.camera.scale,y:state.camera.y+(event.clientY-rect.top)/state.camera.scale}:null};
   };
   svg.onpointermove=event=>{
     const drag=state.drag;if(!drag)return;
     const dx=(event.clientX-drag.startX)/state.camera.scale,dy=(event.clientY-drag.startY)/state.camera.scale;
     if(Math.abs(dx)+Math.abs(dy)<4&&!state.moved)return;
     state.moved=true;svg.setPointerCapture(event.pointerId);
-    if(drag.item?.type==='port'&&!options.readonly) {
+    if(drag.marquee) {
+      drag.box={x:drag.marquee.x+Math.min(dx,0),y:drag.marquee.y+Math.min(dy,0),width:Math.abs(dx),height:Math.abs(dy)};
+      paint();svg.append(svgNode('rect',{...drag.box,fill:'#087f9918',stroke:'#087f99','stroke-dasharray':'4 3','pointer-events':'none'}));
+    } else if(drag.item?.type==='port'&&!options.readonly) {
       paint();const rect=svg.getBoundingClientRect(),x=state.camera.x+(event.clientX-rect.left)/state.camera.scale,y=state.camera.y+(event.clientY-rect.top)/state.camera.scale;
       svg.append(svgNode('path',{d:`M${drag.item.x+10},${drag.item.y+10} L${x},${y}`,class:'wire connection-preview'}));
-    } else if(drag.offset) {
-      state.positions.set(drag.item.id,{x:drag.offset.x+dx,y:drag.offset.y+dy});
-      for(const element of svg.querySelectorAll('[data-item]'))if(element.dataset.item===drag.item.id||element.dataset.item.startsWith(drag.item.id+':'))element.setAttribute('transform',`translate(${dx} ${dy})`);
+    } else if(drag.offsets) {
+      move(drag.offsets,dx,dy);
+      const moving=id=>drag.offsets.has(id)||drag.offsets.has(id.slice(0,id.lastIndexOf(':')));
+      for(const element of svg.querySelectorAll('[data-item]'))if(moving(element.dataset.item))element.setAttribute('transform',`translate(${dx} ${dy})`);
       for(const wire of svg.querySelectorAll('[data-from]')) {
-        const from=wire.dataset.from.startsWith(drag.item.id+':'),to=wire.dataset.to.startsWith(drag.item.id+':');
+        const from=moving(wire.dataset.from),to=moving(wire.dataset.to);
         if(from||to){const points=JSON.parse(wire.dataset.points);if(from){points[0][0]+=dx;points[0][1]+=dy;}if(to){points.at(-1)[0]+=dx;points.at(-1)[1]+=dy;}const d=wirePath(points);wire.setAttribute('d',d);wire.previousElementSibling.setAttribute('d',d);}
       }
     } else {state.camera.x=drag.x-dx;state.camera.y=drag.y-dy;paint();}
@@ -521,10 +646,15 @@ function drawScene(svg,state) {
       const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-variable]');
       if(target?.ownerSVGElement===svg)options.onWire?.({path:drag.item.path,port:drag.item.port},target.dataset.variable);
     }
-    if(state.moved&&drag?.offset)computeLayout(state,null,layout=>{state.layout=layout;drawScene(svg,state);});
-    else if(state.moved)paint();
+    if(!pendingRestore()) {
+      if(state.moved&&drag?.box)publish([...(state.selection??[]),...state.layout.items.filter(item=>item.type==='node'&&overlaps(item,drag.box)).map(item=>({path:item.path}))]);
+      else if(state.moved&&drag?.offsets)computeLayout(state,state.scene,completed);
+      else if(state.moved||state.focusPath)drawScene(svg,state);
+    }
     setTimeout(()=>{state.moved=false;},0);
   };
   svg.onpointercancel=cancelDrag;
-  paint();return state;
+  paint();
+  if(state.focusPath){const path=state.focusPath;state.focusPath=null;focusGraphPath(svg,path);}
+  return state;
 }

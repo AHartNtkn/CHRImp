@@ -13,6 +13,12 @@
     <div class="wordmark"><span class="mark" aria-hidden="true">⋈</span><h1>CHR <span>language notebook</span></h1></div>
     <div class="runtime"><span class="status-dot" aria-hidden="true"></span><span id="run-status" role="status">idle</span><span id="applications">0 applications</span></div>
   </header>
+  <nav class="document-bar" aria-label="Notebook file">
+    <label class="sr-only" for="notebook-title">Notebook name</label><input id="notebook-title" value="Untitled notebook">
+    <button id="new-notebook">New</button><button id="open-notebook">Open…</button><button id="save-notebook">Save</button><button id="save-as-notebook">Save as…</button><span id="file-status" role="status">Not saved to a file</span>
+    <input id="open-file" type="file" accept=".chrnb,.json,application/json" hidden>
+    <label class="sr-only" for="notebook-search">Find rule or relation</label><input id="notebook-search" type="search" placeholder="Find rule or relation…"><div id="search-results" hidden></div>
+  </nav>
   <nav class="runbar" aria-label="Execution controls">
     <div class="button-group"><button id="run" class="primary">▶ Run</button><button id="step">Step</button><button id="pause" disabled>Pause</button><button id="resume" disabled>Resume</button><button id="cancel" disabled>Cancel</button></div>
     <label for="execution">Execution</label><select id="execution"><option value="">Current notebook</option></select><button id="release-run" disabled>Release execution</button>
@@ -31,12 +37,14 @@
         <section id="query-section" aria-labelledby="query-title">
           <div class="section-heading"><h2 id="query-title">Query</h2><button id="edit-query">Edit query</button></div>
           <p class="section-description">The relations to run through this program.</p>
+          <div class="query-toolbar"><label for="query-list">Query</label><select id="query-list"></select><label class="sr-only" for="query-name">Query name</label><input id="query-name"><button id="new-query">+ Query</button><button id="duplicate-query">Duplicate query</button><button id="remove-query">Remove query</button></div>
           <div id="query-editor" class="query-card">
         <fieldset id="graph-tools">
           <legend class="sr-only">Graph editing controls</legend>
           <div class="graph-toolbar"><strong id="editing-title">Editing query</strong><span class="spacer"></span><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button></div>
           <details class="rule-settings"><summary>Rule settings</summary><label id="rule-name" hidden>Rule name <input id="rule-name-input" placeholder="Unnamed rule"></label><button id="remove-rule" disabled>Remove rule</button></details>
           <div class="graph-toolbar"><label for="add-kind">Add</label><select id="add-kind"><option value="atom">Relation</option><option value="equal">Equality</option><option value="or">Disjunction</option><option value="fail">Fail</option></select><button id="add">+ Add item</button><span id="insertion-target" role="status"></span></div>
+        <div class="graph-toolbar" aria-label="Selection editing"><button id="copy-selection">Copy</button><button id="cut-selection">Cut</button><button id="paste-selection">Paste</button><button id="duplicate-selection">Duplicate</button><button id="delete-selection">Delete</button><button id="export-diagram">Export SVG</button></div>
         </fieldset>
             <div class="graph-scroll"><svg id="editor-graph" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Query"></svg></div>
             <div class="canvas-tools" aria-label="Query navigation"><button data-diagram="editor-graph" data-action="out">−</button><button data-diagram="editor-graph" data-action="in">+</button><button data-diagram="editor-graph" data-action="fit">Fit</button><button data-diagram="editor-graph" data-action="layout">Arrange</button><button data-diagram="editor-graph" data-action="expand">Expand</button></div>
@@ -59,7 +67,7 @@
     <details class="results" id="observations">
       <summary class="section-heading"><h2 id="results-title">Answers</h2><span id="answer-count">No answers yet</span></summary>
       <div class="result-toolbar"><label for="output-mode">View</label><select id="output-mode"><option value="answers">Answer stream</option><option value="inspect">Inspection</option></select><button id="answer-prev" aria-label="Previous answer" disabled>←</button><label class="sr-only" for="alternatives">Answer alternative</label><select id="alternatives"></select><button id="answer-next" aria-label="Next answer" disabled>→</button></div>
-      <div class="saved-toolbar"><label for="saved-run">Saved answers</label><select id="saved-run"><option value="">Current run</option></select><button id="collections-prev" aria-label="Newer saved runs" disabled>↑</button><button id="collections-next" aria-label="Older saved runs" disabled>↓</button><button id="saved-prev" aria-label="Previous saved answer page" disabled>←</button><label for="saved-page">Page</label><input id="saved-page" type="number" min="1" value="1"><span id="saved-pages">/ 1</span><button id="saved-next" aria-label="Next saved answer page" disabled>→</button><button id="clear-answers" disabled>Clear saved answers…</button></div>
+      <div class="saved-toolbar"><button id="export-answer">Export answer</button><button id="export-all-answers">Export all answers</button><button id="export-answer-svg">Answer SVG</button><label for="saved-run">Saved answers</label><select id="saved-run"><option value="">Current run</option></select><button id="collections-prev" aria-label="Newer saved runs" disabled>↑</button><button id="collections-next" aria-label="Older saved runs" disabled>↓</button><button id="saved-prev" aria-label="Previous saved answer page" disabled>←</button><label for="saved-page">Page</label><input id="saved-page" type="number" min="1" value="1"><span id="saved-pages">/ 1</span><button id="saved-next" aria-label="Next saved answer page" disabled>→</button><button id="clear-answers" disabled>Clear saved answers…</button></div>
       <div class="observation-layout">
         <div class="answer-panel">
           <div id="bindings" class="bindings" aria-label="Query variable bindings"></div>
