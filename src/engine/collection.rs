@@ -13,6 +13,8 @@ enum Phase {
     Births,
     Ready,
     Observe,
+    Snapshots,
+    Inspections,
     SeedVariables,
     PruneGraph,
     Graph,
@@ -51,6 +53,8 @@ pub struct Memory {
     pub history_records: usize,
     pub pending_nodes: usize,
     pub choices: usize,
+    pub snapshots: usize,
+    pub inspections: usize,
 }
 impl Memory {
     fn total(self) -> usize {
@@ -61,6 +65,8 @@ impl Memory {
             .saturating_add(self.history_records)
             .saturating_add(self.pending_nodes)
             .saturating_add(self.choices)
+            .saturating_add(self.snapshots)
+            .saturating_add(self.inspections)
     }
 }
 impl Engine {
@@ -73,6 +79,8 @@ impl Engine {
             history_records: self.history.record_count(),
             pending_nodes: self.pending.node_count(),
             choices: self.births.len(),
+            snapshots: self.snapshots.len(),
+            inspections: self.inspections.len(),
         }
     }
     pub fn request_collection(&mut self) {
@@ -286,7 +294,55 @@ impl Engine {
                         match observer.trace(&mut c.trace) {
                             Step::Root(root) => c.conditions.push(root),
                             Step::Pending => {}
-                            Step::Done => c.phase = Phase::SeedVariables,
+                            Step::Done => {
+                                c.phase = Phase::Snapshots;
+                                c.after = None;
+                                c.slot = 0;
+                                c.trace = TraceCursor::default();
+                            }
+                        }
+                    }
+                } else {
+                    c.phase = Phase::Snapshots;
+                    c.after = None;
+                    c.slot = 0;
+                    c.trace = TraceCursor::default();
+                }
+            }
+            Phase::Snapshots => {
+                let next = match c.after {
+                    Some(id) => self.snapshots.range((Excluded(id), Unbounded)).next(),
+                    None => self.snapshots.first_key_value(),
+                };
+                if let Some((&id, snapshot)) = next {
+                    c.graph_roots.push(snapshot.graph);
+                    c.conditions.push(snapshot.scope);
+                    c.after = Some(id);
+                } else {
+                    c.phase = Phase::Inspections;
+                    c.after = None;
+                }
+            }
+            Phase::Inspections => {
+                let next = match c.after {
+                    Some(id) => self.inspections.range((Excluded(id), Unbounded)).next(),
+                    None => self.inspections.first_key_value(),
+                };
+                if let Some((&id, inspection)) = next {
+                    if c.slot == 0 {
+                        if let Some(snapshot) = &inspection.snapshot {
+                            c.graph_roots.push(snapshot.graph);
+                        }
+                        c.slot = 1;
+                    } else {
+                        match inspection.trace(&mut c.trace) {
+                            Step::Root(root) => c.conditions.push(root),
+                            Step::Pending => {}
+                            Step::Done => {
+                                c.after = Some(id);
+                                c.slot = 0;
+                                c.trace = TraceCursor::default();
+                            }
                         }
                     }
                 } else {

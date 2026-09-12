@@ -386,3 +386,134 @@ fn traced_roots(
     }
     panic!("root walk exceeded its linear step budget");
 }
+
+#[test]
+fn discard_cancels_nested_projection_without_enumerating_remaining_alternatives() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    let prepared = code("p(X)");
+    let mut reached_fact = false;
+    let mut reached_variable = false;
+    for (prefix, after_fact) in [
+        0, 1, 2, 3, 7, 35, 110, 175, 210, 240, 280, 330, 390, 450, 550,
+    ]
+    .into_iter()
+    .map(|n| (n, false))
+    .chain([1, 3, 8].into_iter().map(|n| (n, true)))
+    {
+        let mut g = Graph::new(&prepared.signatures);
+        let mut a = Arena::default();
+        let mut births = BTreeMap::new();
+        let mut last = None;
+        for _ in 0..20 {
+            last = Some(birth(&mut a, &mut births, Condition::TRUE).0);
+        }
+        let empty = g.empty();
+        let mut merging = Merge::new(&g, empty, 0, 1, Condition::TRUE);
+        let root = loop {
+            if let Some(root) = merging.tick(&mut g, &mut a) {
+                break root;
+            }
+        };
+        let (root, occurrence) = post(&mut g, root, 0, vec![1], Condition::TRUE);
+        let variables = Arc::new(vec![1]);
+        let mut observer = Observe::new(
+            completion(root, Condition::TRUE, last),
+            prepared.clone(),
+            variables.clone(),
+        );
+        let mut waiting_for_fact = after_fact;
+        let mut remaining = prefix;
+        for _ in 0..10_000 {
+            if !waiting_for_fact && remaining == 0 {
+                break;
+            }
+            let status = observer.tick(&g, &mut a, &births);
+            let saw_fact = matches!(&status, ObserveStatus::Event(Output::Fact { .. }));
+            match status {
+                ObserveStatus::Event(Output::Fact { .. }) => reached_fact = true,
+                ObserveStatus::Event(Output::Variable { .. }) => reached_variable = true,
+                ObserveStatus::Done => {
+                    panic!("a million alternatives cannot finish in this prefix")
+                }
+                _ => {}
+            }
+            if waiting_for_fact {
+                if saw_fact {
+                    waiting_for_fact = false;
+                }
+            } else {
+                remaining -= 1;
+            }
+        }
+        assert!(
+            !waiting_for_fact && remaining == 0,
+            "projection must reach the requested cancellation boundary"
+        );
+        // Cancellation no longer needs future causal births; only the graph
+        // and remaining owned continuation roots are traced from here onward.
+        drop(births);
+        drop(merging);
+        let mut calls = 0;
+        loop {
+            let mut supports = traced_roots(&observer, observer.condition_roots());
+            let mut gc = g.collect([observer.graph_root()].into_iter());
+            while !gc.done() {
+                if let Some(c) = gc.tick(&mut g) {
+                    supports.push(c);
+                }
+            }
+            drop(gc);
+            let mut gc = a.collect(supports.into_iter());
+            while !gc.tick(&mut a) {}
+            drop(gc);
+            let done = observer.discard_tick();
+            calls += 1;
+            assert_eq!(observer.graph_root(), root);
+            assert!(g.fact(root, occurrence).is_some());
+            assert!(
+                catch_unwind(AssertUnwindSafe(|| observer.tick(
+                    &g,
+                    &mut a,
+                    &BTreeMap::new()
+                )))
+                .is_err()
+            );
+            if done {
+                break;
+            }
+            assert!(
+                calls < 32,
+                "cancel must discard scratch rather than enumerate 2^20 alternatives"
+            );
+        }
+        assert_eq!(
+            Arc::strong_count(&variables),
+            1,
+            "discard retains variable-array ownership"
+        );
+        assert!(observer.condition_roots().all(|c| c.is_terminal()));
+        assert!(observer.discard_tick());
+        assert!(observer.discard_tick());
+        let roots = traced_roots(&observer, observer.condition_roots());
+        let mut gc = a.collect(roots.into_iter());
+        while !gc.tick(&mut a) {}
+        drop(gc);
+        assert_eq!(
+            a.node_count(),
+            0,
+            "no remaining choice support is needed after discard"
+        );
+        assert_eq!(observer.graph_root(), root);
+        drop(observer);
+        let mut gc = g.collect(std::iter::empty());
+        while !gc.done() {
+            gc.tick(&mut g);
+        }
+        drop(gc);
+        assert_eq!(g.occurrence_count(), 0);
+    }
+    assert!(
+        reached_fact && reached_variable,
+        "prefixes must exercise actual nested projection"
+    );
+}

@@ -152,6 +152,7 @@ pub struct Resolve {
     partition: Option<Partition>,
     phase: ResolvePhase,
     visits: u64,
+    discarding: bool,
 }
 impl Resolve {
     pub fn new(g: &Graph, root: Root, variable: u64, scope: Condition) -> Self {
@@ -170,6 +171,7 @@ impl Resolve {
             partition: None,
             phase: ResolvePhase::Next,
             visits: 0,
+            discarding: false,
         }
     }
     pub fn root(&self) -> Root {
@@ -187,7 +189,41 @@ impl Resolve {
             .chain(self.boolean.iter().flat_map(|j| j.roots()))
             .chain(self.partition.iter().flat_map(|p| p.roots()))
     }
+    /// Cancel immediately, then release one child-job step or one map entry
+    /// per call. The immutable graph root remains owned by this token.
+    pub fn discard_tick(&mut self) -> bool {
+        self.discarding = true;
+        self.initial = None;
+        self.fresh = Condition::FALSE;
+        self.carry = Condition::FALSE;
+        self.queue = VecDeque::new(); // Scalar variable IDs, without child owners.
+        if let Some(job) = self.boolean.as_mut() {
+            if job.discard_tick() {
+                self.boolean = None;
+            }
+            return false;
+        }
+        if let Some(partition) = self.partition.as_mut() {
+            if let Some(job) = partition.boolean.as_mut() {
+                if job.discard_tick() {
+                    partition.boolean = None;
+                }
+            } else {
+                self.partition = None; // Cursor backing contains only scalar roots.
+            }
+            return false;
+        }
+        if self.pending.pop_first().is_some() {
+            return false;
+        }
+        if self.visited.pop_first().is_some() {
+            return false;
+        }
+        true
+    }
+
     pub fn tick(&mut self, g: &Graph, a: &mut Arena) -> ResolveStatus {
+        assert!(!self.discarding, "identity resolve has been discarded");
         match self.phase {
             ResolvePhase::Next => {
                 let next = self.initial.take().or_else(|| {

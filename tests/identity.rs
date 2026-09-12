@@ -345,3 +345,72 @@ fn resolve_large_visited_map_cleanup_yields_one_record_per_tick() {
     }
     panic!("wide resolution did not finish");
 }
+
+#[test]
+fn resolve_discard_drains_large_pending_and_visited_maps_with_gc_each_step() {
+    use chr::condition::{Operation, Progress};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    let mut g = Graph::new(&[]);
+    let mut a = Arena::default();
+    let choices: Vec<_> = (0..5).map(|_| a.fresh_choice().1).collect();
+    let mut root = g.empty();
+    for bits in 0..32 {
+        let mut support = Condition::TRUE;
+        for (i, &c) in choices.iter().enumerate() {
+            let literal = if bits & (1 << i) != 0 { c } else { c.not() };
+            let mut job = a.start(Operation::And(support, literal));
+            support = loop {
+                if let Progress::Complete(c) = job.tick(&mut a) {
+                    break c;
+                }
+            };
+        }
+        root = merge(&mut g, &mut a, root, 100, bits, support);
+    }
+    let mut resolving = Resolve::new(&g, root, 100, Condition::TRUE);
+    let mut emitted = 0;
+    for _ in 0..100_000 {
+        if matches!(resolving.tick(&g, &mut a), ResolveStatus::Found { .. }) {
+            emitted += 1;
+        }
+        if emitted == 16 {
+            break;
+        }
+    }
+    assert_eq!(emitted, 16);
+    assert!(resolving.condition_roots().count() >= 32);
+    let visits = resolving.visits();
+    let mut calls = 0;
+    loop {
+        let supports = traced(&resolving, resolving.condition_roots());
+        collect_traced(&mut g, &mut a, [resolving.root()].into_iter(), supports);
+        let before = resolving.condition_roots().count();
+        let done = resolving.discard_tick();
+        calls += 1;
+        assert_eq!(resolving.root(), root);
+        assert_eq!(resolving.visits(), visits);
+        assert!(before.saturating_sub(resolving.condition_roots().count()) <= 8);
+        assert!(catch_unwind(AssertUnwindSafe(|| resolving.tick(&g, &mut a))).is_err());
+        if done {
+            break;
+        }
+        assert!(
+            calls < 80,
+            "discard follows retained scratch, not further resolution"
+        );
+    }
+    assert!(calls >= 32, "large maps must drain one entry per tick");
+    assert!(resolving.condition_roots().all(|c| c.is_terminal()));
+    assert!(resolving.discard_tick());
+    assert!(resolving.discard_tick());
+    assert_eq!(resolving.root(), root);
+    collect_traced(&mut g, &mut a, [root].into_iter(), vec![]);
+    assert!(
+        g.index_node_count() > 0,
+        "discard must not release the graph root"
+    );
+    drop(resolving);
+    collect_traced(&mut g, &mut a, std::iter::empty(), vec![]);
+    assert_eq!(g.index_node_count(), 0);
+    assert_eq!(a.node_count(), 0);
+}

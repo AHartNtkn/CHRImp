@@ -225,6 +225,7 @@ impl Arena {
             last: known,
             memo: BTreeMap::new(),
             work: 0,
+            discarding: false,
         }
     }
 
@@ -281,6 +282,7 @@ pub enum Progress {
     Complete(Condition),
 }
 
+#[derive(Clone, Copy)]
 enum Frame {
     Evaluate(Pair),
     AfterLow {
@@ -303,11 +305,12 @@ pub struct Job {
     // Completed subproblems are semantic work dependencies, not an evicting cache.
     memo: BTreeMap<Pair, Condition>,
     work: u64,
+    discarding: bool,
 }
 
 impl Job {
     pub fn result(&self) -> Option<Condition> {
-        if self.frames.is_empty() && self.memo.is_empty() {
+        if !self.discarding && self.frames.is_empty() && self.memo.is_empty() {
             self.last.map(|c| if self.negative { c.not() } else { c })
         } else {
             None
@@ -354,7 +357,19 @@ impl Job {
             )
     }
 
+    /// Cancel without evaluating another subproblem. Frames contain only Copy
+    /// scalars, so their backing can be released directly; drain at most one
+    /// B-tree memo entry per call. Roots remain traceable throughout discard.
+    pub fn discard_tick(&mut self) -> bool {
+        self.discarding = true;
+        self.frames = Vec::new();
+        self.last = None;
+        self.memo.pop_first();
+        self.memo.is_empty()
+    }
+
     pub fn tick(&mut self, arena: &mut Arena) -> Progress {
+        assert!(!self.discarding, "condition job has been discarded");
         assert_eq!(self.owner, arena.owner, "foreign condition job");
         GcLease::assert_mutable(&arena.frozen);
         if let Some(result) = self.result() {

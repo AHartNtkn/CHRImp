@@ -80,6 +80,7 @@ pub struct Observe {
     resolve: Option<Resolve>,
     representative: Option<u64>,
     phase: Phase,
+    discarding: bool,
 }
 impl Observe {
     pub fn new(
@@ -121,6 +122,7 @@ impl Observe {
             resolve: None,
             representative: None,
             phase: Phase::History,
+            discarding: false,
         }
     }
     pub fn graph_root(&self) -> Root {
@@ -169,12 +171,46 @@ impl Observe {
         self.representative = None;
         self.phase = phase;
     }
+    /// Stop projecting immediately; discard at most one nested continuation
+    /// step per call. Scalar stack/cursor/argument backing has no recursive
+    /// payload destructors. Keep graph_root() traced until this token is dropped.
+    pub fn discard_tick(&mut self) -> bool {
+        if !self.discarding {
+            self.discarding = true;
+            self.stack = Vec::new();
+            self.current.scope = Condition::FALSE;
+            self.birth_support = Condition::FALSE;
+            self.decision = Condition::FALSE;
+            self.inactive = Condition::FALSE;
+            self.active = Condition::FALSE;
+            self.left = Condition::FALSE;
+            self.rows = None;
+            self.arguments = None;
+            self.variables = Arc::new(Vec::new());
+            self.representative = None;
+        }
+        if let Some(job) = self.boolean.as_mut() {
+            if job.discard_tick() {
+                self.boolean = None;
+            }
+            return false;
+        }
+        if let Some(resolve) = self.resolve.as_mut() {
+            if resolve.discard_tick() {
+                self.resolve = None;
+            }
+            return false;
+        }
+        true
+    }
+
     pub fn tick(
         &mut self,
         g: &Graph,
         a: &mut Arena,
         births: &BTreeMap<u64, Birth>,
     ) -> ObserveStatus {
+        assert!(!self.discarding, "observation has been discarded");
         match self.phase {
             Phase::History => {
                 let Some(frame) = self.stack.pop() else {

@@ -1,6 +1,8 @@
 //! Cooperative execution of supported bodies, indexed discovery and CHR commits.
 mod collection;
+mod inspection;
 pub use collection::Memory;
+pub use inspection::{InspectionError, InspectionStatus, SnapshotInfo, SnapshotKind, ViewId};
 
 use crate::commit::{Commit, CommitStatus, FreshIds, StateRoot};
 use crate::condition::{Arena, Condition, Job, Operation, Progress};
@@ -148,9 +150,17 @@ pub struct Engine {
     collection_requested: bool,
     collections: u64,
     collection_limit: usize,
+    record_history: bool,
+    snapshots: BTreeMap<u64, inspection::Snapshot>,
+    inspections: BTreeMap<u64, inspection::Inspection>,
+    last_inspection: Option<u64>,
+    inspection_round: Option<u64>,
 }
 impl Engine {
     pub fn new(code: Arc<Prepared>) -> Self {
+        Self::with_history(code, false)
+    }
+    pub fn with_history(code: Arc<Prepared>, record_history: bool) -> Self {
         let graph = Graph::new(&code.signatures);
         let history = History::default();
         let state = StateRoot {
@@ -187,6 +197,11 @@ impl Engine {
             collection_requested: false,
             collections: 0,
             collection_limit: 4096,
+            record_history,
+            snapshots: BTreeMap::new(),
+            inspections: BTreeMap::new(),
+            last_inspection: None,
+            inspection_round: None,
         };
         e.spawn(Condition::TRUE, Task::Init(vec![]));
         e
@@ -275,7 +290,9 @@ impl Engine {
             if self.collect_heap() {
                 continue;
             }
-            if self.ticks.is_multiple_of(3) {
+            if !self.inspections.is_empty() && self.ticks % 4 == 3 {
+                self.service_inspection();
+            } else if self.ticks.is_multiple_of(3) {
                 if let Some(mut task) = self.queue.pop_front() {
                     if self.task(&mut task) {
                         self.pending_root =
@@ -305,6 +322,7 @@ impl Engine {
                     false
                 } else {
                     self.variables = Arc::new(std::mem::take(vars));
+                    self.record(SnapshotKind::Initial, self.active);
                     let event = self.ids.event();
                     self.body(event, self.code.query, self.variables.clone(), s.scope);
                     true
@@ -358,6 +376,13 @@ impl Engine {
                             self.state = c.state;
                             self.applications += 1;
                             let app = c.application;
+                            self.record(
+                                SnapshotKind::Application {
+                                    rule: search.rule,
+                                    event: app.id,
+                                },
+                                self.active,
+                            );
                             self.body(app.id, app.body, app.variables, app.support);
                             search.commit = None;
                             self.release_lane();
@@ -506,6 +531,7 @@ impl Engine {
                 if let UpdateStatus::Complete(root) = update.tick(&mut self.graph) {
                     self.state.graph = root;
                     let occurrence = update.occurrence();
+                    self.record(SnapshotKind::Post { occurrence }, self.active);
                     self.spawn(
                         b.scope,
                         Task::Activate {
@@ -521,6 +547,7 @@ impl Engine {
                 let merge = b.merge.as_mut().unwrap();
                 if let Some(root) = merge.tick(&mut self.graph, &mut self.arena) {
                     self.state.graph = root;
+                    self.record(SnapshotKind::Merge, self.active);
                     let scope = merge.changed_support();
                     let Instruction::Equal(x, _) = self.code.instructions[b.instruction] else {
                         unreachable!()
@@ -550,6 +577,7 @@ impl Engine {
                 if let Some(c) = poll(&mut b.job, &mut self.arena) {
                     self.active = b.pending_active;
                     self.failed = c;
+                    self.record(SnapshotKind::Failure, self.active);
                     return true;
                 }
             }
@@ -574,6 +602,7 @@ impl Engine {
                         decision,
                     },
                 );
+                self.record(SnapshotKind::Choice, self.active);
                 b.job = Some(self.arena.start(Operation::And(b.scope, decision)));
                 b.phase = BodyPhase::Left;
             }
@@ -674,6 +703,7 @@ impl Engine {
             }
             ReadyPhase::Publish => {
                 if let Some(c) = poll(&mut ready.job, &mut self.arena) {
+                    self.record(SnapshotKind::NormalForm, ready.scope);
                     self.active = c;
                     self.observer = Some(Observe::new(
                         Completion {

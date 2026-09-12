@@ -465,3 +465,86 @@ fn large_job_memo_traces_scalars_and_cleans_up_before_completion() {
     }
     panic!("large memo job did not finish");
 }
+
+#[test]
+fn discard_large_memo_is_incremental_traceable_and_never_evaluates_more_work() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    let mut a = Arena::default();
+    let choices: Vec<_> = (0..300).map(|_| a.fresh_choice().1).collect();
+    let mut all = Condition::TRUE;
+    for &c in choices.iter().rev() {
+        all = finish(&mut a, Operation::And(c, all));
+    }
+    let y = a.fresh_choice().1;
+    let mut job = a.start(Operation::And(all, y));
+    let mut stopped = false;
+    for _ in 0..10_000 {
+        let work = job.work();
+        assert_eq!(job.tick(&mut a), Progress::Pending);
+        if job.work() == work {
+            stopped = true;
+            break;
+        }
+    }
+    assert!(stopped);
+    let initial_roots = job.roots().count();
+    assert!(initial_roots > 600, "cancel with a large memo still owned");
+    let memo_entries = (initial_roots - 1) / 3; // Cleanup has no frames and one last result.
+    let work = job.work();
+    let mut calls = 0;
+    loop {
+        let mut gc = a.collect(traced_job(&job).into_iter());
+        while !gc.tick(&mut a) {}
+        drop(gc);
+        let before = job.roots().count();
+        let done = job.discard_tick();
+        calls += 1;
+        assert_eq!(job.work(), work, "discard resumed BDD evaluation");
+        assert!(job.result().is_none());
+        assert!(before.saturating_sub(job.roots().count()) <= if calls == 1 { 4 } else { 3 });
+        assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut a))).is_err());
+        if done {
+            break;
+        }
+        assert!(calls <= memo_entries);
+    }
+    assert_eq!(calls, memo_entries);
+    assert_eq!(job.scratch_capacity(), 0);
+    assert_eq!(job.roots().count(), 0);
+    assert!(job.discard_tick());
+    assert!(job.discard_tick());
+    let mut gc = a.collect(traced_job(&job).into_iter());
+    while !gc.tick(&mut a) {}
+    drop(gc);
+    assert_eq!(a.node_count(), 0);
+}
+
+#[test]
+fn discard_active_frames_and_completed_jobs_never_publish_a_result() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    for prefix in 0..8 {
+        let mut a = Arena::default();
+        let x = a.fresh_choice().1;
+        let y = a.fresh_choice().1;
+        let mut job = a.start(Operation::And(x, y));
+        for _ in 0..prefix {
+            job.tick(&mut a);
+        }
+        let work = job.work();
+        for step in 0..10 {
+            let done = job.discard_tick();
+            let mut gc = a.collect(traced_job(&job).into_iter());
+            while !gc.tick(&mut a) {}
+            drop(gc);
+            assert_eq!(job.work(), work);
+            assert!(job.result().is_none());
+            if done {
+                break;
+            }
+            assert!(step < 9);
+        }
+        assert!(job.discard_tick());
+        assert_eq!(job.scratch_capacity(), 0);
+        assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut a))).is_err());
+    }
+}
