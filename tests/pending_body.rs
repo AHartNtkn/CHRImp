@@ -418,3 +418,119 @@ fn a_shared_application_projects_the_same_remaining_body_in_each_selected_siblin
         assert_eq!(bodies, 1);
     }
 }
+
+#[test]
+fn balanced_ranges_project_original_flat_arms_at_each_suspension() {
+    let mut e = engine("", "(a(A);b(A);c(A);d(A);e(A);f(A);g(A))", true);
+    let mut inspected = 0;
+    let mut saw_ranges = false;
+    let mut selected_paths = 0;
+    for _ in 0..2000 {
+        e.advance(1);
+        e.take_output();
+        if e.collecting() {
+            e.maintain(100000);
+        }
+        if e.snapshots()
+            .any(|s| matches!(s.kind, SnapshotKind::NormalForm))
+        {
+            break;
+        }
+        let snap = match e.capture_snapshot() {
+            Ok(id) => id,
+            Err(InspectionError::Initializing | InspectionError::Busy) => continue,
+            error => panic!("{error:?}"),
+        };
+        let all = remaining(project(&mut e, snap));
+        let mut expected = (0..7).map(|i| vec![i]).collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(all, expected);
+        let births = e
+            .choices()
+            .map(|(&id, b)| (id, b.instruction, b.start, b.split, b.end))
+            .collect::<Vec<_>>();
+        if births.len() == 6 {
+            for arm in 0..7 {
+                let path = births
+                    .iter()
+                    .filter(|(_, _, start, _, end)| *start <= arm && arm < *end)
+                    .map(|(id, _, _, split, _)| (*id, arm < *split))
+                    .collect();
+                assert_eq!(
+                    remaining(project_selected(&mut e, snap, path)),
+                    vec![vec![arm]]
+                );
+                selected_paths += 1;
+            }
+        }
+        for (id, instruction, start, split, end) in births {
+            let chr::program::Instruction::Or(items) = &e.program().instructions[instruction]
+            else {
+                panic!()
+            };
+            assert_eq!(items.len(), 7, "original flat instruction retained");
+            assert!(start < split && split < end);
+            saw_ranges |= split - start > 1;
+            for (positive, lo, hi) in [(true, start, split), (false, split, end)] {
+                let actual = remaining(project_selected(&mut e, snap, vec![(id, positive)]));
+                let mut wanted = (lo..hi).map(|i| vec![i]).collect::<Vec<_>>();
+                wanted.sort();
+                assert_eq!(actual, wanted, "choice {id}, {lo}..{hi}, state {inspected}");
+            }
+        }
+        // Retained syntax must survive a collection before replay.
+        e.request_collection();
+        e.maintain(100000);
+        assert_eq!(remaining(project(&mut e, snap)), expected);
+        e.release_snapshot(snap).unwrap();
+        e.maintain(100000);
+        inspected += 1;
+    }
+    assert!(
+        inspected > 10 && saw_ranges && selected_paths > 0,
+        "inspected={inspected} ranges={saw_ranges} paths={selected_paths}"
+    );
+}
+
+#[test]
+fn original_nested_groups_remain_structurally_visible_in_initial_projection() {
+    use chr::observe::ExpressionKind::{And, Fail, Or};
+    let mut e = engine("", "(a(A);(b(A);c(A);d(A));e(A);fail)", true);
+    let snapshot = loop {
+        e.advance(1);
+        if let Some(s) = e
+            .snapshots()
+            .find(|s| matches!(s.kind, SnapshotKind::Initial))
+        {
+            break s.id;
+        }
+    };
+    let mut stack: Vec<(chr::observe::ExpressionKind, usize)> = vec![];
+    let mut groups = vec![];
+    for event in project(&mut e, snapshot) {
+        match event {
+            Output::Expression { operator } => stack.push((operator, 0)),
+            Output::ExpressionRelation { .. } => stack.push((And, 0)),
+            Output::ExpressionEnd => {
+                let (kind, arity) = stack.pop().unwrap();
+                if kind == Or {
+                    groups.push(arity);
+                }
+                if let Some((_, n)) = stack.last_mut() {
+                    *n += 1;
+                }
+            }
+            Output::ExpressionVariable { .. } => {}
+            _ => {}
+        }
+    }
+    assert!(stack.is_empty());
+    assert_eq!(groups, vec![3, 4]);
+    // The source AST still has the explicit nested Or, rather than extra groups
+    // for the binary encoding. Its failed arm also remains part of the template.
+    assert!(
+        project(&mut e, snapshot)
+            .iter()
+            .any(|o| matches!(o, Output::Expression { operator: Fail }))
+    );
+}

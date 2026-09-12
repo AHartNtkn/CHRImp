@@ -706,7 +706,12 @@ impl Runtime {
                     .map(|id| id.to_string());
                 let choices: Vec<_> = choice_rows
                     .into_iter()
-                    .map(|id| json!({"id":id.to_string(),"label":format!("Choice {}",id+1)}))
+                    .map(|id| {
+                        let birth = e.choices_after(id.checked_sub(1), Some(id)).next().unwrap().1;
+                        json!({"id":id.to_string(),"label":format!(
+                            "Choice {} (event {}): First arms {}–{}; Second arms {}–{}",
+                            id+1, birth.event, birth.start+1, birth.split, birth.split+1, birth.end)})
+                    })
                     .collect();
                 let snapshot_rows: Vec<_> = if let Some(before) = request.before_snapshot {
                     e.snapshots_before(before.view())

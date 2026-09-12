@@ -336,7 +336,9 @@ mod coordinate_tests {
                 Birth {
                     event: 0,
                     instruction: 0,
-                    arm: 0,
+                    start: 0,
+                    split: 1,
+                    end: 2,
                     support: Condition::TRUE,
                     decision,
                 },

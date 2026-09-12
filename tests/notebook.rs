@@ -1230,3 +1230,44 @@ fn owner_requests_validate_boot_and_safe_ids_before_admission() {
         "stale reservation did not advance issuance"
     );
 }
+
+#[test]
+fn flat_choice_metadata_labels_the_actual_contiguous_partitions() {
+    let runtime = Client::default();
+    let model = start(&runtime, "", "a(A);b(A);c(A);d(A);e(A);f(A);g(A)", true);
+    let run = model["run"].clone();
+    let mut ack = None;
+    for _ in 0..1000 {
+        let batch = next(
+            &runtime,
+            "/api/advance",
+            json!({"run":run,"budget":128}),
+            &mut ack,
+        );
+        if batch["delivery_done"] == true {
+            break;
+        }
+    }
+    let views = ok(&runtime, "/api/views", json!({"run":run}));
+    let choices = views["choices"].as_array().unwrap();
+    assert_eq!(choices.len(), 6);
+    assert!(
+        choices[0]["label"]
+            .as_str()
+            .unwrap()
+            .ends_with("First arms 1–3; Second arms 4–7")
+    );
+    let labels = choices
+        .iter()
+        .map(|c| c["label"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    for suffix in [
+        "First arms 1–1; Second arms 2–3",
+        "First arms 4–5; Second arms 6–7",
+        "First arms 2–2; Second arms 3–3",
+        "First arms 4–4; Second arms 5–5",
+        "First arms 6–6; Second arms 7–7",
+    ] {
+        assert_eq!(labels.iter().filter(|s| s.ends_with(suffix)).count(), 1);
+    }
+}

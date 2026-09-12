@@ -27,7 +27,10 @@ use std::sync::Arc;
 pub struct Birth {
     pub event: u64,
     pub instruction: usize,
-    pub arm: usize,
+    /// Original flat disjunction: true selects [start, split), false [split, end).
+    pub start: usize,
+    pub split: usize,
+    pub end: usize,
     pub support: Condition,
     pub decision: Condition,
 }
@@ -91,6 +94,8 @@ struct Body {
     scope: Condition,
     phase: BodyPhase,
     index: usize,
+    // Only disjunction continuations restrict the original instruction range.
+    end: Option<usize>,
     args: Vec<u64>,
     job: Option<Job>,
     update: Option<Update>,
@@ -106,6 +111,7 @@ impl Body {
             scope,
             phase: BodyPhase::Dispatch,
             index: 0,
+            end: None,
             args: Vec::new(),
             job: None,
             update: None,
@@ -288,6 +294,20 @@ impl Engine {
             scope,
             Task::Body(Box::new(Body::new(event, instruction, variables, scope))),
         );
+    }
+    fn body_range(&mut self, b: &Body, start: usize, end: usize, scope: Condition) {
+        let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
+            unreachable!()
+        };
+        assert!(start < end && end <= items.len());
+        if end - start == 1 {
+            self.body(b.event, items[start], b.variables.clone(), scope);
+        } else {
+            let mut child = Body::new(b.event, b.instruction, b.variables.clone(), scope);
+            child.index = start;
+            child.end = Some(end);
+            self.spawn(scope, Task::Body(Box::new(child)));
+        }
     }
     fn acquire(&mut self, owner: Owner) -> bool {
         if self.lane == Some(owner) {
@@ -615,7 +635,6 @@ impl Engine {
                     b.phase = BodyPhase::Fail;
                 }
                 Instruction::Or(_) => {
-                    b.index = 0;
                     b.phase = BodyPhase::Choice;
                 }
                 _ => unreachable!(),
@@ -670,7 +689,8 @@ impl Engine {
                 let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
                     unreachable!()
                 };
-                if b.index + 1 == items.len() {
+                let end = b.end.unwrap_or(items.len());
+                if b.index + 1 == end {
                     let instruction = items[b.index];
                     self.body(b.event, instruction, b.variables.clone(), b.scope);
                     return true;
@@ -682,7 +702,9 @@ impl Engine {
                     Birth {
                         event: b.event,
                         instruction: b.instruction,
-                        arm: b.index,
+                        start: b.index,
+                        split: b.index + (end - b.index) / 2,
+                        end,
                         support: b.scope,
                         decision,
                     },
@@ -697,17 +719,22 @@ impl Engine {
                     let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
                         unreachable!()
                     };
-                    let instruction = items[b.index];
-                    self.body(b.event, instruction, b.variables.clone(), c);
+                    let end = b.end.unwrap_or(items.len());
+                    let split = b.index + (end - b.index) / 2;
+                    self.body_range(b, b.index, split, c);
                     b.job = Some(self.arena.start(Operation::And(b.scope, b.decision.not())));
                     b.phase = BodyPhase::Right;
                 }
             }
             BodyPhase::Right => {
                 if let Some(c) = poll(&mut b.job, &mut self.arena) {
-                    b.scope = c;
-                    b.index += 1;
-                    b.phase = BodyPhase::Choice;
+                    let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
+                        unreachable!()
+                    };
+                    let end = b.end.unwrap_or(items.len());
+                    let split = b.index + (end - b.index) / 2;
+                    self.body_range(b, split, end, c);
+                    return true;
                 }
             }
         }
@@ -849,6 +876,61 @@ fn poll(job: &mut Option<Job>, a: &mut Arena) -> Option<Condition> {
         Progress::Complete(c) => {
             *job = None;
             Some(c)
+        }
+    }
+}
+
+#[cfg(test)]
+mod balanced_phase_tests {
+    use super::*;
+    #[test]
+    fn disjunction_ranges_survive_physical_gc_at_every_phase() {
+        let code = crate::program::prepare(
+            &crate::syntax::parse_program("").unwrap(),
+            &crate::syntax::parse_query("a(A);b(A);c(A);d(A);e(A);f(A);g(A)").unwrap(),
+        )
+        .unwrap();
+        let mut e = Engine::new(Arc::new(code));
+        let mut phases = BTreeSet::new();
+        let mut internal = false;
+        let mut answers = 0;
+        for _ in 0..100000 {
+            e.advance(1);
+            for s in e.queue.iter().chain(e.parked.values()) {
+                if let Task::Body(b) = &s.task
+                    && matches!(e.code.instructions[b.instruction], Instruction::Or(_))
+                {
+                    phases.insert(b.phase as u8);
+                    internal |= b.end.is_some();
+                }
+            }
+            if let Some(Output::End) = e.take_output() {
+                answers += 1;
+            }
+            e.request_collection();
+            e.maintain(100000);
+            assert!(!e.collecting());
+            if e.delivery_done() {
+                break;
+            }
+        }
+        assert!(e.delivery_done());
+        assert_eq!(answers, 7);
+        assert!(internal);
+        for phase in [
+            BodyPhase::Dispatch,
+            BodyPhase::Acquire,
+            BodyPhase::Filter,
+            BodyPhase::Apply,
+            BodyPhase::Choice,
+            BodyPhase::Left,
+            BodyPhase::Right,
+        ] {
+            assert!(
+                phases.contains(&(phase as u8)),
+                "missing phase {}",
+                phase as u8
+            );
         }
     }
 }

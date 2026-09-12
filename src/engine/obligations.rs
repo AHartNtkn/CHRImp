@@ -10,6 +10,7 @@ pub(super) struct Obligation {
     event: u64,
     instruction: usize,
     start: usize,
+    end: Option<usize>,
     scope: Condition,
     // The current split's guard stays separate until budgeted projection. A
     // scheduler transition never needs to finish an extra Boolean operation.
@@ -400,6 +401,7 @@ impl Engine {
             event: body.event,
             instruction: body.instruction,
             start: 0,
+            end: body.end,
             scope: body.scope,
             guard: Condition::TRUE,
         };
@@ -412,22 +414,34 @@ impl Engine {
                 });
             }
             Instruction::Or(items) => {
+                let end = body.end.unwrap_or(items.len());
+                let split = body.index + (end - body.index) / 2;
+                let part = |start, end, guard| {
+                    if end - start == 1 {
+                        Obligation {
+                            instruction: items[start],
+                            start: 0,
+                            end: None,
+                            guard,
+                            ..base
+                        }
+                    } else {
+                        Obligation {
+                            start,
+                            end: Some(end),
+                            guard,
+                            ..base
+                        }
+                    }
+                };
                 if matches!(body.phase, BodyPhase::Left | BodyPhase::Right) {
-                    // Left has not yet admitted its child. Right has admitted
-                    // it, so only the complementary suffix remains here.
-                    parts[0] = matches!(body.phase, BodyPhase::Left).then_some(Obligation {
-                        instruction: items[body.index],
-                        guard: body.decision,
-                        ..base
-                    });
-                    parts[1] = (body.index + 1 < items.len()).then_some(Obligation {
-                        start: body.index + 1,
-                        guard: body.decision.not(),
-                        ..base
-                    });
+                    parts[0] = matches!(body.phase, BodyPhase::Left)
+                        .then(|| part(body.index, split, body.decision));
+                    parts[1] = Some(part(split, end, body.decision.not()));
                 } else {
-                    parts[0] = (body.index < items.len()).then_some(Obligation {
+                    parts[0] = (body.index < end).then_some(Obligation {
                         start: body.index,
+                        end: Some(end),
                         ..base
                     });
                 }
@@ -441,6 +455,7 @@ impl Engine {
 struct Frame {
     instruction: usize,
     index: usize,
+    end: Option<usize>,
     opened: bool,
 }
 enum Phase {
@@ -540,6 +555,7 @@ impl Projection {
                         self.frames.push(Frame {
                             instruction: value.instruction,
                             index: value.start,
+                            end: value.end,
                             opened: false,
                         });
                         self.phase = Phase::Expression;
@@ -596,11 +612,15 @@ impl Projection {
                     Instruction::Post(atom) => atom.args.get(frame.index).copied(),
                     Instruction::Equal(x, y) => [*x, *y].get(frame.index).copied(),
                     Instruction::And(items) | Instruction::Or(items) => {
-                        if let Some(&instruction) = items.get(frame.index) {
+                        if let Some(&instruction) = items
+                            .get(frame.index)
+                            .filter(|_| frame.index < frame.end.unwrap_or(items.len()))
+                        {
                             frame.index += 1;
                             self.frames.push(Frame {
                                 instruction,
                                 index: 0,
+                                end: None,
                                 opened: false,
                             });
                             return ObserveStatus::Pending;
@@ -924,6 +944,7 @@ mod tests {
                 event: 3,
                 instruction: 2,
                 start: 1,
+                end: None,
                 scope: x,
                 guard: z,
             }),
@@ -931,6 +952,7 @@ mod tests {
                 event: 3,
                 instruction: 4,
                 start: 0,
+                end: None,
                 scope: y,
                 guard: input,
             }),
@@ -1082,6 +1104,7 @@ mod tests {
                 event: 4,
                 instruction: posts[0].0,
                 start: 0,
+                end: None,
                 scope: guard,
                 guard: Condition::TRUE,
             }),
@@ -1089,6 +1112,7 @@ mod tests {
                 event: 4,
                 instruction: posts[1].0,
                 start: 0,
+                end: None,
                 scope: Condition::TRUE,
                 guard: guard.not(),
             }),
@@ -1196,6 +1220,7 @@ mod tests {
                 event: 0,
                 instruction: 0,
                 start: 0,
+                end: None,
                 scope: x,
                 guard: x.not(),
             }),

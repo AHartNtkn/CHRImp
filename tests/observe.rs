@@ -31,7 +31,9 @@ fn birth(a: &mut Arena, births: &mut BTreeMap<u64, Birth>, support: Condition) -
         Birth {
             event: id,
             instruction: 0,
-            arm: 0,
+            start: 0,
+            split: 1,
+            end: 2,
             support,
             decision,
         },
