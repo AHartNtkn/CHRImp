@@ -45,6 +45,8 @@ struct Record<V> {
 pub struct Store<V> {
     owner: u32,
     next_node: u64,
+    // Reused only during an update; at most 256 branches, empty between calls.
+    path: Vec<(Root, Node<V>)>,
     nodes: BTreeMap<u64, Record<V>>,
     epoch: u64,
     frozen: Arc<AtomicBool>,
@@ -57,6 +59,7 @@ impl<V> Default for Store<V> {
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
                 .expect("index identity exhausted"),
             next_node: 0,
+            path: Vec::new(),
             nodes: BTreeMap::new(),
             epoch: 0,
             frozen: Arc::new(AtomicBool::new(false)),
@@ -141,11 +144,24 @@ impl<V: Copy + Eq> Store<V> {
 
     pub fn insert(&mut self, root: Root, key: Key, value: V) -> Root {
         self.assert_mutable();
+        let mut path = std::mem::take(&mut self.path);
+        let result = self.insert_path(root, key, value, &mut path);
+        path.clear();
+        self.path = path;
+        result
+    }
+
+    fn insert_path(
+        &mut self,
+        root: Root,
+        key: Key,
+        value: V,
+        path: &mut Vec<(Root, Node<V>)>,
+    ) -> Root {
         if root == EMPTY {
             return self.allocate(Node::Leaf { key, value });
         }
         // Reuse visited branch values when splitting and rebuilding the path.
-        let mut path = Vec::new();
         let mut cursor = root;
         let (found, old) = loop {
             match self.node(cursor) {
@@ -184,7 +200,7 @@ impl<V: Copy + Eq> Store<V> {
                 right: r,
             });
         }
-        self.rebuild(&path, &key, replacement)
+        self.rebuild(path, &key, replacement)
     }
 
     fn rebuild(&mut self, path: &[(Root, Node<V>)], key: &Key, mut replacement: Root) -> Root {
@@ -215,10 +231,17 @@ impl<V: Copy + Eq> Store<V> {
 
     pub fn remove(&mut self, root: Root, key: &Key) -> Root {
         self.assert_mutable();
+        let mut path = std::mem::take(&mut self.path);
+        let result = self.remove_path(root, key, &mut path);
+        path.clear();
+        self.path = path;
+        result
+    }
+
+    fn remove_path(&mut self, root: Root, key: &Key, path: &mut Vec<(Root, Node<V>)>) -> Root {
         if root == EMPTY {
             return root;
         }
-        let mut path = Vec::new();
         let mut cursor = root;
         loop {
             match self.node(cursor) {
@@ -252,7 +275,7 @@ impl<V: Copy + Eq> Store<V> {
             unreachable!("branch path")
         };
         let sibling = if right(key, bit) { left } else { r };
-        self.rebuild(&path, key, sibling)
+        self.rebuild(path, key, sibling)
     }
 
     pub fn range(&self, root: Root, low: Key, high: Key) -> Cursor {
@@ -610,5 +633,44 @@ mod filter_tests {
         assert_eq!(filter.frames.capacity(), 0);
         assert!(filter.frame.is_none());
         assert!(filter.leaf.is_none());
+    }
+}
+
+#[cfg(test)]
+mod scratch_checks {
+    use super::*;
+    #[test]
+    fn bounded_reuse_all_returns_and_gc() {
+        let mut store = Store::default();
+        let empty = store.empty();
+        assert_eq!(store.remove(empty, &[0; 4]), empty);
+        let mut root = store.insert(empty, [0; 4], 0u64);
+        for bit in 0..256 {
+            let mut key = [0; 4];
+            key[bit / 64] = 1u64 << (63 - bit % 64);
+            root = store.insert(root, key, bit as u64 + 1);
+        }
+        let snapshot = root;
+        assert_eq!(store.insert(root, [0; 4], 0), root);
+        assert_eq!(store.path.len(), 0);
+        assert_eq!(store.path.capacity(), 256);
+        let pointer = store.path.as_ptr();
+        root = store.insert(root, [0; 4], 99);
+        root = store.remove(root, &[0; 4]);
+        assert_eq!(store.remove(root, &[0; 4]), root);
+        assert_eq!(store.path.as_ptr(), pointer);
+        assert!(store.path.is_empty());
+        let mut gc = store.collect([root, snapshot].into_iter());
+        while !gc.done() {
+            gc.tick(&mut store);
+        }
+        drop(gc);
+        assert_eq!(store.get(snapshot, &[0; 4]), Some(0));
+        assert_eq!(store.get(root, &[0; 4]), None);
+        let one = store.insert(empty, [0; 4], 1);
+        assert_eq!(store.remove(one, &[0; 4]), empty);
+        assert_eq!(store.remove(empty, &[0; 4]), empty);
+        assert_eq!(store.path.as_ptr(), pointer);
+        assert!(store.path.is_empty());
     }
 }
