@@ -557,3 +557,212 @@ impl Trace for Job {
         }
     }
 }
+
+/// A budgeted substitution of explicit Boolean values. This operation does not
+/// decide which choices the executor may forget; causal ownership decides that.
+pub struct Restriction {
+    owner: u32,
+    bindings: Option<Arc<BTreeMap<u64, bool>>>,
+    draining: BTreeMap<u64, bool>,
+    frames: Vec<RestrictionFrame>,
+    memo: BTreeMap<Condition, Condition>,
+    last: Option<Condition>,
+    work: u64,
+    discarding: bool,
+}
+#[derive(Clone, Copy)]
+enum RestrictionFrame {
+    Evaluate(Condition),
+    Selected(Condition),
+    Low {
+        input: Condition,
+        choice: u64,
+        high: Condition,
+    },
+    High {
+        input: Condition,
+        choice: u64,
+        low: Condition,
+    },
+}
+impl Arena {
+    pub fn restrict(&self, input: Condition, bindings: Arc<BTreeMap<u64, bool>>) -> Restriction {
+        assert!(self.contains(input), "stale or foreign condition operand");
+        assert!(
+            bindings
+                .last_key_value()
+                .is_none_or(|(&choice, _)| choice < self.next_choice),
+            "unknown restriction choice"
+        );
+        let empty = bindings.is_empty();
+        Restriction {
+            owner: self.owner,
+            bindings: (!empty).then_some(bindings),
+            draining: BTreeMap::new(),
+            frames: if empty {
+                vec![]
+            } else {
+                vec![RestrictionFrame::Evaluate(input)]
+            },
+            memo: BTreeMap::new(),
+            last: empty.then_some(input),
+            work: 0,
+            discarding: false,
+        }
+    }
+}
+impl Restriction {
+    pub fn result(&self) -> Option<Condition> {
+        if !self.discarding
+            && self.frames.is_empty()
+            && self.memo.is_empty()
+            && self.bindings.is_none()
+            && self.draining.is_empty()
+        {
+            self.last
+        } else {
+            None
+        }
+    }
+    pub fn work(&self) -> u64 {
+        self.work
+    }
+    /// Live frames, memo entries, and assignment entries; not allocation bytes.
+    pub fn scratch_capacity(&self) -> usize {
+        self.frames.capacity()
+            + self.memo.len()
+            + self.draining.len()
+            + self.bindings.as_ref().map_or(0, |b| b.len())
+    }
+    pub fn roots(&self) -> impl Iterator<Item = Condition> + '_ {
+        self.memo
+            .iter()
+            .flat_map(|(&input, &result)| [input, result])
+            .chain(self.last)
+            .chain(
+                self.frames
+                    .iter()
+                    .flat_map(|frame| frame.roots().into_iter().flatten()),
+            )
+    }
+    fn cleanup_tick(&mut self) -> bool {
+        if self.memo.pop_first().is_some() {
+            return false;
+        }
+        if let Some(bindings) = self.bindings.take() {
+            // Shared assignments remain with their owner. The last owner drains
+            // the B-tree incrementally rather than dropping an unbounded map.
+            if let Some(bindings) = Arc::into_inner(bindings) {
+                self.draining = bindings;
+            }
+            return false;
+        }
+        self.draining.pop_first();
+        self.draining.is_empty()
+    }
+    pub fn discard_tick(&mut self) -> bool {
+        self.discarding = true;
+        self.frames = Vec::new();
+        self.last = None;
+        self.cleanup_tick()
+    }
+    pub fn tick(&mut self, arena: &mut Arena) -> Progress {
+        assert!(!self.discarding, "condition restriction has been discarded");
+        assert_eq!(self.owner, arena.owner, "foreign condition restriction");
+        GcLease::assert_mutable(&arena.frozen);
+        if let Some(result) = self.result() {
+            return Progress::Complete(result);
+        }
+        if self.frames.is_empty() {
+            self.cleanup_tick();
+        } else {
+            self.work += 1;
+            match self.frames.pop().unwrap() {
+                RestrictionFrame::Evaluate(input) => {
+                    if let Some(&result) = self.memo.get(&input) {
+                        self.last = Some(result);
+                    } else {
+                        match arena.view(input) {
+                            View::Terminal(_) => self.last = Some(input),
+                            View::Choice { choice, low, high } => {
+                                let bindings = self.bindings.as_ref().unwrap();
+                                if choice > *bindings.last_key_value().unwrap().0 {
+                                    self.last = Some(input);
+                                } else if let Some(&positive) = bindings.get(&choice) {
+                                    self.frames.push(RestrictionFrame::Selected(input));
+                                    self.frames.push(RestrictionFrame::Evaluate(if positive {
+                                        high
+                                    } else {
+                                        low
+                                    }));
+                                    self.last = None;
+                                } else {
+                                    self.frames.push(RestrictionFrame::Low {
+                                        input,
+                                        choice,
+                                        high,
+                                    });
+                                    self.frames.push(RestrictionFrame::Evaluate(low));
+                                    self.last = None;
+                                }
+                            }
+                        }
+                    }
+                }
+                RestrictionFrame::Selected(input) => {
+                    self.memo
+                        .insert(input, self.last.expect("selected cofactor"));
+                }
+                RestrictionFrame::Low {
+                    input,
+                    choice,
+                    high,
+                } => {
+                    let low = self.last.take().expect("low cofactor");
+                    self.frames
+                        .push(RestrictionFrame::High { input, choice, low });
+                    self.frames.push(RestrictionFrame::Evaluate(high));
+                }
+                RestrictionFrame::High { input, choice, low } => {
+                    let high = self.last.take().expect("high cofactor");
+                    let result = arena.node(choice, low, high);
+                    self.memo.insert(input, result);
+                    self.last = Some(result);
+                }
+            }
+            if self.frames.is_empty() {
+                self.frames = Vec::new();
+            }
+        }
+        self.result().map_or(Progress::Pending, Progress::Complete)
+    }
+}
+impl RestrictionFrame {
+    fn roots(self) -> [Option<Condition>; 2] {
+        match self {
+            Self::Evaluate(input) | Self::Selected(input) => [Some(input), None],
+            Self::Low { input, high, .. } => [Some(input), Some(high)],
+            Self::High { input, low, .. } => [Some(input), Some(low)],
+        }
+    }
+}
+impl Trace for RestrictionFrame {
+    fn trace(&self, cursor: &mut Cursor) -> Step {
+        if cursor.phase != 0 {
+            return Step::Done;
+        }
+        let roots = self.roots();
+        let fields = [roots[0].unwrap(), roots[1].unwrap_or(Condition::FALSE)];
+        cursor.fields(&fields[..if roots[1].is_some() { 2 } else { 1 }])
+    }
+}
+impl Trace for Restriction {
+    fn trace(&self, cursor: &mut Cursor) -> Step {
+        match cursor.phase {
+            0 => cursor.substitutions(&self.memo),
+            1 => cursor.fields(self.last.as_slice()),
+            2 => cursor.vector(self.frames.len(), |i, child| self.frames[i].trace(child)),
+            _ => Step::Done,
+        }
+    }
+}

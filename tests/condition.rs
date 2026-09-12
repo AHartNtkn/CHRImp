@@ -548,3 +548,269 @@ fn discard_active_frames_and_completed_jobs_never_publish_a_result() {
         assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut a))).is_err());
     }
 }
+
+#[test]
+fn restriction_substitutes_only_the_given_choices_and_preserves_canonical_results() {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+    let mut arena = Arena::default();
+    let (xi, x) = arena.fresh_choice();
+    let (yi, y) = arena.fresh_choice();
+    let (_, z) = arena.fresh_choice();
+    let xy = finish(&mut arena, Operation::And(x, y));
+    let formula = finish(&mut arena, Operation::Or(xy, z));
+    for (input, assignments, expected) in [
+        (formula, BTreeMap::from([(xi, false)]), z),
+        (formula, BTreeMap::from([(xi, true), (yi, false)]), z),
+        (
+            formula.not(),
+            BTreeMap::from([(xi, true), (yi, true)]),
+            Condition::FALSE,
+        ),
+        (formula, BTreeMap::new(), formula),
+    ] {
+        let mut job = arena.restrict(input, Arc::new(assignments.clone()));
+        let result = loop {
+            if let Progress::Complete(result) = job.tick(&mut arena) {
+                break result;
+            }
+        };
+        assert_eq!(result, expected);
+        assert_eq!(job.scratch_capacity(), 0);
+        for bits in 0..8 {
+            let value = |i: u64| bits & (1 << i) != 0;
+            assert_eq!(
+                arena.evaluate(result, value),
+                arena.evaluate(input, |i| assignments
+                    .get(&i)
+                    .copied()
+                    .unwrap_or_else(|| value(i)))
+            );
+        }
+    }
+    assert_eq!(
+        arena.fresh_choice().0,
+        3,
+        "restriction must not create search choices"
+    );
+}
+
+fn traced_restriction(job: &chr::condition::Restriction) -> Vec<Condition> {
+    use chr::trace::{Cursor, Step, Trace};
+    let mut cursor = Cursor::default();
+    let mut roots = Vec::new();
+    for _ in 0..(4 * job.roots().count() + 20) {
+        match job.trace(&mut cursor) {
+            Step::Root(c) => roots.push(c),
+            Step::Pending => {}
+            Step::Done => {
+                let mut expected: Vec<_> = job.roots().collect();
+                expected.sort();
+                roots.sort();
+                assert_eq!(roots, expected);
+                return roots;
+            }
+        }
+    }
+    panic!("restriction trace did not finish");
+}
+
+#[test]
+fn restriction_all_three_variable_functions_and_partial_assignments() {
+    use std::{collections::BTreeMap, sync::Arc};
+    let mut a = Arena::default();
+    let vars: Vec<_> = (0..3).map(|_| a.fresh_choice().1).collect();
+    let terms: Vec<_> = (0..8)
+        .map(|bits| {
+            vars.iter()
+                .enumerate()
+                .fold(Condition::TRUE, |term, (i, &v)| {
+                    finish(
+                        &mut a,
+                        Operation::And(term, if bits & (1 << i) != 0 { v } else { v.not() }),
+                    )
+                })
+        })
+        .collect();
+    for truth_table in 0..256 {
+        let input = terms
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| truth_table & (1 << i) != 0)
+            .fold(Condition::FALSE, |acc, (_, &term)| {
+                finish(&mut a, Operation::Or(acc, term))
+            });
+        for pattern in 0..27 {
+            let mut code = pattern;
+            let bindings: BTreeMap<_, _> = (0..3)
+                .filter_map(|i| {
+                    let digit = code % 3;
+                    code /= 3;
+                    (digit != 0).then_some((i, digit == 2))
+                })
+                .collect();
+            let mut job = a.restrict(input, Arc::new(bindings.clone()));
+            let result = (0..100)
+                .find_map(|_| match job.tick(&mut a) {
+                    Progress::Complete(c) => Some(c),
+                    Progress::Pending => None,
+                })
+                .expect("bounded small cofactor");
+            for bits in 0..8 {
+                let substituted = (0..3).fold(bits, |bits, i| match bindings.get(&i) {
+                    Some(true) => bits | (1 << i),
+                    Some(false) => bits & !(1 << i),
+                    None => bits,
+                });
+                assert_eq!(
+                    a.evaluate(result, |i| bits & (1 << i) != 0),
+                    truth_table & (1 << substituted) != 0
+                );
+            }
+            assert_eq!(job.scratch_capacity(), 0);
+        }
+    }
+}
+
+#[test]
+fn restriction_survives_collection_and_cancellation_at_every_phase() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::{collections::BTreeMap, sync::Arc};
+    for cancel_at in 0..80 {
+        let mut a = Arena::default();
+        let vars: Vec<_> = (0..6).map(|_| a.fresh_choice().1).collect();
+        let all = vars.iter().rev().fold(Condition::TRUE, |acc, &v| {
+            finish(&mut a, Operation::And(v, acc))
+        });
+        let any = vars.iter().rev().fold(Condition::FALSE, |acc, &v| {
+            finish(&mut a, Operation::Or(v, acc))
+        });
+        let input = finish(&mut a, Operation::Difference(any, all));
+        let mut job = a.restrict(
+            input.not(),
+            Arc::new(BTreeMap::from([(1, true), (4, false)])),
+        );
+        for step in 0..100 {
+            let mut gc = a.collect(traced_restriction(&job).into_iter());
+            assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut a))).is_err());
+            while !gc.tick(&mut a) {}
+            drop(gc);
+            if step == cancel_at {
+                let work = job.work();
+                let mut done = false;
+                for _ in 0..100 {
+                    done = job.discard_tick();
+                    let mut gc = a.collect(traced_restriction(&job).into_iter());
+                    while !gc.tick(&mut a) {}
+                    drop(gc);
+                    assert_eq!(job.work(), work);
+                    assert!(job.result().is_none());
+                    if done {
+                        break;
+                    }
+                }
+                assert!(done);
+                assert_eq!(job.scratch_capacity(), 0);
+                assert_eq!(a.node_count(), 0);
+                assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut a))).is_err());
+                break;
+            }
+            if let Progress::Complete(result) = job.tick(&mut a) {
+                // With one forced true and one forced false, neither all nor
+                // none can hold, regardless of the remaining choices.
+                assert_eq!(result, Condition::FALSE);
+                assert_eq!(job.scratch_capacity(), 0);
+                break;
+            }
+            assert!(step < 99);
+        }
+    }
+}
+
+#[test]
+fn restriction_deep_shared_dag_and_last_assignment_owner_cleanup_are_bounded() {
+    use std::{collections::BTreeMap, sync::Arc};
+    let mut a = Arena::default();
+    let depth = 12_000;
+    let vars: Vec<_> = (0..depth).map(|_| a.fresh_choice().1).collect();
+    let mut parity = Condition::FALSE;
+    for &v in vars.iter().rev() {
+        let left = finish(&mut a, Operation::And(v, parity.not()));
+        let right = finish(&mut a, Operation::And(v.not(), parity));
+        parity = finish(&mut a, Operation::Or(left, right));
+    }
+    let mut job = a.restrict(parity, Arc::new(BTreeMap::from([(depth - 1, true)])));
+    let result = (0..depth * 20)
+        .find_map(|_| match job.tick(&mut a) {
+            Progress::Complete(c) => Some(c),
+            Progress::Pending => None,
+        })
+        .expect("shared DAG must take linear work");
+    assert!(job.work() < depth * 10);
+    assert!(a.evaluate(result, |_| false));
+    assert!(!a.evaluate(result, |i| i == 0));
+    assert_eq!(job.scratch_capacity(), 0);
+    let assignments = Arc::new((0..depth).map(|i| (i, true)).collect::<BTreeMap<_, _>>());
+    let mut sole = a.restrict(Condition::TRUE, assignments.clone());
+    let mut shared = a.restrict(Condition::TRUE, assignments);
+    assert!(!shared.discard_tick());
+    assert!(shared.discard_tick());
+    assert!(!sole.discard_tick());
+    assert_eq!(sole.scratch_capacity(), depth as usize);
+    for remaining in (0..depth).rev() {
+        assert_eq!(sole.discard_tick(), remaining == 0);
+        assert_eq!(sole.scratch_capacity(), remaining as usize);
+    }
+}
+
+#[test]
+fn restriction_rejects_foreign_stale_and_unknown_operands() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::{collections::BTreeMap, sync::Arc};
+    let mut a = Arena::default();
+    let mut foreign = Arena::default();
+    let x = a.fresh_choice().1;
+    let y = foreign.fresh_choice().1;
+    assert!(catch_unwind(AssertUnwindSafe(|| a.restrict(y, Arc::default()))).is_err());
+    assert!(
+        catch_unwind(AssertUnwindSafe(
+            || a.restrict(x, Arc::new(BTreeMap::from([(1, true)])))
+        ))
+        .is_err()
+    );
+    let mut job = a.restrict(x, Arc::new(BTreeMap::from([(0, true)])));
+    assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut foreign))).is_err());
+    let mut gc = a.collect(std::iter::empty());
+    while !gc.tick(&mut a) {}
+    drop(gc);
+    assert!(catch_unwind(AssertUnwindSafe(|| a.restrict(x, Arc::default()))).is_err());
+}
+
+#[test]
+fn restriction_new_nonterminal_result_survives_every_collection_phase() {
+    use std::{collections::BTreeMap, sync::Arc};
+    let mut a = Arena::default();
+    let x = a.fresh_choice().1;
+    let (yi, y) = a.fresh_choice();
+    let z = a.fresh_choice().1;
+    let xy = finish(&mut a, Operation::And(x, y));
+    let nz = finish(&mut a, Operation::And(x.not(), z));
+    let input = finish(&mut a, Operation::Or(xy, nz));
+    let mut job = a.restrict(input, Arc::new(BTreeMap::from([(yi, true)])));
+    for _ in 0..100 {
+        let mut gc = a.collect(traced_restriction(&job).into_iter());
+        while !gc.tick(&mut a) {}
+        drop(gc);
+        if let Progress::Complete(result) = job.tick(&mut a) {
+            let mut gc = a.collect(traced_restriction(&job).into_iter());
+            while !gc.tick(&mut a) {}
+            drop(gc);
+            for bits in 0..8 {
+                assert_eq!(a.evaluate(result, |i| bits & (1 << i) != 0), bits & 5 != 0);
+            }
+            assert_eq!(job.scratch_capacity(), 0);
+            return;
+        }
+    }
+    panic!("restriction did not finish");
+}

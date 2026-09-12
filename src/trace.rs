@@ -18,6 +18,7 @@ pub struct Cursor {
     pub slot: usize,
     pub key: Option<u64>,
     pub pair: Option<(Condition, Condition)>,
+    condition: Option<Condition>,
     child: Option<Box<Cursor>>,
 }
 impl Cursor {
@@ -27,6 +28,7 @@ impl Cursor {
         self.slot = 0;
         self.key = None;
         self.pair = None;
+        self.condition = None;
         self.child = None;
         Step::Pending
     }
@@ -63,6 +65,23 @@ impl Cursor {
                 self.pair = Some((a, b));
             }
             Step::Root(c)
+        } else {
+            self.advance()
+        }
+    }
+    pub fn substitutions(&mut self, map: &BTreeMap<Condition, Condition>) -> Step {
+        let next = match self.condition {
+            Some(key) => map.range((Excluded(key), Unbounded)).next(),
+            None => map.first_key_value(),
+        };
+        if let Some((&key, &value)) = next {
+            let root = if self.slot == 0 { key } else { value };
+            self.slot += 1;
+            if self.slot == 2 {
+                self.slot = 0;
+                self.condition = Some(key);
+            }
+            Step::Root(root)
         } else {
             self.advance()
         }
