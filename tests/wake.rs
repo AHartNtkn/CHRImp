@@ -70,7 +70,7 @@ fn run(
             let mut roots = Vec::new();
             let mut collector = g.collect(std::iter::once(wake.root()));
             while !collector.done() {
-                if let Some(c) = collector.tick() {
+                if let Some(c) = collector.tick(g) {
                     roots.push(c);
                 }
             }
@@ -80,7 +80,7 @@ fn run(
                     .chain(found.values().copied())
                     .chain(roots),
             );
-            while !collector.tick() {}
+            while !collector.tick(a) {}
         }
         match wake.tick(g, a) {
             WakeStatus::Found {

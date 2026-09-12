@@ -57,6 +57,7 @@ impl History {
         heads: Arc<Vec<u64>>,
         support: Condition,
     ) -> Root {
+        self.index.assert_mutable();
         assert!(self.contains(root), "stale or foreign history root");
         let key = Key { rule, heads };
         let id = match self.lookup.get(&key) {
@@ -95,16 +96,19 @@ impl History {
     }
     /// Include current, staged, and suspended entry-cursor roots. Feed emitted
     /// supports to condition collection along with other live condition roots.
-    pub fn collect<I: Iterator<Item = Root>>(&mut self, roots: I) -> Collector<'_, I> {
-        self.epoch = self
+    /// The nested index lease freezes writes until this token is dropped,
+    /// including during metadata sweep and after completion.
+    pub fn collect<I: Iterator<Item = Root>>(&mut self, roots: I) -> Collector<I> {
+        self.index.assert_mutable();
+        let epoch = self
             .epoch
             .checked_add(1)
             .expect("history collection epoch exhausted");
+        let index = self.index.collect(roots);
+        self.epoch = epoch;
         Collector {
-            index: self.index.collect(roots),
-            lookup: &mut self.lookup,
-            records: &mut self.records,
-            epoch: self.epoch,
+            index,
+            epoch,
             sweep: None,
             done: false,
         }
@@ -134,27 +138,28 @@ impl Entries {
     }
 }
 
-pub struct Collector<'a, I> {
-    index: store::Collector<'a, Condition, I>,
-    lookup: &'a mut BTreeMap<Key, u64>,
-    records: &'a mut BTreeMap<u64, Record>,
+pub struct Collector<I> {
+    index: store::Collector<I>,
     epoch: u64,
     sweep: Option<u64>,
     done: bool,
 }
-impl<I: Iterator<Item = Root>> Collector<'_, I> {
+impl<I: Iterator<Item = Root>> Collector<I> {
     pub fn done(&self) -> bool {
         self.done
     }
     /// Advance one store action or one metadata record. Tuple lookup/removal
     /// retains the normal comparison cost of that record's ordered heads.
-    pub fn tick(&mut self) -> Option<Condition> {
+    pub fn tick(&mut self, history: &mut History) -> Option<Condition> {
+        self.index.validate(&history.index);
+        assert_eq!(self.epoch, history.epoch, "stale history collector");
         if self.done {
             return None;
         }
         if !self.index.done() {
-            if let Some((key, support)) = self.index.tick() {
-                self.records
+            if let Some((key, support)) = self.index.tick(&mut history.index) {
+                history
+                    .records
                     .get_mut(&key[0])
                     .expect("live history metadata")
                     .marked = self.epoch;
@@ -162,13 +167,13 @@ impl<I: Iterator<Item = Root>> Collector<'_, I> {
             }
         } else {
             let next = match self.sweep {
-                Some(id) => self.records.range((Excluded(id), Unbounded)).next(),
-                None => self.records.first_key_value(),
+                Some(id) => history.records.range((Excluded(id), Unbounded)).next(),
+                None => history.records.first_key_value(),
             };
             if let Some((&id, record)) = next {
                 if record.marked != self.epoch {
-                    self.lookup.remove(&record.key);
-                    self.records.remove(&id);
+                    history.lookup.remove(&record.key);
+                    history.records.remove(&id);
                 }
                 self.sweep = Some(id);
             } else {

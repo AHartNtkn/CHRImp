@@ -181,13 +181,13 @@ fn staged_union_survives_graph_and_condition_collection_at_every_tick() {
         let mut gc = g.collect(job.roots().into_iter());
         let mut supports = vec![c, d];
         while !gc.done() {
-            if let Some(support) = gc.tick() {
+            if let Some(support) = gc.tick(&mut g) {
                 supports.push(support);
             }
         }
         drop(gc);
         let mut gc = a.collect(job.condition_roots().chain(supports));
-        while !gc.tick() {}
+        while !gc.tick(&mut a) {}
         drop(gc);
         if let Some(root) = job.tick(&mut g, &mut a) {
             break root;

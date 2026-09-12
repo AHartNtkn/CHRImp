@@ -45,7 +45,7 @@ fn enumerate(
             let mut supports = retained.to_vec();
             let mut gc = g.collect(std::iter::once(job.root()));
             while !gc.done() {
-                if let Some(c) = gc.tick() {
+                if let Some(c) = gc.tick(g) {
                     supports.push(c);
                 }
             }
@@ -55,7 +55,7 @@ fn enumerate(
                     .chain(found.values().copied())
                     .chain(supports),
             );
-            while !gc.tick() {}
+            while !gc.tick(a) {}
         }
         match job.tick(g, a) {
             ResolveStatus::Found { variable, support } => {

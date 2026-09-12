@@ -155,13 +155,13 @@ fn alias_sensitive_cross_predicate_join_retains_its_condition_through_collection
         let mut gc = g.collect([matches.root()].into_iter());
         let mut supports = vec![c];
         while !gc.done() {
-            if let Some(s) = gc.tick() {
+            if let Some(s) = gc.tick(&mut g) {
                 supports.push(s);
             }
         }
         drop(gc);
         let mut gc = a.collect(matches.condition_roots().chain(supports));
-        while !gc.tick() {}
+        while !gc.tick(&mut a) {}
         drop(gc);
         match matches.tick(&g, &mut a) {
             MatchStatus::Found(m) => found.push(m),

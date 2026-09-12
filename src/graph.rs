@@ -124,6 +124,7 @@ impl Graph {
         args: Vec<u64>,
         support: Condition,
     ) -> Result<Update, GraphError> {
+        self.index.assert_mutable();
         self.valid_root(root)?;
         let &arity = self
             .arities
@@ -157,6 +158,7 @@ impl Graph {
         id: u64,
         support: Condition,
     ) -> Result<Update, GraphError> {
+        self.index.assert_mutable();
         self.valid_root(root)?;
         if self.index.get(root, &[FACT, id, 0, 0]).is_none() {
             return Err(GraphError::MissingOccurrence);
@@ -259,15 +261,19 @@ impl Graph {
 
     /// Include current roots, staged updates and explicit inspections. Emit
     /// supports for the condition collector while marking payload ownership.
-    pub fn collect<I: Iterator<Item = Root>>(&mut self, roots: I) -> Collector<'_, I> {
-        self.epoch = self
+    /// The nested index lease freezes graph writes through metadata sweep and
+    /// is released only when this token is dropped (finished or aborted).
+    pub fn collect<I: Iterator<Item = Root>>(&mut self, roots: I) -> Collector<I> {
+        self.index.assert_mutable();
+        let epoch = self
             .epoch
             .checked_add(1)
             .expect("graph collection epoch exhausted");
+        let index = self.index.collect(roots);
+        self.epoch = epoch;
         Collector {
-            index: self.index.collect(roots),
-            rows: &mut self.rows,
-            epoch: self.epoch,
+            index,
+            epoch,
             sweep: None,
             done: false,
         }
@@ -318,6 +324,7 @@ impl Update {
         [self.base, self.staged]
     }
     pub fn tick(&mut self, graph: &mut Graph) -> UpdateStatus {
+        graph.index.assert_mutable();
         if self.position >= 2 + 2 * self.args.len() {
             return UpdateStatus::Complete(self.staged);
         }
@@ -341,25 +348,27 @@ impl Update {
     }
 }
 
-pub struct Collector<'a, I> {
-    index: store::Collector<'a, Condition, I>,
-    rows: &'a mut BTreeMap<u64, Row>,
+pub struct Collector<I> {
+    index: store::Collector<I>,
     epoch: u64,
     sweep: Option<u64>,
     done: bool,
 }
-impl<I: Iterator<Item = Root>> Collector<'_, I> {
+impl<I: Iterator<Item = Root>> Collector<I> {
     pub fn done(&self) -> bool {
         self.done
     }
-    pub fn tick(&mut self) -> Option<Condition> {
+    pub fn tick(&mut self, graph: &mut Graph) -> Option<Condition> {
+        self.index.validate(&graph.index);
+        assert_eq!(self.epoch, graph.epoch, "stale graph collector");
         if self.done {
             return None;
         }
         if !self.index.done() {
-            if let Some((key, support)) = self.index.tick() {
+            if let Some((key, support)) = self.index.tick(&mut graph.index) {
                 if key[0] == FACT {
-                    self.rows
+                    graph
+                        .rows
                         .get_mut(&key[1])
                         .expect("live occurrence payload")
                         .marked = self.epoch;
@@ -368,12 +377,12 @@ impl<I: Iterator<Item = Root>> Collector<'_, I> {
             }
         } else {
             let next = match self.sweep {
-                Some(id) => self.rows.range((Excluded(id), Unbounded)).next(),
-                None => self.rows.first_key_value(),
+                Some(id) => graph.rows.range((Excluded(id), Unbounded)).next(),
+                None => graph.rows.first_key_value(),
             };
             if let Some((&id, row)) = next {
                 if row.marked != self.epoch {
-                    self.rows.remove(&id);
+                    graph.rows.remove(&id);
                 }
                 self.sweep = Some(id);
             } else {

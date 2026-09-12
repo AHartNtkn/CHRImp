@@ -261,20 +261,20 @@ fn collection_at_every_commit_boundary_preserves_staged_updates_and_guards() {
             let mut conditions = commit.condition_roots().collect::<Vec<_>>();
             let mut gc = g.collect(commit.graph_roots());
             while !gc.done() {
-                if let Some(c) = gc.tick() {
+                if let Some(c) = gc.tick(&mut g) {
                     conditions.push(c);
                 }
             }
             drop(gc);
             let mut gc = h.collect(commit.history_roots().into_iter());
             while !gc.done() {
-                if let Some(c) = gc.tick() {
+                if let Some(c) = gc.tick(&mut h) {
                     conditions.push(c);
                 }
             }
             drop(gc);
             let mut gc = a.collect(conditions.into_iter());
-            while !gc.tick() {}
+            while !gc.tick(&mut a) {}
             drop(gc);
             assert_eq!(g.fact(s.graph, first).unwrap().support, Condition::TRUE);
             assert_eq!(

@@ -5,6 +5,7 @@ use crate::graph::{Graph, Update, UpdateStatus};
 use crate::history::History;
 use crate::identity::Merge;
 use crate::matching::{Match, MatchStatus, Matches};
+use crate::observe::{Observe, ObserveStatus, Output};
 use crate::program::{Instruction, Prepared};
 use crate::store::{Cursor, Root, Store};
 use crate::wake::{Wake, WakeStatus};
@@ -109,6 +110,7 @@ enum ReadyPhase {
 }
 struct Ready {
     cursor: Cursor,
+    pending_count: usize,
     blocked: Condition,
     scope: Condition,
     job: Option<Job>,
@@ -132,8 +134,11 @@ pub struct Engine {
     requested: BTreeSet<Owner>,
     pending: Store<Condition>,
     pending_root: Root,
+    pending_gc: Option<crate::store::Collector<std::array::IntoIter<Root, 2>>>,
+    pending_collections: u64,
     ready: Option<Ready>,
-    output: Option<Completion>,
+    output: Option<Output>,
+    observer: Option<Observe>,
     births: BTreeMap<u64, Birth>,
     applications: u64,
     ticks: u64,
@@ -155,6 +160,8 @@ impl Engine {
             state,
             pending,
             pending_root,
+            pending_gc: None,
+            pending_collections: 0,
             arena: Arena::default(),
             ids: FreshIds::default(),
             variables: Arc::new(vec![]),
@@ -167,6 +174,7 @@ impl Engine {
             requested: BTreeSet::new(),
             ready: None,
             output: None,
+            observer: None,
             births: BTreeMap::new(),
             applications: 0,
             ticks: 0,
@@ -201,11 +209,22 @@ impl Engine {
     pub fn exhausted(&self) -> bool {
         self.active == Condition::FALSE
     }
+    pub fn pending_index_nodes(&self) -> usize {
+        self.pending.node_count()
+    }
+    pub fn pending_collections(&self) -> u64 {
+        self.pending_collections
+    }
     pub fn pending_tasks(&self) -> usize {
         self.queue.len()
     }
-    pub fn take_completion(&mut self) -> Option<Completion> {
+    /// Output is a stream of owned scalar events; taking an event retains no
+    /// execution snapshot. The receiver builds or stores the requested graph.
+    pub fn take_output(&mut self) -> Option<Output> {
         self.output.take()
+    }
+    pub fn delivery_done(&self) -> bool {
+        self.exhausted() && self.observer.is_none() && self.output.is_none()
     }
     fn spawn(&mut self, scope: Condition, task: Task) {
         if scope == Condition::FALSE {
@@ -240,8 +259,10 @@ impl Engine {
     /// A budget counts finite continuation steps, not source answers. Zero is a no-op.
     pub fn advance(&mut self, budget: usize) {
         for _ in 0..budget {
-            if self.ticks.is_multiple_of(2) {
-                if let Some(mut task) = self.queue.pop_front() {
+            if self.ticks.is_multiple_of(3) {
+                if self.collect_pending() {
+                    // Index writes wait; completion reads and projection still run.
+                } else if let Some(mut task) = self.queue.pop_front() {
                     if self.task(&mut task) {
                         self.pending_root =
                             self.pending.remove(self.pending_root, &[task.id, 0, 0, 0]);
@@ -252,11 +273,41 @@ impl Engine {
                         self.queue.push_back(task);
                     }
                 }
-            } else {
+            } else if self.ticks % 3 == 1 {
                 self.completion();
+            } else {
+                self.observation();
             }
             self.ticks = self.ticks.wrapping_add(1);
         }
+    }
+    fn collect_pending(&mut self) -> bool {
+        if let Some(gc) = &mut self.pending_gc {
+            gc.tick(&mut self.pending);
+            if gc.done() {
+                self.pending_gc = None;
+                self.pending_collections += 1;
+            }
+            return true;
+        }
+        // Both current tasks and the completion snapshot are live roots. Their
+        // sizes scale the headroom, avoiding repeated scans of retained state.
+        let retained = self
+            .queue
+            .len()
+            .saturating_add(self.ready.as_ref().map_or(0, |r| r.pending_count));
+        if self.pending.node_count() > 1024usize.saturating_add(retained.saturating_mul(16)) {
+            let inspected = self
+                .ready
+                .as_ref()
+                .map_or(self.pending_root, |r| r.cursor.root());
+            self.pending_gc = Some(
+                self.pending
+                    .collect([self.pending_root, inspected].into_iter()),
+            );
+            return true;
+        }
+        false
     }
     fn task(&mut self, s: &mut Scheduled) -> bool {
         match &mut s.task {
@@ -559,6 +610,18 @@ impl Engine {
         }
         false
     }
+    fn observation(&mut self) {
+        if self.output.is_some() {
+            return;
+        }
+        if let Some(observer) = &mut self.observer {
+            match observer.tick(&self.graph, &mut self.arena, &self.births) {
+                ObserveStatus::Pending => {}
+                ObserveStatus::Event(event) => self.output = Some(event),
+                ObserveStatus::Done => self.observer = None,
+            }
+        }
+    }
     // A frozen pending root is a conservative completion certificate: every new
     // obligation is born within its parent's recorded scope, and parent removal
     // and child admission happen in one service step. Thus no descendant can
@@ -566,11 +629,15 @@ impl Engine {
     // scope. Checking current active scope in the mutation lane finishes the
     // certificate without invalidation by unrelated ongoing updates.
     fn completion(&mut self) {
-        if self.output.is_some() || (self.active == Condition::FALSE && self.ready.is_none()) {
+        if self.observer.is_some()
+            || self.output.is_some()
+            || (self.active == Condition::FALSE && self.ready.is_none())
+        {
             return;
         }
         let mut ready = self.ready.take().unwrap_or_else(|| Ready {
             cursor: self.pending.range(self.pending_root, [0; 4], [u64::MAX; 4]),
+            pending_count: self.queue.len(),
             blocked: Condition::FALSE,
             scope: self.active,
             job: None,
@@ -621,12 +688,16 @@ impl Engine {
             ReadyPhase::Publish => {
                 if let Some(c) = poll(&mut ready.job, &mut self.arena) {
                     self.active = c;
-                    self.output = Some(Completion {
-                        id: self.ids.event(),
-                        support: ready.scope,
-                        state: self.state,
-                        last_choice: self.births.last_key_value().map(|(&id, _)| id),
-                    });
+                    self.observer = Some(Observe::new(
+                        Completion {
+                            id: self.ids.event(),
+                            support: ready.scope,
+                            state: self.state,
+                            last_choice: self.births.last_key_value().map(|(&id, _)| id),
+                        },
+                        self.code.clone(),
+                        self.variables.clone(),
+                    ));
                     self.lane = None;
                     return;
                 }

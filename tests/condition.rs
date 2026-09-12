@@ -82,7 +82,7 @@ fn suspended_jobs_share_nodes_and_survive_collection() {
         .collect();
     let mut gc = a.collect(roots.into_iter());
     let mut ticks = 0;
-    while !gc.tick() {
+    while !gc.tick(&mut a) {
         ticks += 1;
         assert!(ticks < 10_000);
     }
@@ -117,7 +117,7 @@ fn reclamation_does_not_revive_retired_identities() {
             a.fresh_choice();
         }
         let mut gc = a.collect([keep].into_iter());
-        while !gc.tick() {}
+        while !gc.tick(&mut a) {}
         drop(gc);
         assert_eq!(a.node_count(), 1);
         assert!(a.contains(keep));
@@ -143,14 +143,14 @@ fn collection_preserves_complemented_descendants_and_drops_weak_cache() {
     let result = finish(&mut a, Operation::And(x.not(), y));
     assert!(a.cache_len() > 0);
     let mut gc = a.collect([result].into_iter());
-    while !gc.tick() {}
+    while !gc.tick(&mut a) {}
     drop(gc);
     assert_eq!(a.cache_len(), 0);
     for bits in 0..4 {
         assert_eq!(a.evaluate(result, |i| bits & (1 << i) != 0), bits == 2);
     }
     let mut gc = a.collect(std::iter::empty());
-    while !gc.tick() {}
+    while !gc.tick(&mut a) {}
     drop(gc);
     assert_eq!(a.node_count(), 0);
 }
@@ -224,7 +224,7 @@ fn deep_operations_and_collection_do_not_use_the_call_stack() {
     }
     assert_eq!(finish(&mut a, Operation::And(all, any)), all);
     let mut gc = a.collect([all, any].into_iter());
-    while !gc.tick() {}
+    while !gc.tick(&mut a) {}
     drop(gc);
     assert!(a.evaluate(all, |_| true));
     assert!(!a.evaluate(all, |i| i != 6_000));
@@ -253,7 +253,7 @@ fn compact_shared_suffixes_are_not_recomputed_after_cache_eviction() {
         formula = finish(&mut a, Operation::Or(low, high));
     }
     let mut gc = a.collect([formula, y].into_iter());
-    while !gc.tick() {}
+    while !gc.tick(&mut a) {}
     drop(gc);
     let bound = 32 * a.node_count() as u64;
     let mut job = a.start(Operation::And(formula, y));
@@ -263,7 +263,7 @@ fn compact_shared_suffixes_are_not_recomputed_after_cache_eviction() {
     // Completed subproblems must survive collection even after they leave the
     // active traversal path and the bounded shared cache has evicted them.
     let mut gc = a.collect(job.roots());
-    while !gc.tick() {}
+    while !gc.tick(&mut a) {}
     drop(gc);
     while job.result().is_none() && job.work() < bound {
         job.tick(&mut a);
@@ -295,11 +295,11 @@ fn an_empty_arena_does_not_keep_scanning_its_historical_peak() {
         a.fresh_choice();
     }
     let mut gc = a.collect(std::iter::empty());
-    while !gc.tick() {}
+    while !gc.tick(&mut a) {}
     drop(gc);
     let mut gc = a.collect(std::iter::empty());
     let mut work = 0;
-    while !gc.tick() {
+    while !gc.tick(&mut a) {
         work += 1;
     }
     drop(gc);
@@ -308,4 +308,51 @@ fn an_empty_arena_does_not_keep_scanning_its_historical_peak() {
         "empty arena still scanned historical slots: {work}"
     );
     assert_eq!(a.unique_capacity(), 0);
+}
+
+#[test]
+fn owned_collection_freezes_choices_and_jobs_until_dropped() {
+    use chr::condition::Collector;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    fn begin(arena: &mut Arena, roots: Vec<Condition>) -> Collector<std::vec::IntoIter<Condition>> {
+        arena.collect(roots.into_iter())
+    }
+    for cutoff in 0..48 {
+        let mut arena = Arena::default();
+        let x = arena.fresh_choice().1;
+        let y = arena.fresh_choice().1;
+        let mut job = arena.start(Operation::And(x, y));
+        let mut gc = begin(&mut arena, job.roots().collect());
+        let mut foreign = Arena::default();
+        assert!(catch_unwind(AssertUnwindSafe(|| gc.tick(&mut foreign))).is_err());
+        assert!(catch_unwind(AssertUnwindSafe(|| arena.collect([x].into_iter()))).is_err());
+        for _ in 0..cutoff {
+            gc.tick(&mut arena);
+        }
+        assert!(arena.evaluate(x, |_| true));
+        let nodes = arena.node_count();
+        assert!(catch_unwind(AssertUnwindSafe(|| arena.fresh_choice())).is_err());
+        assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut arena))).is_err());
+        assert_eq!((arena.node_count(), job.work()), (nodes, 0));
+        drop(gc);
+        assert_eq!(
+            arena.fresh_choice().0,
+            2,
+            "rejected writes cannot consume identities"
+        );
+        let result = loop {
+            if let Progress::Complete(c) = job.tick(&mut arena) {
+                break c;
+            }
+        };
+        let mut gc = begin(&mut arena, vec![result]);
+        while !gc.tick(&mut arena) {}
+        assert!(gc.tick(&mut arena));
+        assert!(catch_unwind(AssertUnwindSafe(|| gc.tick(&mut foreign))).is_err());
+        drop(gc);
+        for bits in 0..4 {
+            assert_eq!(arena.evaluate(result, |i| bits & (1 << i) != 0), bits == 3);
+        }
+    }
 }

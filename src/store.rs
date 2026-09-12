@@ -5,9 +5,11 @@
 //! Paths have at most 256 branches regardless of index size. Node ownership is
 //! explicit so releasing a snapshot never recursively destroys a large graph.
 
+use crate::gc::GcLease;
 use std::collections::BTreeMap;
 use std::ops::Bound::{Excluded, Unbounded};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 pub type Key = [u64; 4];
 static NEXT_STORE: AtomicU32 = AtomicU32::new(1);
@@ -42,6 +44,7 @@ pub struct Store<V> {
     next_node: u64,
     nodes: BTreeMap<u64, Record<V>>,
     epoch: u64,
+    frozen: Arc<AtomicBool>,
 }
 
 impl<V> Default for Store<V> {
@@ -53,6 +56,7 @@ impl<V> Default for Store<V> {
             next_node: 0,
             nodes: BTreeMap::new(),
             epoch: 0,
+            frozen: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -83,6 +87,10 @@ fn bounds(mut prefix: Key, bit: u8) -> (Key, Key) {
 }
 
 impl<V: Copy + Eq> Store<V> {
+    pub(crate) fn assert_mutable(&self) {
+        GcLease::assert_mutable(&self.frozen);
+    }
+
     pub fn empty(&self) -> Root {
         EMPTY
     }
@@ -126,6 +134,7 @@ impl<V: Copy + Eq> Store<V> {
     }
 
     pub fn insert(&mut self, root: Root, key: Key, value: V) -> Root {
+        self.assert_mutable();
         if root == EMPTY {
             return self.allocate(Node::Leaf { key, value });
         }
@@ -200,6 +209,7 @@ impl<V: Copy + Eq> Store<V> {
     }
 
     pub fn remove(&mut self, root: Root, key: &Key) -> Root {
+        self.assert_mutable();
         if root == EMPTY {
             return root;
         }
@@ -258,13 +268,18 @@ impl<V: Copy + Eq> Store<V> {
     /// Supply all current, staged and explicitly inspected roots. Cursor roots
     /// retain their whole coherent index version. Leaf events expose payloads
     /// so the graph owner can trace occurrence and condition dependencies.
-    pub fn collect<I: Iterator<Item = Root>>(&mut self, roots: I) -> Collector<'_, V, I> {
+    /// The owner remains read-only until the returned token is dropped, even
+    /// after completion. Dropping an unfinished token safely aborts collection.
+    pub fn collect<I: Iterator<Item = Root>>(&mut self, roots: I) -> Collector<I> {
+        let lease = GcLease::acquire(&self.frozen);
         self.epoch = self
             .epoch
             .checked_add(1)
             .expect("index collection epoch exhausted");
         Collector {
-            store: self,
+            owner: self.owner,
+            epoch: self.epoch,
+            _lease: lease,
             roots,
             pending: Vec::new(),
             sweep: None,
@@ -318,8 +333,10 @@ impl Cursor {
     }
 }
 
-pub struct Collector<'a, V, I> {
-    store: &'a mut Store<V>,
+pub struct Collector<I> {
+    owner: u32,
+    epoch: u64,
+    _lease: GcLease,
     roots: I,
     pending: Vec<Root>,
     sweep: Option<u64>,
@@ -327,27 +344,30 @@ pub struct Collector<'a, V, I> {
     done: bool,
 }
 
-impl<V: Copy + Eq, I: Iterator<Item = Root>> Collector<'_, V, I> {
+impl<I: Iterator<Item = Root>> Collector<I> {
+    pub(crate) fn validate<V: Copy + Eq>(&self, store: &Store<V>) {
+        assert_eq!(self.owner, store.owner, "foreign index collector");
+        assert_eq!(self.epoch, store.epoch, "stale index collector");
+    }
+
     pub fn done(&self) -> bool {
         self.done
     }
 
     /// Mark or reclaim one node. Each reachable physical leaf is reported once
     /// across all roots; map operations retain their usual size-dependent cost.
-    pub fn tick(&mut self) -> Option<(Key, V)> {
+    pub fn tick<V: Copy + Eq>(&mut self, store: &mut Store<V>) -> Option<(Key, V)> {
+        self.validate(store);
         if self.done {
             return None;
         }
         if self.marking {
             if let Some(root) = self.pending.pop().or_else(|| self.roots.next()) {
-                assert!(
-                    self.store.contains(root),
-                    "stale or foreign collection root"
-                );
+                assert!(store.contains(root), "stale or foreign collection root");
                 if root != EMPTY {
-                    let record = self.store.nodes.get_mut(&root.id).expect("live root");
-                    if record.marked != self.store.epoch {
-                        record.marked = self.store.epoch;
+                    let record = store.nodes.get_mut(&root.id).expect("live root");
+                    if record.marked != self.epoch {
+                        record.marked = self.epoch;
                         match record.node {
                             Node::Leaf { key, value } => return Some((key, value)),
                             Node::Branch { left, right, .. } => self.pending.extend([right, left]),
@@ -359,12 +379,12 @@ impl<V: Copy + Eq, I: Iterator<Item = Root>> Collector<'_, V, I> {
             }
         } else {
             let next = match self.sweep {
-                Some(id) => self.store.nodes.range((Excluded(id), Unbounded)).next(),
-                None => self.store.nodes.first_key_value(),
+                Some(id) => store.nodes.range((Excluded(id), Unbounded)).next(),
+                None => store.nodes.first_key_value(),
             };
             if let Some((&id, record)) = next {
-                if record.marked != self.store.epoch {
-                    self.store.nodes.remove(&id);
+                if record.marked != self.epoch {
+                    store.nodes.remove(&id);
                 }
                 self.sweep = Some(id);
             } else {

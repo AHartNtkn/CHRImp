@@ -92,7 +92,7 @@ fn collection_preserves_snapshot_and_cursor_roots_and_reclaims_dead_versions() {
     let mut gc = store.collect([root, cursor.root()].into_iter());
     let mut values = Vec::new();
     while !gc.done() {
-        if let Some(pair) = gc.tick() {
+        if let Some(pair) = gc.tick(&mut store) {
             values.push(pair);
         }
     }
@@ -108,7 +108,7 @@ fn collection_preserves_snapshot_and_cursor_roots_and_reclaims_dead_versions() {
     );
     let mut gc = store.collect(std::iter::empty());
     while !gc.done() {
-        gc.tick();
+        gc.tick(&mut store);
     }
     drop(gc);
     assert_eq!(store.node_count(), 0);
@@ -166,4 +166,45 @@ fn a_maximal_key_path_remains_bounded_under_update_and_deletion() {
         count += 1;
     }
     assert_eq!(count, 256);
+}
+
+#[test]
+fn owned_collection_freezes_mutators_and_drop_releases_the_owner() {
+    use chr::store::{Collector, Root};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    fn begin(store: &mut Store<u64>, root: Root) -> Collector<std::array::IntoIter<Root, 1>> {
+        store.collect([root].into_iter())
+    }
+    for cutoff in 0..32 {
+        let mut store = Store::default();
+        let root = store.insert(store.empty(), key(1), 10);
+        store.insert(root, key(2), 20);
+        let mut gc = begin(&mut store, root);
+        let mut foreign = Store::<u64>::default();
+        assert!(catch_unwind(AssertUnwindSafe(|| gc.tick(&mut foreign))).is_err());
+        assert!(catch_unwind(AssertUnwindSafe(|| store.collect([root].into_iter()))).is_err());
+        for _ in 0..cutoff {
+            gc.tick(&mut store);
+        }
+        assert_eq!(store.get(root, &key(1)), Some(10));
+        let nodes = store.node_count();
+        assert!(catch_unwind(AssertUnwindSafe(|| store.insert(root, key(3), 30))).is_err());
+        assert!(catch_unwind(AssertUnwindSafe(|| store.remove(root, &key(1)))).is_err());
+        assert_eq!(store.node_count(), nodes);
+        drop(gc);
+        let updated = store.insert(root, key(3), 30);
+        let mut gc = begin(&mut store, updated);
+        let mut values = Vec::new();
+        while !gc.done() {
+            if let Some(pair) = gc.tick(&mut store) {
+                values.push(pair);
+            }
+        }
+        assert_eq!(gc.tick(&mut store), None);
+        assert!(catch_unwind(AssertUnwindSafe(|| gc.tick(&mut foreign))).is_err());
+        drop(gc);
+        values.sort_unstable();
+        assert_eq!(values, [(key(1), 10), (key(3), 30)]);
+    }
 }

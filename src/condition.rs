@@ -6,9 +6,11 @@
 //! Conditions denote sets; causal choice births and answer multiplicity belong
 //! to the executor, never to Boolean simplification.
 
+use crate::gc::GcLease;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ops::Bound::{Excluded, Unbounded};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 static NEXT_ARENA: AtomicU32 = AtomicU32::new(1);
 const CACHE_LIMIT: usize = 1024;
@@ -77,6 +79,7 @@ pub struct Arena {
     cache_order: VecDeque<Pair>,
     next_choice: u64,
     epoch: u64,
+    frozen: Arc<AtomicBool>,
 }
 
 impl Default for Arena {
@@ -92,12 +95,14 @@ impl Default for Arena {
             cache_order: VecDeque::new(),
             next_choice: 0,
             epoch: 0,
+            frozen: Arc::new(AtomicBool::new(false)),
         }
     }
 }
 
 impl Arena {
     pub fn fresh_choice(&mut self) -> (u64, Condition) {
+        GcLease::assert_mutable(&self.frozen);
         let choice = self.next_choice;
         self.next_choice = choice.checked_add(1).expect("choice identity exhausted");
         (choice, self.node(choice, Condition::FALSE, Condition::TRUE))
@@ -225,14 +230,18 @@ impl Arena {
     /// Stop-the-mutator collection, resumable between structural actions. The
     /// caller supplies every semantic root, including `Job::roots()` for all
     /// suspended jobs. Unique tables and operation caches are deliberately weak.
-    /// Borrowing the arena prevents writes while roots are marked and swept.
-    pub fn collect<I: Iterator<Item = Condition>>(&mut self, roots: I) -> Collector<'_, I> {
+    /// The arena remains read-only until the owned collector is dropped,
+    /// including after completion. Dropping it early aborts collection.
+    pub fn collect<I: Iterator<Item = Condition>>(&mut self, roots: I) -> Collector<I> {
+        let lease = GcLease::acquire(&self.frozen);
         self.epoch = self
             .epoch
             .checked_add(1)
             .expect("collection epoch exhausted");
         Collector {
-            arena: self,
+            owner: self.owner,
+            epoch: self.epoch,
+            _lease: lease,
             roots,
             pending: Vec::new(),
             phase: Phase::Cache,
@@ -345,6 +354,7 @@ impl Job {
 
     pub fn tick(&mut self, arena: &mut Arena) -> Progress {
         assert_eq!(self.owner, arena.owner, "foreign condition job");
+        GcLease::assert_mutable(&arena.frozen);
         if let Some(result) = self.result() {
             return Progress::Complete(result);
         }
@@ -424,8 +434,10 @@ enum Phase {
     Done,
 }
 
-pub struct Collector<'a, I> {
-    arena: &'a mut Arena,
+pub struct Collector<I> {
+    owner: u32,
+    epoch: u64,
+    _lease: GcLease,
     roots: I,
     pending: Vec<Condition>,
     phase: Phase,
@@ -433,28 +445,27 @@ pub struct Collector<'a, I> {
     unique: HashMap<NodeKey, Condition>,
 }
 
-impl<I: Iterator<Item = Condition>> Collector<'_, I> {
+impl<I: Iterator<Item = Condition>> Collector<I> {
     /// Returns true when finished. Each call removes at most one weak cache
     /// entry, marks one node/reads one root, or sweeps one allocated node.
-    pub fn tick(&mut self) -> bool {
+    pub fn tick(&mut self, arena: &mut Arena) -> bool {
+        assert_eq!(self.owner, arena.owner, "foreign condition collector");
+        assert_eq!(self.epoch, arena.epoch, "stale condition collector");
         match self.phase {
             Phase::Cache => {
-                if let Some(pair) = self.arena.cache_order.pop_front() {
-                    self.arena.cache.remove(&pair);
+                if let Some(pair) = arena.cache_order.pop_front() {
+                    arena.cache.remove(&pair);
                 } else {
                     self.phase = Phase::Mark;
                 }
             }
             Phase::Mark => {
                 if let Some(root) = self.pending.pop().or_else(|| self.roots.next()) {
-                    assert!(
-                        self.arena.contains(root),
-                        "stale or foreign collection root"
-                    );
+                    assert!(arena.contains(root), "stale or foreign collection root");
                     if !root.is_terminal() {
-                        let node = self.arena.nodes.get_mut(&root.id).expect("live root");
-                        if node.marked != self.arena.epoch {
-                            node.marked = self.arena.epoch;
+                        let node = arena.nodes.get_mut(&root.id).expect("live root");
+                        if node.marked != self.epoch {
+                            node.marked = self.epoch;
                             self.pending.extend([node.key.low, node.key.high]);
                         }
                     }
@@ -464,19 +475,19 @@ impl<I: Iterator<Item = Condition>> Collector<'_, I> {
             }
             Phase::Sweep => {
                 let next = match self.sweep {
-                    Some(id) => self.arena.nodes.range((Excluded(id), Unbounded)).next(),
-                    None => self.arena.nodes.first_key_value(),
+                    Some(id) => arena.nodes.range((Excluded(id), Unbounded)).next(),
+                    None => arena.nodes.first_key_value(),
                 };
                 if let Some((&id, node)) = next {
                     let key = node.key;
-                    if node.marked != self.arena.epoch {
-                        self.arena.nodes.remove(&id);
-                        self.arena.unique.remove(&key);
+                    if node.marked != self.epoch {
+                        arena.nodes.remove(&id);
+                        arena.unique.remove(&key);
                     } else {
                         self.unique.insert(
                             key,
                             Condition {
-                                owner: self.arena.owner,
+                                owner: self.owner,
                                 id,
                                 negative: false,
                             },
@@ -486,7 +497,7 @@ impl<I: Iterator<Item = Condition>> Collector<'_, I> {
                 } else {
                     // Rebuilding incrementally releases peak hash-table storage.
                     // The old table remains valid if a collector is dropped early.
-                    self.arena.unique = std::mem::take(&mut self.unique);
+                    arena.unique = std::mem::take(&mut self.unique);
                     self.phase = Phase::Done;
                 }
             }
