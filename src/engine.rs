@@ -378,8 +378,9 @@ impl Engine {
                 }
             }
             Task::Body(b) => {
+                let previous = self.obligation_parts(b);
                 let done = self.body_tick(s.id, b);
-                if !done {
+                if !done && self.obligation_parts(b) != previous {
                     self.sync_obligation(s.id, b);
                 }
                 done

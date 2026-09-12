@@ -392,7 +392,7 @@ impl Engine {
         };
         Pending { scope, body }
     }
-    fn obligation_parts(&self, body: &Body) -> [Option<Obligation>; 2] {
+    pub(super) fn obligation_parts(&self, body: &Body) -> [Option<Obligation>; 2] {
         if body.scope == Condition::FALSE {
             return [None; 2];
         }
