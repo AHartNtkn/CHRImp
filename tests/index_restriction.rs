@@ -1,5 +1,5 @@
 use chr::condition::{Arena, Condition, Operation, Progress};
-use chr::store::{Restriction, Root, Store};
+use chr::store::{Root, Store, Substitution};
 use chr::trace::{Cursor, Step, Trace};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ fn boolean(a: &mut Arena, op: Operation) -> Condition {
     }
 }
 
-fn collect(store: &mut Store<Condition>, a: &mut Arena, job: &Restriction, extra: &[Root]) {
+fn collect(store: &mut Store<Condition>, a: &mut Arena, job: &Substitution, extra: &[Root]) {
     let mut roots = vec![];
     let mut cursor = Cursor::default();
     loop {
@@ -64,7 +64,7 @@ fn graph_namespaces_cofactor_preserves_old_snapshot_and_sharing() {
     }
     drop(gc);
     let before = store.node_count();
-    let mut job = store.restrict(root, Arc::new(BTreeMap::from([(xid, true)])));
+    let mut job = store.substitute(root, Arc::new(BTreeMap::from([(xid, Condition::TRUE)])));
     let result = (0..10000)
         .find_map(|_| job.tick(&mut store, &mut a))
         .unwrap();
@@ -90,8 +90,8 @@ fn no_op_reuses_the_exact_root_without_allocating() {
         root = store.insert(root, [0, i, 0, 0], y);
     }
     let before = (store.node_count(), a.node_count());
-    for bindings in [BTreeMap::new(), BTreeMap::from([(xid, true)])] {
-        let mut job = store.restrict(root, Arc::new(bindings));
+    for bindings in [BTreeMap::new(), BTreeMap::from([(xid, Condition::TRUE)])] {
+        let mut job = store.substitute(root, Arc::new(bindings));
         assert_eq!(
             (0..10000).find_map(|_| job.tick(&mut store, &mut a)),
             Some(root)
@@ -126,7 +126,7 @@ fn broad_rewrite_allocates_at_most_one_node_per_original_node() {
     }
     drop(gc);
     let old_nodes = store.node_count();
-    let mut job = store.restrict(root, Arc::new(BTreeMap::from([(xid, true)])));
+    let mut job = store.substitute(root, Arc::new(BTreeMap::from([(xid, Condition::TRUE)])));
     let result = (0..50000)
         .find_map(|_| job.tick(&mut store, &mut a))
         .expect("finite broad rewrite");
@@ -152,7 +152,7 @@ fn newly_built_conditions_and_staged_subtrees_survive_every_tick_gc() {
     for i in 0..16 {
         root = store.insert(root, [i, u64::MAX, 0, i], input);
     }
-    let mut job = store.restrict(root, Arc::new(BTreeMap::from([(yid, true)])));
+    let mut job = store.substitute(root, Arc::new(BTreeMap::from([(yid, Condition::TRUE)])));
     let mut result = None;
     for _ in 0..10000 {
         collect(&mut store, &mut a, &job, &[]);
@@ -162,7 +162,7 @@ fn newly_built_conditions_and_staged_subtrees_survive_every_tick_gc() {
         }
     }
     collect(&mut store, &mut a, &job, &[]);
-    let result = result.expect("finite index restriction");
+    let result = result.expect("finite index substitution");
     for i in 0..16 {
         let value = store.get(result, &[i, u64::MAX, 0, i]).unwrap();
         for bits in 0..8 {
@@ -180,7 +180,7 @@ fn false_leaves_are_removed_and_last_assignment_owner_is_drained() {
     for i in 0..64 {
         root = store.insert(root, [0, i, 0, 0], x);
     }
-    let mut job = store.restrict(root, Arc::new(BTreeMap::from([(id, false)])));
+    let mut job = store.substitute(root, Arc::new(BTreeMap::from([(id, Condition::FALSE)])));
     assert_eq!(
         (0..10000).find_map(|_| job.tick(&mut store, &mut a)),
         Some(store.empty())
@@ -191,11 +191,11 @@ fn false_leaves_are_removed_and_last_assignment_owner_is_drained() {
     let size = 4096;
     let bindings = Arc::new(
         (0..size)
-            .map(|_| (a.fresh_choice().0, true))
+            .map(|_| (a.fresh_choice().0, Condition::TRUE))
             .collect::<BTreeMap<_, _>>(),
     );
-    let mut sole = store.restrict(store.empty(), bindings.clone());
-    let mut shared = store.restrict(store.empty(), bindings);
+    let mut sole = store.substitute(store.empty(), bindings.clone());
+    let mut shared = store.substitute(store.empty(), bindings);
     assert!(!shared.discard_tick());
     assert!(shared.discard_tick());
     assert!(!sole.discard_tick());
@@ -204,8 +204,12 @@ fn false_leaves_are_removed_and_last_assignment_owner_is_drained() {
     }
     assert!(sole.discard_tick());
 
-    let bindings = Arc::new((1..=size).map(|i| (i, true)).collect::<BTreeMap<_, _>>());
-    let mut completion = store.restrict(store.empty(), bindings);
+    let bindings = Arc::new(
+        (1..=size)
+            .map(|i| (i, Condition::TRUE))
+            .collect::<BTreeMap<_, _>>(),
+    );
+    let mut completion = store.substitute(store.empty(), bindings);
     let mut ticks = 0;
     loop {
         ticks += 1;
@@ -222,7 +226,7 @@ fn false_leaves_are_removed_and_last_assignment_owner_is_drained() {
 }
 
 #[test]
-fn discard_nested_restrictions_is_traceable_without_finishing_the_index() {
+fn discard_nested_substitutions_is_traceable_without_finishing_the_index() {
     use std::panic::{AssertUnwindSafe, catch_unwind};
     for cancel_at in [0, 1, 3, 8, 20, 45, 80] {
         let mut a = Arena::default();
@@ -237,7 +241,7 @@ fn discard_nested_restrictions_is_traceable_without_finishing_the_index() {
         for i in 0..32 {
             root = store.insert(root, [0, i, 0, 0], value);
         }
-        let mut job = store.restrict(root, Arc::new(BTreeMap::from([(yid, true)])));
+        let mut job = store.substitute(root, Arc::new(BTreeMap::from([(yid, Condition::TRUE)])));
         for _ in 0..cancel_at {
             collect(&mut store, &mut a, &job, &[]);
             assert_eq!(job.tick(&mut store, &mut a), None);
@@ -270,7 +274,7 @@ fn owner_and_freeze_checks_precede_any_store_or_arena_mutation() {
     let (choice, x) = a.fresh_choice();
     let mut store = Store::default();
     let root = store.insert(store.empty(), [0; 4], x);
-    let mut job = store.restrict(root, Arc::new(BTreeMap::from([(choice, true)])));
+    let mut job = store.substitute(root, Arc::new(BTreeMap::from([(choice, Condition::TRUE)])));
     let mut other_store = Store::default();
     assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut other_store, &mut a))).is_err());
     assert_eq!(other_store.node_count(), 0);
@@ -288,8 +292,44 @@ fn owner_and_freeze_checks_precede_any_store_or_arena_mutation() {
     );
     let result = (0..100).find_map(|_| job.tick(&mut store, &mut a)).unwrap();
     assert_eq!(store.get(result, &[0; 4]), Some(Condition::TRUE));
-    let mut invalid = store.restrict(result, Arc::new(BTreeMap::from([(choice + 1, true)])));
+    let mut invalid = store.substitute(
+        result,
+        Arc::new(BTreeMap::from([(choice + 1, Condition::TRUE)])),
+    );
     let before = store.node_count();
     assert!(catch_unwind(AssertUnwindSafe(|| invalid.tick(&mut store, &mut a))).is_err());
     assert_eq!(store.node_count(), before);
+}
+
+#[test]
+fn functional_images_survive_gc_before_first_leaf_and_while_draining() {
+    let mut arena = Arena::default();
+    let (_, y) = arena.fresh_choice();
+    let (_, z) = arena.fresh_choice();
+    let (xid, x) = arena.fresh_choice();
+    let image = boolean(&mut arena, Operation::Or(y, z));
+    let mut store = Store::default();
+    let root = store.insert(store.empty(), [0; 4], x);
+    let mut job = store.substitute(root, Arc::new(BTreeMap::from([(xid, image)])));
+    let result = (0..10000)
+        .find_map(|_| {
+            collect(&mut store, &mut arena, &job, &[]);
+            assert!(
+                arena.contains(image),
+                "image must survive before a leaf transform exists"
+            );
+            job.tick(&mut store, &mut arena)
+        })
+        .expect("finite functional substitution");
+    assert_eq!(store.get(result, &[0; 4]), Some(image));
+    collect(&mut store, &mut arena, &job, &[]);
+    assert_eq!(store.get(result, &[0; 4]), Some(image));
+
+    let mut discarded = store.substitute(store.empty(), Arc::new(BTreeMap::from([(xid, image)])));
+    assert!(!discarded.discard_tick());
+    collect(&mut store, &mut arena, &discarded, &[]);
+    assert!(arena.contains(image), "sole-owned draining map is a root");
+    assert!(discarded.discard_tick());
+    collect(&mut store, &mut arena, &discarded, &[]);
+    assert!(!arena.contains(image));
 }

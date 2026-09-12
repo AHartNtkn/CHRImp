@@ -98,8 +98,12 @@ impl Obligations {
     }
     /// Restrict a frozen pending version. The caller owns publication and must
     /// finish the job under the frozen maintenance lane before physical GC.
-    pub fn restrict(&self, root: Root, assignments: Arc<BTreeMap<u64, bool>>) -> Restriction {
-        Restriction {
+    pub fn substitute(
+        &self,
+        root: Root,
+        assignments: Arc<BTreeMap<u64, Condition>>,
+    ) -> Substitution {
+        Substitution {
             input: root,
             filter: self.index.filter(root),
             assignments: Some(assignments),
@@ -125,19 +129,19 @@ impl Obligations {
 }
 /// A staged cofactor of certificate and syntax supports. Changed descriptors
 /// get fresh identities; input versions remain immutable even in this epoch.
-pub(super) struct Restriction {
+pub(super) struct Substitution {
     input: Root,
     filter: crate::store::Filter<Pending>,
-    assignments: Option<Arc<BTreeMap<u64, bool>>>,
-    draining: BTreeMap<u64, bool>,
-    condition: Option<crate::condition::Restriction>,
+    assignments: Option<Arc<BTreeMap<u64, Condition>>>,
+    draining: BTreeMap<u64, Condition>,
+    condition: Option<crate::condition::Transform>,
     pending: Option<Pending>,
     parts: [Option<Obligation>; 2],
     // Zero is the leaf scope; 1..=4 are the two part scope/guard pairs.
     field: usize,
     result: Option<Root>,
 }
-impl Restriction {
+impl Substitution {
     #[cfg(test)]
     fn roots(&self) -> impl Iterator<Item = Root> + '_ {
         std::iter::once(self.input).chain(self.filter.roots())
@@ -158,7 +162,7 @@ impl Restriction {
         store.index.assert_mutable();
         assert!(
             store.index.contains(self.input),
-            "stale or foreign pending restriction root"
+            "stale or foreign pending substitution root"
         );
         if let Some(root) = self.result {
             return self.cleanup_tick().then_some(root);
@@ -166,7 +170,7 @@ impl Restriction {
         if let Some(condition) = &mut self.condition {
             if let Progress::Complete(scope) = condition.tick(arena) {
                 if self.field == 0 {
-                    let pending = self.pending.as_mut().expect("restricted pending leaf");
+                    let pending = self.pending.as_mut().expect("substituted pending leaf");
                     pending.scope = scope;
                     if scope != Condition::FALSE
                         && let Some(id) = pending.body
@@ -179,7 +183,7 @@ impl Restriction {
                 } else {
                     let part = self.parts[(self.field - 1) / 2]
                         .as_mut()
-                        .expect("restricted part");
+                        .expect("substituted part");
                     if self.field % 2 == 1 {
                         part.scope = scope;
                     } else {
@@ -220,11 +224,11 @@ impl Restriction {
                     part.guard
                 };
                 self.condition = Some(
-                    arena.restrict(
+                    arena.substitute(
                         scope,
                         self.assignments
                             .as_ref()
-                            .expect("restriction assignments")
+                            .expect("substitution assignments")
                             .clone(),
                     ),
                 );
@@ -238,11 +242,11 @@ impl Restriction {
                     self.pending = Some(value);
                     self.field = 0;
                     self.condition = Some(
-                        arena.restrict(
+                        arena.substitute(
                             value.scope,
                             self.assignments
                                 .as_ref()
-                                .expect("restriction assignments")
+                                .expect("substitution assignments")
                                 .clone(),
                         ),
                     );
@@ -254,7 +258,7 @@ impl Restriction {
     }
 }
 
-impl Trace for Restriction {
+impl Trace for Substitution {
     fn trace(&self, cursor: &mut TraceCursor) -> Step {
         match cursor.phase {
             0 => cursor.fields(&[
@@ -270,6 +274,11 @@ impl Trace for Restriction {
                 self.parts[1].map_or(Condition::FALSE, |part| part.guard),
             ]),
             1 => cursor.optional(self.condition.as_ref()),
+            2 => match &self.assignments {
+                Some(images) => cursor.values(images),
+                None => cursor.advance(),
+            },
+            3 => cursor.values(&self.draining),
             _ => Step::Done,
         }
     }
@@ -880,7 +889,7 @@ mod tests {
             }
         }
     }
-    fn collect_restriction(store: &mut Obligations, arena: &mut Arena, job: &Restriction) {
+    fn collect_substitution(store: &mut Obligations, arena: &mut Arena, job: &Substitution) {
         let mut conditions = vec![];
         let mut cursor = TraceCursor::default();
         loop {
@@ -901,7 +910,7 @@ mod tests {
         while !gc.tick(arena) {}
     }
     #[test]
-    fn pending_restriction_preserves_old_roots_and_descriptors_through_every_gc_phase() {
+    fn pending_substitution_preserves_old_roots_and_descriptors_through_every_gc_phase() {
         let mut arena = Arena::default();
         let (_, x) = arena.fresh_choice();
         let (yi, y) = arena.fresh_choice();
@@ -957,12 +966,12 @@ mod tests {
             root = store.index.insert(root, [i as u64, 0, 0, 0], value);
         }
         let epoch = store.capture_epoch;
-        let mut job = store.restrict(root, Arc::new(BTreeMap::from([(yi, true)])));
+        let mut job = store.substitute(root, Arc::new(BTreeMap::from([(yi, Condition::TRUE)])));
         let result = (0..10000)
             .find_map(|_| {
-                collect_restriction(&mut store, &mut arena, &job);
+                collect_substitution(&mut store, &mut arena, &job);
                 let result = job.tick(&mut store, &mut arena);
-                collect_restriction(&mut store, &mut arena, &job);
+                collect_substitution(&mut store, &mut arena, &job);
                 result
             })
             .expect("finite cofactor");
@@ -1012,7 +1021,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_restriction_reuses_unaffected_root() {
+    fn pending_substitution_reuses_unaffected_root() {
         let mut store = Obligations::default();
         let mut arena = Arena::default();
         let (_, scope) = arena.fresh_choice();
@@ -1020,7 +1029,7 @@ mod tests {
             .index
             .insert(store.empty(), [0; 4], Pending { scope, body: None });
         let before = store.index.node_count();
-        let mut job = store.restrict(root, Arc::new(BTreeMap::new()));
+        let mut job = store.substitute(root, Arc::new(BTreeMap::new()));
         let result = (0..100)
             .find_map(|_| job.tick(&mut store, &mut arena))
             .unwrap();
@@ -1029,7 +1038,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_restriction_projects_current_and_historical_alternatives() {
+    fn pending_substitution_projects_current_and_historical_alternatives() {
         let code = crate::program::prepare(
             &crate::syntax::parse_program("").unwrap(),
             &crate::syntax::parse_query("left(A),right(A)").unwrap(),
@@ -1050,7 +1059,7 @@ mod tests {
         assert_eq!(posts.len(), 2);
         let mut arena = Arena::default();
         let (choice, guard) = arena.fresh_choice();
-        let bindings = Arc::new(BTreeMap::from([(choice, true)]));
+        let bindings = Arc::new(BTreeMap::from([(choice, Condition::TRUE)]));
         let mut graph = Graph::new(&code.signatures);
         let mut post = graph
             .post(graph.empty(), posts[0].1, vec![7], guard)
@@ -1061,7 +1070,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let mut graph_job = graph.index.restrict(old_graph, bindings.clone());
+        let mut graph_job = graph.index.substitute(old_graph, bindings.clone());
         let new_graph = (0..1000)
             .find_map(|_| graph_job.tick(&mut graph.index, &mut arena))
             .unwrap();
@@ -1093,16 +1102,16 @@ mod tests {
                 body,
             },
         );
-        let mut job = store.restrict(old, bindings);
+        let mut job = store.substitute(old, bindings);
         let current = (0..1000)
             .find_map(|_| job.tick(&mut store, &mut arena))
             .unwrap();
-        let reverse_bindings = Arc::new(BTreeMap::from([(choice, false)]));
-        let mut reverse_graph_job = graph.index.restrict(old_graph, reverse_bindings.clone());
+        let reverse_bindings = Arc::new(BTreeMap::from([(choice, Condition::FALSE)]));
+        let mut reverse_graph_job = graph.index.substitute(old_graph, reverse_bindings.clone());
         let reverse_graph = (0..1000)
             .find_map(|_| reverse_graph_job.tick(&mut graph.index, &mut arena))
             .unwrap();
-        let mut reverse_job = store.restrict(old, reverse_bindings);
+        let mut reverse_job = store.substitute(old, reverse_bindings);
         let reverse = (0..1000)
             .find_map(|_| reverse_job.tick(&mut store, &mut arena))
             .unwrap();
@@ -1146,13 +1155,13 @@ mod tests {
     }
 
     #[test]
-    fn pending_restriction_drains_last_assignment_owner_incrementally() {
+    fn pending_substitution_drains_last_assignment_owner_incrementally() {
         let mut arena = Arena::default();
         let assignments = Arc::new(
             (0..2048)
                 .map(|_| {
                     let (id, _) = arena.fresh_choice();
-                    (id, true)
+                    (id, Condition::TRUE)
                 })
                 .collect(),
         );
@@ -1165,7 +1174,7 @@ mod tests {
                 body: None,
             },
         );
-        let mut job = store.restrict(root, assignments);
+        let mut job = store.substitute(root, assignments);
         for _ in 0..2048 {
             assert!(job.tick(&mut store, &mut arena).is_none());
         }
@@ -1173,5 +1182,44 @@ mod tests {
             (0..100).find_map(|_| job.tick(&mut store, &mut arena)),
             Some(root)
         );
+    }
+    #[test]
+    fn functional_substitution_preserves_historical_descriptor_and_image_roots() {
+        let mut arena = Arena::default();
+        let (_, y) = arena.fresh_choice();
+        let (_, z) = arena.fresh_choice();
+        let (xi, x) = arena.fresh_choice();
+        let image = boolean(&mut arena, Operation::Or(y, z));
+        let mut store = Obligations::default();
+        let parts = [
+            Some(Obligation {
+                event: 0,
+                instruction: 0,
+                start: 0,
+                scope: x,
+                guard: x.not(),
+            }),
+            None,
+        ];
+        let body = store.update_descriptor(None, parts, &Arc::new(vec![7]));
+        let old = store
+            .index
+            .insert(store.empty(), [0; 4], Pending { scope: x, body });
+        let mut job = store.substitute(old, Arc::new(BTreeMap::from([(xi, image)])));
+        let current = (0..10000)
+            .find_map(|_| {
+                collect_substitution(&mut store, &mut arena, &job);
+                assert!(arena.contains(image));
+                job.tick(&mut store, &mut arena)
+            })
+            .expect("functional pending substitution");
+        let leaf = store.index.get(current, &[0; 4]).unwrap();
+        assert_eq!(leaf.scope, image);
+        assert_ne!(leaf.body, body);
+        let part = store.descriptors[&leaf.body.unwrap()].parts[0].unwrap();
+        assert_eq!(part.scope, image);
+        assert_eq!(part.guard, image.not());
+        assert!(store.descriptors[&body.unwrap()].parts == parts);
+        assert_eq!(store.index.get(old, &[0; 4]).unwrap().scope, x);
     }
 }

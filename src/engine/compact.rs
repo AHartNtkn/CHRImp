@@ -1,7 +1,7 @@
-//! Forget coordinates with one surviving arm wherever their birth occurs. The mutation
+//! Forget coordinates determined by older surviving choices wherever their birth occurs. The mutation
 //! lane freezes publication while each supported index is rebuilt persistently.
 use super::*;
-use crate::condition::Restriction;
+use crate::condition::Transform;
 use std::ops::Bound::{Excluded, Unbounded};
 
 #[derive(Clone, Copy)]
@@ -14,6 +14,9 @@ enum Phase {
     Born,
     Positive,
     Negative,
+    ProjectPositive,
+    ProjectNegative,
+    Disjoint,
     Reduce,
     Graph,
     History,
@@ -28,14 +31,15 @@ pub(super) struct Compact {
     pin: Option<u64>,
     after: Option<u64>,
     choice: u64,
-    positive: bool,
-    bindings: Arc<BTreeMap<u64, bool>>,
+    image: Condition,
+    positive_scope: Condition,
+    bindings: Arc<BTreeMap<u64, Condition>>,
     active: Condition,
     born: Condition,
     boolean: Option<Job>,
-    restriction: Option<Restriction>,
-    index: Option<crate::store::Restriction>,
-    pending: Option<obligations::Restriction>,
+    transform: Option<Transform>,
+    index: Option<crate::store::Substitution>,
+    pending: Option<obligations::Substitution>,
     state: StateRoot,
     pending_root: Root,
     task: usize,
@@ -52,12 +56,13 @@ impl Compact {
                 .max(e.step_coordinate_cutoff()),
             after: None,
             choice: 0,
-            positive: false,
+            image: Condition::FALSE,
+            positive_scope: Condition::FALSE,
             bindings: Arc::new(BTreeMap::new()),
             active: e.active,
             born: Condition::FALSE,
             boolean: None,
-            restriction: None,
+            transform: None,
             index: None,
             pending: None,
             state: e.state,
@@ -118,7 +123,7 @@ impl Compact {
                     self.index = Some(
                         e.graph
                             .index
-                            .restrict(self.state.graph, self.bindings.clone()),
+                            .substitute(self.state.graph, self.bindings.clone()),
                     );
                     self.phase = Phase::Graph;
                 }
@@ -126,22 +131,31 @@ impl Compact {
             Phase::Global => {
                 if let Some(scope) = poll(&mut self.boolean, &mut e.arena) {
                     if scope == Condition::FALSE || scope == self.active {
-                        self.positive = scope == self.active;
+                        self.image = if scope == self.active {
+                            Condition::TRUE
+                        } else {
+                            Condition::FALSE
+                        };
                         self.reduce(e);
                     } else if e.births[&self.choice].support == Condition::TRUE {
-                        self.after = Some(self.choice);
-                        self.phase = Phase::Choices;
+                        self.born = self.active;
+                        self.positive_scope = scope;
+                        self.boolean = Some(e.arena.start(Operation::And(
+                            self.active,
+                            e.births[&self.choice].decision.not(),
+                        )));
+                        self.phase = Phase::Negative;
                     } else {
-                        self.restriction = Some(
+                        self.transform = Some(
                             e.arena
-                                .restrict(e.births[&self.choice].support, self.bindings.clone()),
+                                .substitute(e.births[&self.choice].support, self.bindings.clone()),
                         );
                         self.phase = Phase::BirthSupport;
                     }
                 }
             }
             Phase::BirthSupport => {
-                if let Some(scope) = self.restricted(&mut e.arena) {
+                if let Some(scope) = self.transformed(&mut e.arena) {
                     self.boolean = Some(e.arena.start(Operation::And(self.active, scope)));
                     self.phase = Phase::Born;
                 }
@@ -165,9 +179,10 @@ impl Compact {
             Phase::Positive => {
                 if let Some(c) = poll(&mut self.boolean, &mut e.arena) {
                     if c == Condition::FALSE {
-                        self.positive = false;
+                        self.image = Condition::FALSE;
                         self.reduce(e);
                     } else {
+                        self.positive_scope = c;
                         self.boolean = Some(e.arena.start(Operation::And(
                             self.born,
                             e.births[&self.choice].decision.not(),
@@ -179,7 +194,35 @@ impl Compact {
             Phase::Negative => {
                 if let Some(c) = poll(&mut self.boolean, &mut e.arena) {
                     if c == Condition::FALSE {
-                        self.positive = true;
+                        self.image = Condition::TRUE;
+                        self.reduce(e);
+                    } else {
+                        self.born = c;
+                        self.transform =
+                            Some(e.arena.project_before(self.positive_scope, self.choice));
+                        self.phase = Phase::ProjectPositive;
+                    }
+                }
+            }
+            Phase::ProjectPositive => {
+                if let Some(c) = self.transformed(&mut e.arena) {
+                    self.image = c;
+                    self.transform = Some(e.arena.project_before(self.born, self.choice));
+                    self.phase = Phase::ProjectNegative;
+                }
+            }
+            Phase::ProjectNegative => {
+                if let Some(c) = self.transformed(&mut e.arena) {
+                    self.boolean = Some(e.arena.start(Operation::And(self.image, c)));
+                    self.phase = Phase::Disjoint;
+                }
+            }
+            Phase::Disjoint => {
+                if let Some(c) = poll(&mut self.boolean, &mut e.arena) {
+                    if c == Condition::FALSE {
+                        // No older assignment permits both born arms. The positive
+                        // projection is the unique value there; outside the birth
+                        // this coordinate does not denote a causal distinction.
                         self.reduce(e);
                     } else {
                         self.after = Some(self.choice);
@@ -188,13 +231,13 @@ impl Compact {
                 }
             }
             Phase::Reduce => {
-                if let Some(c) = self.restricted(&mut e.arena) {
+                if let Some(c) = self.transformed(&mut e.arena) {
                     self.active = c;
-                    // Every temporary cofactor has released its assignment
+                    // Every temporary transform has released its assignment
                     // reference before extending the shared substitution map.
                     Arc::get_mut(&mut self.bindings)
                         .expect("exclusive discovery assignments")
-                        .insert(self.choice, self.positive);
+                        .insert(self.choice, self.image);
                     self.after = Some(self.choice);
                     self.phase = Phase::Choices;
                 }
@@ -210,7 +253,7 @@ impl Compact {
                     self.index = Some(
                         e.history
                             .index
-                            .restrict(self.state.history, self.bindings.clone()),
+                            .substitute(self.state.history, self.bindings.clone()),
                     );
                     self.phase = Phase::History;
                 }
@@ -226,7 +269,7 @@ impl Compact {
                     self.index = None;
                     self.pending = Some(
                         e.obligations
-                            .restrict(self.pending_root, self.bindings.clone()),
+                            .substitute(self.pending_root, self.bindings.clone()),
                     );
                     self.phase = Phase::Pending;
                 }
@@ -258,10 +301,10 @@ impl Compact {
                 };
                 if let Some(scheduled) = scheduled {
                     if self.slot == 0 {
-                        self.restriction =
-                            Some(e.arena.restrict(scheduled.scope, self.bindings.clone()));
+                        self.transform =
+                            Some(e.arena.substitute(scheduled.scope, self.bindings.clone()));
                         self.slot = 1;
-                    } else if let Some(c) = self.restricted(&mut e.arena) {
+                    } else if let Some(c) = self.transformed(&mut e.arena) {
                         scheduled.scope = c;
                         if let Task::Body(body) = &mut scheduled.task {
                             debug_assert!(
@@ -297,11 +340,11 @@ impl Compact {
                     } else if self.pin.is_some_and(|pin| id <= pin) {
                         self.after = Some(id);
                     } else if self.slot == 0 {
-                        self.restriction =
-                            Some(e.arena.restrict(birth.support, self.bindings.clone()));
+                        self.transform =
+                            Some(e.arena.substitute(birth.support, self.bindings.clone()));
                         self.slot = 1;
                     } else if self.slot == 1 {
-                        if let Some(c) = self.restricted(&mut e.arena) {
+                        if let Some(c) = self.transformed(&mut e.arena) {
                             self.boolean = Some(e.arena.start(Operation::And(c, self.active)));
                             self.slot = 2;
                         }
@@ -331,17 +374,17 @@ impl Compact {
         false
     }
     fn reduce(&mut self, e: &Engine) {
-        self.restriction = Some(e.arena.restrict(
+        self.transform = Some(e.arena.substitute(
             self.active,
-            Arc::new(BTreeMap::from([(self.choice, self.positive)])),
+            Arc::new(BTreeMap::from([(self.choice, self.image)])),
         ));
         self.phase = Phase::Reduce;
     }
-    fn restricted(&mut self, arena: &mut Arena) -> Option<Condition> {
-        match self.restriction.as_mut().unwrap().tick(arena) {
+    fn transformed(&mut self, arena: &mut Arena) -> Option<Condition> {
+        match self.transform.as_mut().unwrap().tick(arena) {
             Progress::Pending => None,
             Progress::Complete(c) => {
-                self.restriction = None;
+                self.transform = None;
                 Some(c)
             }
         }

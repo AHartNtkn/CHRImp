@@ -11,8 +11,8 @@ use std::ops::Bound::{Excluded, Unbounded};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-mod restrict;
-pub use restrict::Restriction;
+mod substitute;
+pub use substitute::Substitution;
 
 pub type Key = [u64; 4];
 static NEXT_STORE: AtomicU32 = AtomicU32::new(1);

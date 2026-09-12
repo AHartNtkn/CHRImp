@@ -558,81 +558,120 @@ impl Trace for Job {
     }
 }
 
-/// A budgeted substitution of explicit Boolean values. This operation does not
-/// decide which choices the executor may forget; causal ownership decides that.
-pub struct Restriction {
+/// A budgeted simultaneous substitution or existential suffix projection.
+/// Causal ownership, rather than this Boolean operation, determines which
+/// choices the executor may forget. Images are not themselves transformed.
+pub struct Transform {
     owner: u32,
-    bindings: Option<Arc<BTreeMap<u64, bool>>>,
-    draining: BTreeMap<u64, bool>,
-    frames: Vec<RestrictionFrame>,
+    images: Option<Arc<BTreeMap<u64, Condition>>>,
+    cutoff: Option<u64>,
+    draining: BTreeMap<u64, Condition>,
+    frames: Vec<TransformFrame>,
     memo: BTreeMap<Condition, Condition>,
     last: Option<Condition>,
+    job: Option<Job>,
     work: u64,
     discarding: bool,
 }
 #[derive(Clone, Copy)]
-enum RestrictionFrame {
+enum TransformFrame {
     Evaluate(Condition),
-    Selected(Condition),
+    Finish(Condition),
     Low {
         input: Condition,
-        choice: u64,
+        image: Condition,
         high: Condition,
     },
     High {
         input: Condition,
-        choice: u64,
+        image: Condition,
         low: Condition,
+    },
+    Product {
+        input: Condition,
+        image: Condition,
+        high: Condition,
+    },
+    Union {
+        input: Condition,
+        left: Condition,
     },
 }
 impl Arena {
-    pub fn restrict(&self, input: Condition, bindings: Arc<BTreeMap<u64, bool>>) -> Restriction {
+    /// Substitute referenced choice images simultaneously. Validate the key
+    /// bound now and each referenced image on use, without scanning the map.
+    pub fn substitute(&self, input: Condition, images: Arc<BTreeMap<u64, Condition>>) -> Transform {
         assert!(self.contains(input), "stale or foreign condition operand");
         assert!(
-            bindings
+            images
                 .last_key_value()
                 .is_none_or(|(&choice, _)| choice < self.next_choice),
-            "unknown restriction choice"
+            "unknown substitution choice"
         );
-        let empty = bindings.is_empty();
-        Restriction {
-            owner: self.owner,
-            bindings: (!empty).then_some(bindings),
+        let empty = images.is_empty();
+        Transform::new(self.owner, input, (!empty).then_some(images), None, empty)
+    }
+    /// Existentially quantify all choice IDs greater than or equal to cutoff.
+    pub fn project_before(&self, input: Condition, cutoff: u64) -> Transform {
+        assert!(self.contains(input), "stale or foreign condition operand");
+        Transform::new(
+            self.owner,
+            input,
+            None,
+            Some(cutoff),
+            cutoff >= self.next_choice,
+        )
+    }
+}
+impl Transform {
+    fn new(
+        owner: u32,
+        input: Condition,
+        images: Option<Arc<BTreeMap<u64, Condition>>>,
+        cutoff: Option<u64>,
+        unchanged: bool,
+    ) -> Self {
+        Self {
+            owner,
+            images,
+            cutoff,
             draining: BTreeMap::new(),
-            frames: if empty {
+            frames: if unchanged || input.is_terminal() {
                 vec![]
             } else {
-                vec![RestrictionFrame::Evaluate(input)]
+                vec![TransformFrame::Evaluate(input)]
             },
             memo: BTreeMap::new(),
-            last: empty.then_some(input),
+            last: (unchanged || input.is_terminal()).then_some(input),
+            job: None,
             work: 0,
             discarding: false,
         }
     }
-}
-impl Restriction {
     pub fn result(&self) -> Option<Condition> {
         if !self.discarding
             && self.frames.is_empty()
             && self.memo.is_empty()
-            && self.bindings.is_none()
+            && self.images.is_none()
             && self.draining.is_empty()
+            && self.job.is_none()
         {
             self.last
         } else {
             None
         }
     }
+    /// Evaluation actions, including nested Boolean work, excluding cleanup.
     pub fn work(&self) -> u64 {
         self.work
     }
-    /// Live frames, memo entries, and assignment entries; not allocation bytes.
+    /// Frame capacity and live memo/image entries, not allocation bytes.
     pub fn scratch_capacity(&self) -> usize {
         self.frames.capacity()
             + self.memo.len()
             + self.draining.len()
-            + self.bindings.as_ref().map_or(0, |b| b.len())
+            + self.images.as_ref().map_or(0, |b| b.len())
+            + self.job.as_ref().map_or(0, Job::scratch_capacity)
     }
     pub fn roots(&self) -> impl Iterator<Item = Condition> + '_ {
         self.memo
@@ -644,16 +683,22 @@ impl Restriction {
                     .iter()
                     .flat_map(|frame| frame.roots().into_iter().flatten()),
             )
+            .chain(
+                self.images
+                    .iter()
+                    .flat_map(|images| images.values().copied()),
+            )
+            .chain(self.draining.values().copied())
+            .chain(self.job.iter().flat_map(Job::roots))
     }
     fn cleanup_tick(&mut self) -> bool {
         if self.memo.pop_first().is_some() {
             return false;
         }
-        if let Some(bindings) = self.bindings.take() {
-            // Shared assignments remain with their owner. The last owner drains
-            // the B-tree incrementally rather than dropping an unbounded map.
-            if let Some(bindings) = Arc::into_inner(bindings) {
-                self.draining = bindings;
+        if let Some(images) = self.images.take() {
+            // Only the last map owner drains; a shared owner retains its roots.
+            if let Some(images) = Arc::into_inner(images) {
+                self.draining = images;
             }
             return false;
         }
@@ -664,70 +709,144 @@ impl Restriction {
         self.discarding = true;
         self.frames = Vec::new();
         self.last = None;
+        if let Some(job) = self.job.as_mut() {
+            if job.discard_tick() {
+                self.job = None;
+            }
+            return false;
+        }
         self.cleanup_tick()
     }
     pub fn tick(&mut self, arena: &mut Arena) -> Progress {
-        assert!(!self.discarding, "condition restriction has been discarded");
-        assert_eq!(self.owner, arena.owner, "foreign condition restriction");
+        assert!(!self.discarding, "condition transform has been discarded");
+        assert_eq!(self.owner, arena.owner, "foreign condition transform");
         GcLease::assert_mutable(&arena.frozen);
         if let Some(result) = self.result() {
             return Progress::Complete(result);
         }
-        if self.frames.is_empty() {
+        if let Some(job) = self.job.as_mut() {
+            let before = job.work();
+            let progress = job.tick(arena);
+            self.work += job.work() - before;
+            if let Progress::Complete(result) = progress {
+                self.last = Some(result);
+                self.job = None;
+            }
+        } else if self.frames.is_empty() {
             self.cleanup_tick();
         } else {
             self.work += 1;
             match self.frames.pop().unwrap() {
-                RestrictionFrame::Evaluate(input) => {
+                TransformFrame::Evaluate(input) => {
                     if let Some(&result) = self.memo.get(&input) {
                         self.last = Some(result);
                     } else {
                         match arena.view(input) {
                             View::Terminal(_) => self.last = Some(input),
                             View::Choice { choice, low, high } => {
-                                let bindings = self.bindings.as_ref().unwrap();
-                                if choice > *bindings.last_key_value().unwrap().0 {
+                                if self.cutoff.is_some_and(|cutoff| choice >= cutoff) {
+                                    // Ordered descendants are all quantified. Every
+                                    // canonical nonterminal has a satisfying path.
+                                    self.last = Some(Condition::TRUE);
+                                } else if self.images.as_ref().is_some_and(|images| {
+                                    choice > *images.last_key_value().unwrap().0
+                                }) {
                                     self.last = Some(input);
-                                } else if let Some(&positive) = bindings.get(&choice) {
-                                    self.frames.push(RestrictionFrame::Selected(input));
-                                    self.frames.push(RestrictionFrame::Evaluate(if positive {
-                                        high
-                                    } else {
-                                        low
-                                    }));
-                                    self.last = None;
                                 } else {
-                                    self.frames.push(RestrictionFrame::Low {
-                                        input,
-                                        choice,
-                                        high,
-                                    });
-                                    self.frames.push(RestrictionFrame::Evaluate(low));
+                                    let image = self
+                                        .images
+                                        .as_ref()
+                                        .and_then(|images| images.get(&choice))
+                                        .copied()
+                                        .unwrap_or_else(|| {
+                                            arena.node(choice, Condition::FALSE, Condition::TRUE)
+                                        });
+                                    assert!(
+                                        arena.contains(image),
+                                        "stale or foreign substitution image"
+                                    );
+                                    if image.is_terminal() {
+                                        self.frames.push(TransformFrame::Finish(input));
+                                        self.frames.push(TransformFrame::Evaluate(
+                                            if image == Condition::TRUE { high } else { low },
+                                        ));
+                                    } else {
+                                        self.frames.push(TransformFrame::Low {
+                                            input,
+                                            image,
+                                            high,
+                                        });
+                                        self.frames.push(TransformFrame::Evaluate(low));
+                                    }
                                     self.last = None;
                                 }
                             }
                         }
                     }
                 }
-                RestrictionFrame::Selected(input) => {
+                TransformFrame::Finish(input) => {
                     self.memo
-                        .insert(input, self.last.expect("selected cofactor"));
+                        .insert(input, self.last.expect("completed cofactor"));
                 }
-                RestrictionFrame::Low {
-                    input,
-                    choice,
-                    high,
-                } => {
+                TransformFrame::Low { input, image, high } => {
                     let low = self.last.take().expect("low cofactor");
-                    self.frames
-                        .push(RestrictionFrame::High { input, choice, low });
-                    self.frames.push(RestrictionFrame::Evaluate(high));
+                    self.frames.push(TransformFrame::High { input, image, low });
+                    self.frames.push(TransformFrame::Evaluate(high));
                 }
-                RestrictionFrame::High { input, choice, low } => {
+                TransformFrame::High { input, image, low } => {
                     let high = self.last.take().expect("high cofactor");
-                    let result = arena.node(choice, low, high);
-                    self.memo.insert(input, result);
-                    self.last = Some(result);
+                    if low == high {
+                        self.last = Some(low);
+                        self.memo.insert(input, low);
+                    } else if low == Condition::FALSE && high == Condition::TRUE {
+                        self.last = Some(image);
+                        self.memo.insert(input, image);
+                    } else if low == Condition::TRUE && high == Condition::FALSE {
+                        self.last = Some(image.not());
+                        self.memo.insert(input, image.not());
+                    } else {
+                        // A literal above both children can be rebuilt directly.
+                        // Otherwise ITE must reorder even an unchanged parent:
+                        // a descendant image may have introduced older choices.
+                        let direct = match arena.view(image) {
+                            View::Choice {
+                                choice,
+                                low: il,
+                                high: ih,
+                            } if il.is_terminal() && ih.is_terminal() => {
+                                let later = |c| match arena.view(c) {
+                                    View::Terminal(_) => true,
+                                    View::Choice { choice: child, .. } => child > choice,
+                                };
+                                (later(low) && later(high))
+                                    .then_some((choice, il == Condition::FALSE))
+                            }
+                            _ => None,
+                        };
+                        if let Some((choice, positive)) = direct {
+                            let result = if positive {
+                                arena.node(choice, low, high)
+                            } else {
+                                arena.node(choice, high, low)
+                            };
+                            self.last = Some(result);
+                            self.memo.insert(input, result);
+                        } else {
+                            self.frames
+                                .push(TransformFrame::Product { input, image, high });
+                            self.job = Some(arena.start(Operation::And(image.not(), low)));
+                        }
+                    }
+                }
+                TransformFrame::Product { input, image, high } => {
+                    let left = self.last.take().expect("low product");
+                    self.frames.push(TransformFrame::Union { input, left });
+                    self.job = Some(arena.start(Operation::And(image, high)));
+                }
+                TransformFrame::Union { input, left } => {
+                    let right = self.last.take().expect("high product");
+                    self.frames.push(TransformFrame::Finish(input));
+                    self.job = Some(arena.start(Operation::Or(left, right)));
                 }
             }
             if self.frames.is_empty() {
@@ -737,31 +856,40 @@ impl Restriction {
         self.result().map_or(Progress::Pending, Progress::Complete)
     }
 }
-impl RestrictionFrame {
-    fn roots(self) -> [Option<Condition>; 2] {
+impl TransformFrame {
+    fn roots(self) -> [Option<Condition>; 3] {
         match self {
-            Self::Evaluate(input) | Self::Selected(input) => [Some(input), None],
-            Self::Low { input, high, .. } => [Some(input), Some(high)],
-            Self::High { input, low, .. } => [Some(input), Some(low)],
+            Self::Evaluate(input) | Self::Finish(input) => [Some(input), None, None],
+            Self::Low { input, image, high } | Self::Product { input, image, high } => {
+                [Some(input), Some(image), Some(high)]
+            }
+            Self::High { input, image, low } => [Some(input), Some(image), Some(low)],
+            Self::Union { input, left } => [Some(input), Some(left), None],
         }
     }
 }
-impl Trace for RestrictionFrame {
+impl Trace for TransformFrame {
     fn trace(&self, cursor: &mut Cursor) -> Step {
         if cursor.phase != 0 {
             return Step::Done;
         }
         let roots = self.roots();
-        let fields = [roots[0].unwrap(), roots[1].unwrap_or(Condition::FALSE)];
-        cursor.fields(&fields[..if roots[1].is_some() { 2 } else { 1 }])
+        let fields = roots.map(|root| root.unwrap_or(Condition::FALSE));
+        cursor.fields(&fields[..roots.iter().flatten().count()])
     }
 }
-impl Trace for Restriction {
+impl Trace for Transform {
     fn trace(&self, cursor: &mut Cursor) -> Step {
         match cursor.phase {
             0 => cursor.substitutions(&self.memo),
             1 => cursor.fields(self.last.as_slice()),
             2 => cursor.vector(self.frames.len(), |i, child| self.frames[i].trace(child)),
+            3 => match &self.images {
+                Some(images) => cursor.values(images),
+                None => cursor.advance(),
+            },
+            4 => cursor.values(&self.draining),
+            5 => cursor.optional(self.job.as_ref()),
             _ => Step::Done,
         }
     }

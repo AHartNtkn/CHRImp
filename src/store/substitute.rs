@@ -1,7 +1,7 @@
-//! Budgeted cofactoring of a persistent condition-valued index.
+//! Budgeted substitution of a persistent condition-valued index.
 
 use super::{Filter, FilterStatus, Root, Store};
-use crate::condition::{Arena, Condition, Progress, Restriction as BooleanRestriction};
+use crate::condition::{Arena, Condition, Progress, Transform};
 use crate::trace::{Cursor, Step, Trace};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -9,23 +9,23 @@ use std::sync::Arc;
 /// Keep `roots()` in store collection, and trace both collected leaf values and
 /// `condition_roots()` in arena collection until this continuation is released.
 /// Completion preserves the result root; discard abandons staged output.
-pub struct Restriction {
+pub struct Substitution {
     owner: u32,
     filter: Option<Filter<Condition>>,
-    bindings: Option<Arc<BTreeMap<u64, bool>>>,
-    draining: BTreeMap<u64, bool>,
-    boolean: Option<BooleanRestriction>,
-    // A terminal restriction validates bindings and binds the arena on the
+    bindings: Option<Arc<BTreeMap<u64, Condition>>>,
+    draining: BTreeMap<u64, Condition>,
+    boolean: Option<Transform>,
+    // A terminal substituteion validates bindings and binds the arena on the
     // first tick. Once complete it enforces arena identity and its GC lease.
-    arena_guard: Option<BooleanRestriction>,
+    arena_guard: Option<Transform>,
     result: Option<Root>,
     done: bool,
     discarding: bool,
 }
 
 impl Store<Condition> {
-    pub fn restrict(&self, root: Root, bindings: Arc<BTreeMap<u64, bool>>) -> Restriction {
-        Restriction {
+    pub fn substitute(&self, root: Root, bindings: Arc<BTreeMap<u64, Condition>>) -> Substitution {
+        Substitution {
             owner: self.owner,
             filter: Some(self.filter(root)),
             bindings: Some(bindings),
@@ -39,7 +39,7 @@ impl Store<Condition> {
     }
 }
 
-impl Restriction {
+impl Substitution {
     pub fn roots(&self) -> impl Iterator<Item = Root> + '_ {
         self.filter
             .iter()
@@ -51,8 +51,14 @@ impl Restriction {
         self.filter
             .iter()
             .flat_map(Filter::values)
-            .chain(self.boolean.iter().flat_map(BooleanRestriction::roots))
-            .chain(self.arena_guard.iter().flat_map(BooleanRestriction::roots))
+            .chain(self.boolean.iter().flat_map(Transform::roots))
+            .chain(self.arena_guard.iter().flat_map(Transform::roots))
+            .chain(
+                self.bindings
+                    .iter()
+                    .flat_map(|images| images.values().copied()),
+            )
+            .chain(self.draining.values().copied())
     }
 
     fn cleanup_tick(&mut self) -> bool {
@@ -66,7 +72,7 @@ impl Restriction {
         self.draining.is_empty()
     }
 
-    /// Cancel without traversing another leaf or evaluating another cofactor.
+    /// Cancel without traversing another leaf or evaluating another substitution.
     /// Each call drains at most one nested job step or one assignment entry.
     pub fn discard_tick(&mut self) -> bool {
         self.discarding = true;
@@ -88,14 +94,14 @@ impl Restriction {
         self.done
     }
 
-    /// Advance one filter transition, one Boolean restriction step, or one
+    /// Advance one filter transition, one Boolean substituteion step, or one
     /// cleanup step. Returns only after assignment cleanup has completed.
     pub fn tick(&mut self, store: &mut Store<Condition>, arena: &mut Arena) -> Option<Root> {
-        assert!(!self.discarding, "index restriction has been discarded");
-        assert_eq!(self.owner, store.owner, "foreign index restriction");
+        assert!(!self.discarding, "index substituteion has been discarded");
+        assert_eq!(self.owner, store.owner, "foreign index substituteion");
         store.assert_mutable();
         let guard = self.arena_guard.get_or_insert_with(|| {
-            arena.restrict(Condition::TRUE, self.bindings.as_ref().unwrap().clone())
+            arena.substitute(Condition::TRUE, self.bindings.as_ref().unwrap().clone())
         });
         if guard.tick(arena) == Progress::Pending {
             return None;
@@ -116,7 +122,7 @@ impl Restriction {
                 FilterStatus::Pending => {}
                 FilterStatus::Leaf { value, .. } => {
                     self.boolean =
-                        Some(arena.restrict(value, self.bindings.as_ref().unwrap().clone()));
+                        Some(arena.substitute(value, self.bindings.as_ref().unwrap().clone()));
                 }
                 FilterStatus::Complete(root) => {
                     self.result = Some(root);
@@ -130,7 +136,7 @@ impl Restriction {
     }
 }
 
-impl Trace for Restriction {
+impl Trace for Substitution {
     fn trace(&self, cursor: &mut Cursor) -> Step {
         match cursor.phase {
             0 => {
@@ -142,6 +148,11 @@ impl Trace for Restriction {
             }
             1 => cursor.optional(self.boolean.as_ref()),
             2 => cursor.optional(self.arena_guard.as_ref()),
+            3 => match &self.bindings {
+                Some(images) => cursor.values(images),
+                None => cursor.advance(),
+            },
+            4 => cursor.values(&self.draining),
             _ => Step::Done,
         }
     }

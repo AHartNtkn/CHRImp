@@ -18,6 +18,7 @@ enum Phase {
     Tasks,
     Parked,
     Births,
+    Coordinates,
     Ready,
     Observe,
     Snapshots,
@@ -309,7 +310,7 @@ impl Engine {
             }
             Phase::Births => {
                 if self.cancellation.roots_released {
-                    c.phase = Phase::Ready;
+                    c.phase = Phase::Coordinates;
                     c.after = None;
                     c.slot = 0;
                     self.collector = Some(c);
@@ -330,9 +331,17 @@ impl Engine {
                         c.after = Some(id);
                     }
                 } else {
-                    c.phase = Phase::Ready;
+                    c.phase = Phase::Coordinates;
                 }
             }
+            Phase::Coordinates => match self.coordinates.trace(&mut c.trace) {
+                Step::Root(root) => retain_condition(&mut c.conditions, root),
+                Step::Pending => {}
+                Step::Done => {
+                    c.trace = TraceCursor::default();
+                    c.phase = Phase::Ready;
+                }
+            },
             Phase::Ready => {
                 match c.trace.optional(self.ready.as_ref()) {
                     Step::Root(root) => retain_condition(&mut c.conditions, root),
