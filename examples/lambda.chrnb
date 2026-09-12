@@ -1,0 +1,2945 @@
+{
+  "activeQuery": "query-1",
+  "format": "chr-notebook",
+  "layouts": {},
+  "program": {
+    "rules": [
+      {
+        "body": {
+          "items": [
+            {
+              "kind": "equal",
+              "left": "B",
+              "right": "C"
+            },
+            {
+              "kind": "equal",
+              "left": "T",
+              "right": "U"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "R",
+              "B",
+              "T"
+            ],
+            "relation": "lam"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "R",
+              "C",
+              "U"
+            ],
+            "relation": "lam"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "kind": "equal",
+              "left": "F",
+              "right": "G"
+            },
+            {
+              "kind": "equal",
+              "left": "X",
+              "right": "Y"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "R",
+              "F",
+              "X"
+            ],
+            "relation": "app"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "R",
+              "G",
+              "Y"
+            ],
+            "relation": "app"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "R",
+              "B",
+              "T"
+            ],
+            "relation": "lam"
+          },
+          {
+            "args": [
+              "R",
+              "F",
+              "X"
+            ],
+            "relation": "app"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "R",
+                  "B"
+                ],
+                "relation": "below"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "R",
+                  "T"
+                ],
+                "relation": "below"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "R",
+              "B",
+              "T"
+            ],
+            "relation": "lam"
+          }
+        ],
+        "name": null,
+        "removed": []
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "R",
+                  "F"
+                ],
+                "relation": "below"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "R",
+                  "X"
+                ],
+                "relation": "below"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "R",
+              "F",
+              "X"
+            ],
+            "relation": "app"
+          }
+        ],
+        "name": null,
+        "removed": []
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "X"
+            ],
+            "relation": "below"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "below"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "below"
+          }
+        ]
+      },
+      {
+        "body": {
+          "atom": {
+            "args": [
+              "X",
+              "Z"
+            ],
+            "relation": "below"
+          },
+          "kind": "atom"
+        },
+        "kept": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "below"
+          },
+          {
+            "args": [
+              "Y",
+              "Z"
+            ],
+            "relation": "below"
+          }
+        ],
+        "name": null,
+        "removed": []
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "X"
+            ],
+            "relation": "neq"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "B",
+              "T"
+            ],
+            "relation": "lam"
+          },
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "neq"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "Y",
+              "B",
+              "T"
+            ],
+            "relation": "lam"
+          },
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "neq"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "F",
+              "A"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "neq"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "Y",
+              "F",
+              "A"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "neq"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "F",
+              "A"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "X"
+            ],
+            "relation": "var"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "B",
+              "T"
+            ],
+            "relation": "lam"
+          },
+          {
+            "args": [
+              "X"
+            ],
+            "relation": "var"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [
+          {
+            "args": [
+              "R",
+              "F",
+              "X"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "F",
+              "B",
+              "T"
+            ],
+            "relation": "lam"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "R"
+            ],
+            "relation": "norm"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "F"
+                ],
+                "relation": "norm"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X"
+                ],
+                "relation": "norm"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "R",
+              "F",
+              "X"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "F",
+              "G",
+              "Y"
+            ],
+            "relation": "app"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "R"
+            ],
+            "relation": "norm"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "F"
+                ],
+                "relation": "var"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X"
+                ],
+                "relation": "norm"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "R",
+              "F",
+              "X"
+            ],
+            "relation": "app"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "R"
+            ],
+            "relation": "norm"
+          },
+          {
+            "args": [
+              "F"
+            ],
+            "relation": "var"
+          }
+        ]
+      },
+      {
+        "body": {
+          "atom": {
+            "args": [
+              "T"
+            ],
+            "relation": "norm"
+          },
+          "kind": "atom"
+        },
+        "kept": [
+          {
+            "args": [
+              "R",
+              "B",
+              "T"
+            ],
+            "relation": "lam"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "R"
+            ],
+            "relation": "norm"
+          }
+        ]
+      },
+      {
+        "body": {
+          "atom": {
+            "args": [
+              "X"
+            ],
+            "relation": "var"
+          },
+          "kind": "atom"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X"
+            ],
+            "relation": "norm"
+          },
+          {
+            "args": [
+              "X"
+            ],
+            "relation": "var"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "In",
+                      "L",
+                      "A"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "L",
+                      "X",
+                      "X"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "kind": "equal",
+                  "left": "Out",
+                  "right": "A"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "In",
+                      "L",
+                      "A"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "L",
+                      "X",
+                      "Y"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "X",
+                      "Y"
+                    ],
+                    "relation": "neq"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "kind": "equal",
+                  "left": "Out",
+                  "right": "Y"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "In",
+                      "L",
+                      "A"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "L",
+                      "X",
+                      "M"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "M",
+                      "X",
+                      "Y"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Out",
+                      "X",
+                      "Y"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "In",
+                      "L",
+                      "A"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "L",
+                      "X",
+                      "M"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "M",
+                      "Y",
+                      "Z"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "X",
+                      "Y"
+                    ],
+                    "relation": "neq"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Out",
+                      "Y",
+                      "N"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "N",
+                      "K",
+                      "A"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "K",
+                      "X",
+                      "Z"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "In",
+                      "L",
+                      "A"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "L",
+                      "X",
+                      "M"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "M",
+                      "Y",
+                      "Z"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Out",
+                      "P",
+                      "Q"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "P",
+                      "K",
+                      "A"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "K",
+                      "X",
+                      "Y"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Q",
+                      "H",
+                      "A"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "H",
+                      "X",
+                      "Z"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "In",
+                      "X",
+                      "Y"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Y",
+                      "Z"
+                    ],
+                    "relation": "step"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Out",
+                      "X",
+                      "Z"
+                    ],
+                    "relation": "lam"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "In",
+                      "F",
+                      "A"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "F",
+                      "G"
+                    ],
+                    "relation": "step"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Out",
+                      "G",
+                      "A"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "In",
+                      "F",
+                      "A"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "F"
+                    ],
+                    "relation": "norm"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "A",
+                      "B"
+                    ],
+                    "relation": "step"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Out",
+                      "F",
+                      "B"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            }
+          ],
+          "kind": "or"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "In",
+              "Out"
+            ],
+            "relation": "step"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "items": [
+                {
+                  "kind": "equal",
+                  "left": "In",
+                  "right": "Out"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "In"
+                    ],
+                    "relation": "norm"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "In",
+                      "Next"
+                    ],
+                    "relation": "step"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Next",
+                      "Out"
+                    ],
+                    "relation": "lamEq"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            }
+          ],
+          "kind": "or"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "In",
+              "Out"
+            ],
+            "relation": "lamEq"
+          }
+        ]
+      }
+    ]
+  },
+  "queries": [
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "X"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-1",
+      "name": "Identity reduction"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-2",
+      "name": "Constant reduction"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-3",
+      "name": "Unconstrained wires may join"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "M",
+                "X",
+                "Y"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "M"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-4",
+      "name": "Application distribution"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "M",
+                "X",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "M"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-5",
+      "name": "Repeated binder wire"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "M",
+                "Y",
+                "X"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "M"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "Y"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-6",
+      "name": "Under lambda with intentional sharing"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "X"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "M",
+                "L",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Y",
+                "M"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-7",
+      "name": "Lambda body congruence"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "X"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "M",
+                "L",
+                "F"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "M",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "F"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-8",
+      "name": "Function congruence"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "X"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "M",
+                "L",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "F",
+                "M"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "F"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-9",
+      "name": "Argument congruence"
+    },
+    {
+      "body": {
+        "atom": {
+          "args": [
+            "X"
+          ],
+          "relation": "norm"
+        },
+        "kind": "atom"
+      },
+      "id": "query-10",
+      "name": "Normal wire without companion"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "norm"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-11",
+      "name": "Normal wire with companion"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "F",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In"
+              ],
+              "relation": "norm"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-12",
+      "name": "Normal application without companion"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "F",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In"
+              ],
+              "relation": "norm"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "F"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-13",
+      "name": "Normal application with companions"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "X",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In"
+              ],
+              "relation": "norm"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-14",
+      "name": "Normal lambda"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "M",
+                "F",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "M",
+                "B"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In"
+              ],
+              "relation": "norm"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "F"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "B"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-15",
+      "name": "Normal application spine"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "X"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In"
+              ],
+              "relation": "norm"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-16",
+      "name": "Normal redex fails"
+    },
+    {
+      "body": {
+        "atom": {
+          "args": [
+            "X",
+            "X"
+          ],
+          "relation": "neq"
+        },
+        "kind": "atom"
+      },
+      "id": "query-17",
+      "name": "Equal disequality fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "F",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-18",
+      "name": "Application variable fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "X",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-19",
+      "name": "Lambda variable fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "X",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "A"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-20",
+      "name": "Structured left disequality fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "F",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A",
+                "In"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-21",
+      "name": "Structured right disequality fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "F",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "B"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-22",
+      "name": "Structured left application disequality fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "X",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A",
+                "In"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-23",
+      "name": "Structured right lambda disequality fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          },
+          {
+            "kind": "equal",
+            "left": "X",
+            "right": "Y"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-24",
+      "name": "Merged disequality fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "F",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "kind": "equal",
+            "left": "X",
+            "right": "In"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-25",
+      "name": "Merged variable structure fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "F",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "F",
+                "X",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "kind": "equal",
+            "left": "Y",
+            "right": "In"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-26",
+      "name": "Merged structure cycle fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "X",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "A",
+                "B"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "A"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-27",
+      "name": "Conflicting root ports fail"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "X",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "A",
+                "B"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-28",
+      "name": "Consistent lambda root"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "F",
+                "X"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "G",
+                "Y"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-29",
+      "name": "Consistent application root"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "X",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "F",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-30",
+      "name": "Structure type clash fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "In",
+                "F",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "F",
+                "X",
+                "In"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-31",
+      "name": "Structure cycle fails"
+    },
+    {
+      "body": {
+        "atom": {
+          "args": [
+            "In",
+            "In",
+            "Y"
+          ],
+          "relation": "lam"
+        },
+        "kind": "atom"
+      },
+      "id": "query-32",
+      "name": "Binder cycle fails"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "X"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "L"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-33",
+      "name": "Shared structure is finite"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "X"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "lamEq"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-34",
+      "name": "Normalize identity"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "X"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "R",
+                "Y",
+                "Y"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "L",
+                "R"
+              ],
+              "relation": "lamEq"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-35",
+      "name": "Normal form equality merges wires"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "Body"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Out"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Out"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A",
+                "Out"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-36",
+      "name": "Backwards constant body"
+    },
+    {
+      "body": {
+        "atom": {
+          "args": [
+            "In",
+            "Out"
+          ],
+          "relation": "step"
+        },
+        "kind": "atom"
+      },
+      "id": "query-37",
+      "name": "Open backwards synthesis"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "X"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "X"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-38",
+      "name": "Identity with shared binder and argument"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "M",
+                "Y",
+                "X"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "L",
+                "X",
+                "M"
+              ],
+              "relation": "lam"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "L",
+                "A"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "A"
+              ],
+              "relation": "var"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "A"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y",
+                "A"
+              ],
+              "relation": "neq"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "In",
+                "Out"
+              ],
+              "relation": "step"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-39",
+      "name": "Under lambda with distinct argument"
+    }
+  ],
+  "title": "Lambda — shared wire identities",
+  "version": 1
+}

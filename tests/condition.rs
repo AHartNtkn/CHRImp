@@ -241,6 +241,8 @@ fn compact_shared_suffixes_are_not_recomputed_after_cache_eviction() {
         .collect();
     let mut formula = a.fresh_choice().1;
     let y = a.fresh_choice().1;
+    // Establish y in the shared suffix before adding the surrounding layers.
+    finish(&mut a, Operation::And(formula, y));
     for layer in (0..depth).rev() {
         let base = layer * (width + 1);
         let x = variables[base];
@@ -418,11 +420,14 @@ fn job_trace_matches_inventory_then_gc_and_resume_at_every_phase() {
 fn large_job_memo_traces_scalars_and_cleans_up_before_completion() {
     let mut a = Arena::default();
     let choices: Vec<_> = (0..300).map(|_| a.fresh_choice().1).collect();
+    let y = a.fresh_choice().1;
+    // Put y in the suffix by first interaction, so applying it must traverse
+    // the whole conjunction and genuinely build the large memo under test.
+    finish(&mut a, Operation::And(choices[299], y));
     let mut all = Condition::TRUE;
     for &c in choices.iter().rev() {
         all = finish(&mut a, Operation::And(c, all));
     }
-    let y = a.fresh_choice().1;
     let mut job = a.start(Operation::And(all, y));
     let mut peak = 0;
     let mut traced_large = false;
@@ -471,11 +476,14 @@ fn discard_large_memo_is_incremental_traceable_and_never_evaluates_more_work() {
     use std::panic::{AssertUnwindSafe, catch_unwind};
     let mut a = Arena::default();
     let choices: Vec<_> = (0..300).map(|_| a.fresh_choice().1).collect();
+    let y = a.fresh_choice().1;
+    // Put y in the suffix by first interaction, so applying it must traverse
+    // the whole conjunction and genuinely build the large memo under test.
+    finish(&mut a, Operation::And(choices[299], y));
     let mut all = Condition::TRUE;
     for &c in choices.iter().rev() {
         all = finish(&mut a, Operation::And(c, all));
     }
-    let y = a.fresh_choice().1;
     let mut job = a.start(Operation::And(all, y));
     let mut stopped = false;
     for _ in 0..10_000 {
@@ -1125,4 +1133,322 @@ fn image_map_roots_survive_last_owner_drain_and_images_validate_on_use() {
     drop(gc);
     let mut invalid = a.substitute(vars[63], Arc::new(BTreeMap::from([(63, stale)])));
     assert!(catch_unwind(AssertUnwindSafe(|| invalid.tick(&mut a))).is_err());
+}
+
+#[test]
+fn local_relations_stay_compact_across_choice_birth_orders() {
+    for n in [4, 8, 12] {
+        for layout in 0..4 {
+            for relation in 0..3 {
+                let mut a = Arena::default();
+                let mut vars = vec![(0, Condition::FALSE); 2 * n];
+                for born in 0..2 * n {
+                    let slot = match layout {
+                        0 => born,
+                        1 => (born % n) * 2 + born / n,
+                        2 => 2 * n - 1 - born,
+                        _ => (born * 5) % (2 * n),
+                    };
+                    vars[slot] = a.fresh_choice();
+                }
+                let mut result = Condition::TRUE;
+                let mut work = 0;
+                let mut apply = |a: &mut Arena, op| {
+                    let mut job = a.start(op);
+                    for _ in 0..100_000 {
+                        if let Progress::Complete(c) = job.tick(a) {
+                            work += job.work();
+                            return c;
+                        }
+                    }
+                    panic!("bounded relation operation");
+                };
+                for pair in vars.chunks_exact(2) {
+                    let (x, y) = (pair[0].1, pair[1].1);
+                    let local = match relation {
+                        0 => {
+                            let both = apply(&mut a, Operation::And(x, y));
+                            let neither = apply(&mut a, Operation::And(x.not(), y.not()));
+                            apply(&mut a, Operation::Or(both, neither))
+                        }
+                        1 => apply(&mut a, Operation::Or(x.not(), y)),
+                        _ => apply(&mut a, Operation::Or(x, y)),
+                    };
+                    result = apply(&mut a, Operation::And(result, local));
+                }
+                // Satisfying assignments and every single flipped coordinate,
+                // as well as exhaustive small truth tables.
+                for bits in (0..256u64).chain((0..2 * n).map(|i| ((1 << (2 * n)) - 1) ^ (1 << i))) {
+                    let value = |id: u64| bits & (1u64 << id) != 0;
+                    let expected = vars.chunks_exact(2).all(|pair| {
+                        let (x, y) = (value(pair[0].0), value(pair[1].0));
+                        match relation {
+                            0 => x == y,
+                            1 => !x || y,
+                            _ => x || y,
+                        }
+                    });
+                    assert_eq!(a.evaluate(result, value), expected);
+                    assert_eq!(a.evaluate(result.not(), value), !expected);
+                }
+                let mut gc = a.collect([result].into_iter());
+                for tick in 0..2_000_000 {
+                    if gc.tick(&mut a) {
+                        break;
+                    }
+                    assert!(tick < 1_999_999, "bounded relation collection");
+                }
+                drop(gc);
+                assert!(
+                    a.node_count() <= 128 + 4 * n,
+                    "n={n} layout={layout} relation={relation}: {} live nodes",
+                    a.node_count()
+                );
+                assert!(work <= 1_000_000, "relation work: {work}");
+            }
+        }
+    }
+}
+
+#[test]
+fn interleaved_jobs_and_transforms_preserve_handles() {
+    use std::{collections::BTreeMap, sync::Arc};
+    let mut a = Arena::default();
+    let vars: Vec<_> = (0..5).map(|_| a.fresh_choice().1).collect();
+    let [x, y, z, u, v] = [vars[0], vars[1], vars[2], vars[3], vars[4]];
+    let xy = finish(&mut a, Operation::And(x, y));
+    let mut pending = a.start(Operation::Or(xy, z));
+    assert_eq!(pending.tick(&mut a), Progress::Pending);
+    let uv = finish(&mut a, Operation::And(u, v));
+    let mut other = a.start(Operation::Or(uv, xy));
+    let mut completed = None;
+    for tick in 0..1000 {
+        let roots = pending
+            .roots()
+            .chain(other.roots())
+            .chain(vars.iter().copied())
+            .chain([xy, uv]);
+        let mut gc = a.collect(roots);
+        for step in 0..1000 {
+            if gc.tick(&mut a) {
+                break;
+            }
+            assert!(step < 999);
+        }
+        drop(gc);
+        other.tick(&mut a);
+        if let Progress::Complete(c) = pending.tick(&mut a) {
+            completed = Some(c);
+            if other.result().is_some() {
+                break;
+            }
+        }
+        assert!(tick < 999);
+    }
+    let input = completed.unwrap();
+    assert_eq!(xy, finish(&mut a, Operation::And(y, x)));
+    assert_eq!(uv, finish(&mut a, Operation::And(v, u)));
+    assert_eq!(
+        input.not(),
+        finish(&mut a, Operation::And(xy.not(), z.not()))
+    );
+    // Quantification uses birth IDs; substitution changes only its named image.
+    let mut project = a.project_before(input.not(), 2);
+    let mut substitute = a.substitute(input, Arc::new(BTreeMap::from([(0, Condition::FALSE)])));
+    for tick in 0..1000 {
+        let roots = project
+            .roots()
+            .chain(substitute.roots())
+            .chain(vars.iter().copied())
+            .chain([xy, input]);
+        let mut gc = a.collect(roots);
+        for step in 0..1000 {
+            if gc.tick(&mut a) {
+                break;
+            }
+            assert!(step < 999);
+        }
+        drop(gc);
+        project.tick(&mut a);
+        substitute.tick(&mut a);
+        if project.result().is_some() && substitute.result().is_some() {
+            break;
+        }
+        assert!(tick < 999);
+    }
+    assert_eq!(project.result(), Some(xy.not()));
+    assert_eq!(substitute.result(), Some(z));
+    for bits in 0..32 {
+        let value = |id| bits & (1 << id) != 0;
+        assert_eq!(a.evaluate(input, value), (value(0) && value(1)) || value(2));
+    }
+}
+
+#[test]
+fn established_grouped_choices_adapt_without_changing_exposed_functions() {
+    let mut a = Arena::default();
+    let vars: Vec<_> = (0..16).map(|_| a.fresh_choice().1).collect();
+    // Each choice interacts before its correlated partner is known, as scoped
+    // births do in the engine. Deferred ranking alone cannot pass this case.
+    let mut scope = Condition::TRUE;
+    for &v in &vars {
+        scope = finish(&mut a, Operation::And(scope, v));
+    }
+    let mut result = Condition::TRUE;
+    let mut exposed = vec![scope];
+    for i in 0..8 {
+        let both = finish(&mut a, Operation::And(vars[i], vars[i + 8]));
+        let neither = finish(&mut a, Operation::And(vars[i].not(), vars[i + 8].not()));
+        let equal = finish(&mut a, Operation::Or(both, neither));
+        exposed.push(equal);
+        let mut job = a.start(Operation::And(result, equal));
+        result = (0..2_000_000)
+            .find_map(|_| match job.tick(&mut a) {
+                Progress::Complete(c) => Some(c),
+                Progress::Pending => None,
+            })
+            .expect("bounded apply including reordering");
+    }
+    for bits in 0..256u64 {
+        let assignment = bits | (bits << 8);
+        assert!(a.evaluate(result, |i| assignment & (1 << i) != 0));
+        for flip in 0..16 {
+            assert!(!a.evaluate(result, |i| (assignment ^ (1 << flip)) & (1 << i) != 0));
+        }
+        for (i, &equal) in exposed[1..].iter().enumerate() {
+            assert_eq!(
+                a.evaluate(equal, |id| bits & (1 << id) != 0),
+                bits & (1 << i) == 0
+            );
+        }
+    }
+    let roots = vars
+        .iter()
+        .copied()
+        .chain(exposed.iter().copied())
+        .chain([result]);
+    let mut gc = a.collect(roots);
+    for tick in 0..2_000_000 {
+        if gc.tick(&mut a) {
+            break;
+        }
+        assert!(tick < 1_999_999);
+    }
+    drop(gc);
+    assert!(
+        a.node_count() < 160,
+        "established correlation still occupies {} live nodes",
+        a.node_count()
+    );
+    let mut reconstructed = Condition::TRUE;
+    for &equal in exposed[1..].iter().rev() {
+        reconstructed = finish(&mut a, Operation::And(reconstructed, equal));
+    }
+    assert_eq!(
+        result, reconstructed,
+        "canonical identity across order adaptation and collection"
+    );
+    assert_eq!(
+        finish(&mut a, Operation::Or(result, result.not())),
+        Condition::TRUE
+    );
+}
+
+#[test]
+fn engine_grouped_correlations_remain_compact_after_collection() {
+    use chr::{
+        engine::Engine,
+        observe::Output,
+        program::prepare,
+        syntax::{parse_program, parse_query},
+    };
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        sync::Arc,
+    };
+    for scoped in [false, true] {
+        let n = 8;
+        let terms: Vec<_> = ["x", "y"]
+            .into_iter()
+            .flat_map(|name| (0..n).map(move |i| format!("({name}0(I{i});{name}1(I{i}))")))
+            .collect();
+        let query = terms.join(",");
+        let query = if scoped {
+            format!("({query};fail)")
+        } else {
+            query
+        };
+        let mut e = Engine::new(Arc::new(
+            prepare(
+                &parse_program("x0(I),y1(I) <=> fail. x1(I),y0(I) <=> fail.").unwrap(),
+                &parse_query(&query).unwrap(),
+            )
+            .unwrap(),
+        ));
+        let mut rows = BTreeMap::<u64, u8>::new();
+        let mut variables = Vec::new();
+        let mut assignments = BTreeSet::new();
+        let mut relation = 0;
+        let mut collections = 0;
+        let mut peak_after_gc = 0;
+        let mut ticks = 0;
+        for tick in 0..2_000_000 {
+            ticks = tick + 1;
+            e.advance(1);
+            if e.collections() != collections {
+                collections = e.collections();
+                peak_after_gc = peak_after_gc.max(e.memory().conditions);
+            }
+            while let Some(event) = e.take_output() {
+                match event {
+                    Output::Begin { .. } => {
+                        rows.clear();
+                        variables.clear();
+                    }
+                    Output::Variable { slot, variable } => {
+                        assert_eq!(slot, variables.len());
+                        variables.push(variable);
+                    }
+                    Output::Fact { relation: r, .. } => {
+                        relation = match e.program().signatures()[r].name.as_str() {
+                            "x0" => 1,
+                            "x1" => 2,
+                            "y0" => 4,
+                            "y1" => 8,
+                            _ => panic!("unexpected relation"),
+                        };
+                    }
+                    Output::Port { variable } => {
+                        let row = rows.entry(variable).or_default();
+                        assert_eq!(*row & relation, 0, "duplicate fact");
+                        *row |= relation;
+                    }
+                    Output::End => {
+                        assert_eq!(rows.len(), n);
+                        assert_eq!(variables.len(), n);
+                        let assignment =
+                            variables.iter().enumerate().fold(0u64, |bits, (i, id)| {
+                                assert!(matches!(rows[id], 5 | 10), "uncorrelated output");
+                                bits | (u64::from(rows[id] == 10) << i)
+                            });
+                        assert!(assignments.insert(assignment), "duplicate alternative");
+                    }
+                    _ => {}
+                }
+            }
+            if e.delivery_done() {
+                break;
+            }
+        }
+        assert!(
+            e.delivery_done(),
+            "bounded engine execution including reordering"
+        );
+        assert_eq!(assignments.len(), 1 << n);
+        assert!(collections > 0);
+        assert!(
+            peak_after_gc < 1500,
+            "scoped={scoped}: {peak_after_gc} live nodes after GC, {ticks} total ticks"
+        );
+    }
 }

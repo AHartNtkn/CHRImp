@@ -292,10 +292,18 @@ fn wide_wake_and_matching_children_discard_incrementally_and_remain_traceable() 
         )
         .unwrap(),
     );
-    let mut g = Graph::new(&code.signatures);
+    let mut g = Graph::new(code.signatures());
     let mut a = Arena::default();
-    let p = code.signatures.iter().position(|s| s.name == "p").unwrap();
-    let q = code.signatures.iter().position(|s| s.name == "q").unwrap();
+    let p = code
+        .signatures()
+        .iter()
+        .position(|s| s.name == "p")
+        .unwrap();
+    let q = code
+        .signatures()
+        .iter()
+        .position(|s| s.name == "q")
+        .unwrap();
     let mut update = g.post(g.empty(), p, vec![0], Condition::TRUE).unwrap();
     let anchor = update.occurrence();
     let mut root = loop {
@@ -311,6 +319,16 @@ fn wide_wake_and_matching_children_discard_incrementally_and_remain_traceable() 
                 break r;
             }
         };
+        let mut update = g.post(root, q, vec![variable], Condition::TRUE).unwrap();
+        root = loop {
+            if let UpdateStatus::Complete(r) = update.tick(&mut g) {
+                break r;
+            }
+        };
+    }
+    // Keep the relation broad enough to exercise indexed membership planning.
+    // Unrelated rows do not change the class or its expected wake inventory.
+    for variable in 1000..2024 {
         let mut update = g.post(root, q, vec![variable], Condition::TRUE).unwrap();
         root = loop {
             if let UpdateStatus::Complete(r) = update.tick(&mut g) {

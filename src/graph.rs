@@ -4,9 +4,10 @@ mod prune;
 pub use prune::Prune;
 
 use crate::condition::Condition;
+use crate::identity::{CHILD, PARENT};
 use crate::program::Signature;
 use crate::store::{self, Key, Root, Store};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Bound::{Excluded, Unbounded};
 use std::sync::Arc;
 
@@ -14,6 +15,11 @@ const FACT: u64 = 0;
 const RELATION: u64 = 1;
 const PORT: u64 = 2;
 const INCIDENCE: u64 = 3;
+
+// Hash collisions only broaden a candidate bucket; matching checks every port.
+pub(crate) fn tuple_hash(hash: u64, variable: u64) -> u64 {
+    hash.wrapping_mul(0x9e3779b97f4a7c15).wrapping_add(variable)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GraphError {
@@ -57,21 +63,46 @@ pub struct Graph {
     semantic_debt: usize,
     pub(crate) index: Store<Condition>,
     rows: BTreeMap<u64, Row>,
+    unprotected: Option<BTreeSet<u64>>,
     arities: Vec<usize>,
+    tuple_indexes: Vec<bool>,
     port_bases: Vec<u64>,
     next_occurrence: u64,
     epoch: u64,
 }
 
 impl Graph {
+    /// Standalone graphs index every whole tuple with at least two ports.
     pub fn new(signatures: &[Signature]) -> Self {
+        Self::with_tuple_indexes(
+            signatures,
+            &signatures.iter().map(|s| s.arity >= 2).collect::<Vec<_>>(),
+        )
+    }
+
+    /// Immutable index configuration: one flag per relation signature. Ordinary
+    /// port and incidence indexes always exist; whole-tuple indexes require arity >= 2.
+    pub fn with_tuple_indexes(signatures: &[Signature], tuple_indexes: &[bool]) -> Self {
+        assert_eq!(
+            signatures.len(),
+            tuple_indexes.len(),
+            "one tuple-index flag per relation"
+        );
+        assert!(
+            signatures
+                .iter()
+                .zip(tuple_indexes)
+                .all(|(s, &enabled)| !enabled || s.arity >= 2),
+            "whole-tuple indexes require at least two ports"
+        );
         let mut next = 0_u64;
         let port_bases = signatures
             .iter()
-            .map(|signature| {
+            .zip(tuple_indexes)
+            .map(|(signature, &enabled)| {
                 let base = next;
                 next = next
-                    .checked_add(signature.arity as u64)
+                    .checked_add(signature.arity as u64 + u64::from(enabled))
                     .expect("port identity exhausted");
                 base
             })
@@ -80,7 +111,9 @@ impl Graph {
             semantic_debt: 0,
             index: Store::default(),
             rows: BTreeMap::new(),
+            unprotected: None,
             arities: signatures.iter().map(|s| s.arity).collect(),
+            tuple_indexes: tuple_indexes.to_vec(),
             port_bases,
             next_occurrence: 0,
             epoch: 0,
@@ -164,6 +197,9 @@ impl Graph {
         let id = self.next_occurrence;
         self.next_occurrence = id.checked_add(1).expect("occurrence identity exhausted");
         let args = Arc::new(args);
+        if let Some(ids) = &mut self.unprotected {
+            ids.insert(id);
+        }
         self.rows.insert(
             id,
             Row {
@@ -214,13 +250,18 @@ impl Graph {
         // Staging the fact root immediately makes a pending new occurrence
         // traceable. All remaining port/index updates yield separately.
         let staged = self.write(base, [FACT, id, 0, 0], support);
-        let position = if !changed { 2 + 2 * args.len() } else { 1 };
+        let position = if !changed {
+            2 + 2 * args.len() + usize::from(self.tuple_indexes[relation])
+        } else {
+            1
+        };
         Update {
             owner: self.index.owner(),
             staged,
             id,
             relation,
             port_base: self.port_bases[relation],
+            tuple_hash: 0,
             args,
             support,
             position,
@@ -257,6 +298,15 @@ impl Graph {
         })
     }
 
+    /// Relation cardinality from cached subtree counts at a pinned root.
+    pub(crate) fn relation_count(&self, root: &Root, relation: usize) -> usize {
+        self.index.count(
+            root,
+            [RELATION, relation as u64, 0, 0],
+            [RELATION, relation as u64, u64::MAX, 0],
+        )
+    }
+
     /// Raw variable port lookup. Identity-aware matching combines supported
     /// equivalence members; this index does not bind or merge variables.
     pub fn port(
@@ -285,6 +335,64 @@ impl Graph {
         })
     }
 
+    /// Raw bucket cardinality from cached subtree counts, without visiting rows.
+    /// Callers supply a prepared relation and port at a valid pinned root.
+    pub(crate) fn port_count(
+        &self,
+        root: &Root,
+        relation: usize,
+        port: usize,
+        variable: u64,
+    ) -> usize {
+        assert!(port < self.arities[relation]);
+        let port = self.port_bases[relation] + port as u64;
+        self.index.count(
+            root,
+            [PORT, port, variable, 0],
+            [PORT, port, variable, u64::MAX],
+        )
+    }
+
+    /// No support-bearing identity edge touches this variable in this snapshot.
+    /// Absence in both directions certifies a singleton on every scope.
+    pub(crate) fn singleton(&self, root: &Root, variable: u64) -> bool {
+        [PARENT, CHILD].into_iter().all(|namespace| {
+            self.index.count(
+                root,
+                [namespace, variable, 0, 0],
+                [namespace, variable, u64::MAX, 0],
+            ) == 0
+        })
+    }
+
+    pub(crate) fn has_tuple_index(&self, relation: usize) -> bool {
+        self.tuple_indexes[relation]
+    }
+
+    pub(crate) fn tuple(&self, root: Root, relation: usize, hash: u64) -> Occurrences {
+        assert!(
+            self.tuple_indexes[relation],
+            "whole-tuple index is not configured"
+        );
+        let port = self.port_bases[relation] + self.arities[relation] as u64;
+        Occurrences {
+            cursor: self
+                .index
+                .range(root, [PORT, port, hash, 0], [PORT, port, hash, u64::MAX]),
+            id_word: 3,
+        }
+    }
+
+    pub(crate) fn tuple_count(&self, root: &Root, relation: usize, hash: u64) -> usize {
+        assert!(
+            self.tuple_indexes[relation],
+            "whole-tuple index is not configured"
+        );
+        let port = self.port_bases[relation] + self.arities[relation] as u64;
+        self.index
+            .count(root, [PORT, port, hash, 0], [PORT, port, hash, u64::MAX])
+    }
+
     pub fn incidence(&self, root: Root, variable: u64) -> Occurrences {
         Occurrences {
             cursor: self.index.range(
@@ -301,17 +409,37 @@ impl Graph {
     /// The nested index lease freezes graph writes through metadata sweep and
     /// is released only when this token is dropped (finished or aborted).
     pub fn collect<I: Iterator<Item = Root>>(&mut self, roots: I) -> Collector<I> {
+        self.collect_archived(roots, vec![], true)
+    }
+    pub(crate) fn collect_archived<I: Iterator<Item = Root>>(
+        &mut self,
+        roots: I,
+        archived: Vec<Root>,
+        mut reset: bool,
+    ) -> Collector<I> {
         self.index.assert_mutable();
         let epoch = self
             .epoch
             .checked_add(1)
             .expect("graph collection epoch exhausted");
-        let index = self.index.collect(roots);
+        let deactivate = reset && archived.is_empty() && self.unprotected.is_some();
+        if !archived.is_empty() && self.unprotected.is_none() {
+            self.unprotected = Some(BTreeSet::new());
+            reset = true;
+        }
+        let index = self.index.collect_archived(roots, archived, reset);
         self.epoch = epoch;
         Collector {
             index,
             epoch,
             sweep: None,
+            deactivate,
+            reset: deactivate
+                || reset
+                    && self
+                        .unprotected
+                        .as_ref()
+                        .is_some_and(|ids| ids.len() != self.rows.len()),
             done: false,
         }
     }
@@ -349,6 +477,7 @@ pub struct Update {
     id: u64,
     relation: usize,
     port_base: u64,
+    tuple_hash: u64,
     args: Arc<Vec<u64>>,
     support: Condition,
     position: usize,
@@ -363,14 +492,25 @@ impl Update {
     pub fn tick(&mut self, graph: &mut Graph) -> UpdateStatus {
         graph.index.assert_mutable();
         assert_eq!(self.owner, graph.index.owner(), "foreign graph update");
-        if self.position >= 2 + 2 * self.args.len() {
+        let end = 2 + 2 * self.args.len() + usize::from(graph.tuple_indexes[self.relation]);
+        if self.position >= end {
             return UpdateStatus::Complete(self.staged.clone());
         }
         let key = if self.position == 1 {
             [RELATION, self.relation as u64, self.id, 0]
+        } else if self.position == 2 + 2 * self.args.len() {
+            [
+                PORT,
+                self.port_base + self.args.len() as u64,
+                self.tuple_hash,
+                self.id,
+            ]
         } else {
             let port = (self.position - 2) / 2;
             if self.position.is_multiple_of(2) {
+                if graph.tuple_indexes[self.relation] {
+                    self.tuple_hash = tuple_hash(self.tuple_hash, self.args[port]);
+                }
                 [PORT, self.port_base + port as u64, self.args[port], self.id]
             } else {
                 [INCIDENCE, self.args[port], self.id, 0]
@@ -378,7 +518,7 @@ impl Update {
         };
         self.staged = graph.write(std::mem::take(&mut self.staged), key, self.support);
         self.position += 1;
-        if self.position == 2 + 2 * self.args.len() {
+        if self.position == end {
             UpdateStatus::Complete(self.staged.clone())
         } else {
             UpdateStatus::Pending
@@ -390,11 +530,16 @@ pub struct Collector<I> {
     index: store::Collector<I>,
     epoch: u64,
     sweep: Option<u64>,
+    reset: bool,
+    deactivate: bool,
     done: bool,
 }
 impl<I: Iterator<Item = Root>> Collector<I> {
     pub fn done(&self) -> bool {
         self.done
+    }
+    pub(crate) fn archiving(&self) -> bool {
+        self.index.archiving()
     }
     pub fn tick(&mut self, graph: &mut Graph) -> Option<Condition> {
         self.index.validate(&graph.index);
@@ -402,9 +547,34 @@ impl<I: Iterator<Item = Root>> Collector<I> {
         if self.done {
             return None;
         }
+        if self.reset {
+            if self.deactivate {
+                if graph.unprotected.as_mut().unwrap().pop_first().is_none() {
+                    graph.unprotected = None;
+                    self.reset = false;
+                }
+                return None;
+            }
+            let next = match self.sweep {
+                Some(id) => graph.rows.range((Excluded(id), Unbounded)).next(),
+                None => graph.rows.first_key_value(),
+            }
+            .map(|(&id, _)| id);
+            if let Some(id) = next {
+                graph.unprotected.as_mut().unwrap().insert(id);
+                self.sweep = Some(id);
+            } else {
+                self.reset = false;
+                self.sweep = None;
+            }
+            return None;
+        }
         if !self.index.done() {
             if let Some((key, support)) = self.index.tick(&mut graph.index) {
                 if key[0] == FACT {
+                    if self.index.archiving() {
+                        graph.unprotected.as_mut().unwrap().remove(&key[1]);
+                    }
                     graph
                         .rows
                         .get_mut(&key[1])
@@ -414,13 +584,26 @@ impl<I: Iterator<Item = Root>> Collector<I> {
                 return Some(support);
             }
         } else {
-            let next = match self.sweep {
-                Some(id) => graph.rows.range((Excluded(id), Unbounded)).next(),
-                None => graph.rows.first_key_value(),
+            let next = if let Some(ids) = &graph.unprotected {
+                match self.sweep {
+                    Some(id) => ids.range((Excluded(id), Unbounded)).next(),
+                    None => ids.first(),
+                }
+                .copied()
+            } else {
+                match self.sweep {
+                    Some(id) => graph.rows.range((Excluded(id), Unbounded)).next(),
+                    None => graph.rows.first_key_value(),
+                }
+                .map(|(&id, _)| id)
             };
-            if let Some((&id, row)) = next {
+            if let Some(id) = next {
+                let row = &graph.rows[&id];
                 if row.marked != self.epoch {
                     graph.rows.remove(&id);
+                    if let Some(ids) = &mut graph.unprotected {
+                        ids.remove(&id);
+                    }
                 }
                 self.sweep = Some(id);
             } else {
@@ -543,6 +726,10 @@ mod update_ownership_tests {
                 Some((id, c))
             );
         }
+        assert_eq!(
+            g.tuple(root.clone(), 0, tuple_hash(7, 7)).next(&g),
+            Some((id, c))
+        );
         assert_eq!(g.incidence(root, 7).next(&g), Some((id, c)));
         assert_eq!(
             g.index.mutation_counts().1,
@@ -593,6 +780,15 @@ mod update_ownership_tests {
                                     live
                                 );
                             }
+                            if arity >= 2 {
+                                let hash = args.iter().fold(0, |h, &v| tuple_hash(h, v));
+                                assert_eq!(g.tuple(root.clone(), 0, hash).next(&g).is_some(), live);
+                                assert_eq!(g.tuple_count(&root, 0, hash), usize::from(live));
+                                assert!(matches!(
+                                    g.port(root.clone(), 0, arity, hash),
+                                    Err(GraphError::InvalidPort)
+                                ));
+                            }
                             if live {
                                 assert_eq!(g.fact(root, id).unwrap().args, args);
                                 assert!(a.contains(c));
@@ -615,5 +811,59 @@ mod update_ownership_tests {
         assert!(catch_unwind(AssertUnwindSafe(|| u.tick(&mut g))).is_err());
         drop(gc);
         assert!(matches!(u.tick(&mut g), UpdateStatus::Complete(_)));
+    }
+}
+
+#[cfg(test)]
+mod tuple_index_tests {
+    use super::*;
+    use crate::condition::Arena;
+    fn finish(g: &mut Graph, mut u: Update) -> Root {
+        loop {
+            if let UpdateStatus::Complete(r) = u.tick(g) {
+                return r;
+            }
+        }
+    }
+    #[test]
+    fn tuple_support_tracks_updates_pruning_and_reclamation_without_language_ports() {
+        let mut g = Graph::new(&[Signature {
+            name: "p".into(),
+            arity: 2,
+        }]);
+        let mut a = Arena::default();
+        let c = a.fresh_choice().1;
+        let u = g.post(g.empty(), 0, vec![7, 9], Condition::TRUE).unwrap();
+        let id = u.occurrence();
+        let original = finish(&mut g, u);
+        let hash = tuple_hash(7, 9);
+        let u = g.set_liveness(original.clone(), id, c).unwrap();
+        let root = finish(&mut g, u);
+        assert_eq!(
+            g.tuple(original.clone(), 0, hash).next(&g),
+            Some((id, Condition::TRUE))
+        );
+        assert_eq!(g.tuple(root.clone(), 0, hash).next(&g), Some((id, c)));
+        assert!(matches!(
+            g.port(root.clone(), 0, 2, hash),
+            Err(GraphError::InvalidPort)
+        ));
+        assert!(g.incidence(root.clone(), hash).next(&g).is_none());
+        let mut prune = g.prune(root.clone(), c.not());
+        let empty = (0..10000).find_map(|_| prune.tick(&mut g, &mut a)).unwrap();
+        drop(prune);
+        assert_eq!(empty, g.empty());
+        assert_eq!(g.tuple(root.clone(), 0, hash).next(&g), Some((id, c)));
+        let u = g.set_liveness(root, id, Condition::FALSE).unwrap();
+        let empty = finish(&mut g, u);
+        assert_eq!(g.tuple_count(&empty, 0, hash), 0);
+        drop(original);
+        let mut gc = g.collect([empty].into_iter());
+        while !gc.done() {
+            gc.tick(&mut g);
+        }
+        drop(gc);
+        assert_eq!(g.occurrence_count(), 0);
+        assert_eq!(g.index_node_count(), 0);
     }
 }

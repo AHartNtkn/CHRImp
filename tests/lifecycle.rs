@@ -136,13 +136,13 @@ fn history_pruning_does_not_replay_a_live_tuple() {
     // Each merge wakes keep again; its retained tuple must still remain once-only.
     let relation = e
         .program()
-        .signatures
+        .signatures()
         .iter()
         .position(|s| s.name == "result")
         .unwrap();
-    let mut rows = e.graph().relation(e.state().graph, relation).unwrap();
-    assert!(rows.next(e.graph()).is_some());
-    assert!(rows.next(e.graph()).is_none());
+    let mut rows = e.facts(relation).unwrap();
+    assert!(rows.next().is_some());
+    assert!(rows.next().is_none());
 }
 
 #[test]

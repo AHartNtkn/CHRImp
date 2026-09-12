@@ -15,6 +15,9 @@ pub struct Substitution {
     bindings: Option<Arc<BTreeMap<u64, Condition>>>,
     draining: BTreeMap<u64, Condition>,
     boolean: Option<Transform>,
+    operand: Condition,
+    // One frozen substitution shares images across all repeated leaf supports.
+    memo: BTreeMap<Condition, Condition>,
     // A terminal substituteion validates bindings and binds the arena on the
     // first tick. Once complete it enforces arena identity and its GC lease.
     arena_guard: Option<Transform>,
@@ -31,6 +34,8 @@ impl Store<Condition> {
             bindings: Some(bindings),
             draining: BTreeMap::new(),
             boolean: None,
+            operand: Condition::FALSE,
+            memo: BTreeMap::new(),
             arena_guard: None,
             result: None,
             done: false,
@@ -51,6 +56,12 @@ impl Substitution {
         self.filter
             .iter()
             .flat_map(Filter::values)
+            .chain([self.operand])
+            .chain(
+                self.memo
+                    .iter()
+                    .flat_map(|(&input, &output)| [input, output]),
+            )
             .chain(self.boolean.iter().flat_map(Transform::roots))
             .chain(self.arena_guard.iter().flat_map(Transform::roots))
             .chain(
@@ -62,6 +73,9 @@ impl Substitution {
     }
 
     fn cleanup_tick(&mut self) -> bool {
+        if self.memo.pop_first().is_some() {
+            return false;
+        }
         if let Some(bindings) = self.bindings.take() {
             if let Some(bindings) = Arc::into_inner(bindings) {
                 self.draining = bindings;
@@ -78,6 +92,7 @@ impl Substitution {
         self.discarding = true;
         self.filter = None; // Filter frames are bounded scalar index handles.
         self.result = None;
+        self.operand = Condition::FALSE;
         if let Some(boolean) = &mut self.boolean {
             if boolean.discard_tick() {
                 self.boolean = None;
@@ -111,6 +126,8 @@ impl Substitution {
         }
         if let Some(boolean) = &mut self.boolean {
             if let Progress::Complete(value) = boolean.tick(arena) {
+                self.memo.insert(self.operand, value);
+                self.operand = Condition::FALSE;
                 self.filter
                     .as_mut()
                     .unwrap()
@@ -121,8 +138,13 @@ impl Substitution {
             match filter.tick(store) {
                 FilterStatus::Pending => {}
                 FilterStatus::Leaf { value, .. } => {
-                    self.boolean =
-                        Some(arena.substitute(value, self.bindings.as_ref().unwrap().clone()));
+                    if let Some(&image) = self.memo.get(&value) {
+                        filter.replace((image != Condition::FALSE).then_some(image));
+                    } else {
+                        self.operand = value;
+                        self.boolean =
+                            Some(arena.substitute(value, self.bindings.as_ref().unwrap().clone()));
+                    }
                 }
                 FilterStatus::Complete(root) => {
                     self.result = Some(root);
@@ -153,6 +175,8 @@ impl Trace for Substitution {
                 None => cursor.advance(),
             },
             4 => cursor.values(&self.draining),
+            5 => cursor.substitutions(&self.memo),
+            6 => cursor.fields(&[self.operand]),
             _ => Step::Done,
         }
     }

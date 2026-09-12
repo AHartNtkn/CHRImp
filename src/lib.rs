@@ -11,6 +11,7 @@ pub mod members;
 pub mod notebook;
 pub mod observe;
 pub mod program;
+pub mod runtime;
 pub mod store;
 pub mod syntax;
 pub mod trace;

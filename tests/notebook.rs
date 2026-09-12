@@ -38,7 +38,12 @@ impl std::ops::Deref for Client {
 fn command_body(client: &Client, path: &str, mut body: Value) -> Value {
     if matches!(
         path,
-        "/api/start" | "/api/inspect" | "/api/step" | "/api/resume" | "/api/snapshot"
+        "/api/start"
+            | "/api/inspect"
+            | "/api/step"
+            | "/api/resume"
+            | "/api/pause"
+            | "/api/snapshot"
     ) && body.get("command").is_none()
     {
         body["command"] = json!(client.next.load(std::sync::atomic::Ordering::Relaxed));
@@ -63,6 +68,12 @@ fn execution_body(runtime: &Client, mut body: Value) -> String {
     body.to_string()
 }
 fn ok(runtime: &Client, path: &str, body: Value) -> Value {
+    // The fixture supplies independent scheduler turns; transport only reads.
+    if path == "/api/output" {
+        for _ in 0..32 {
+            runtime.tick();
+        }
+    }
     let command = command_body(runtime, path, body);
     let body = if matches!(path, "/api/parse" | "/api/format" | "/api/hello") {
         command.to_string()
@@ -100,6 +111,7 @@ fn retry(runtime: &Client, path: &str, body: Value) -> Value {
             return response.body;
         }
         assert_eq!(response.body["retry"], true, "{path}: {:?}", response.body);
+        runtime.tick();
         ok(
             runtime,
             "/api/maintenance",
@@ -120,7 +132,7 @@ fn notebook_protocol_executes_and_replays_a_recorded_graph_in_bounded_batches() 
     for _ in 0..1000 {
         let batch = next(
             &runtime,
-            "/api/advance",
+            "/api/output",
             json!({"run":run,"budget":17}),
             &mut ack,
         );
@@ -189,7 +201,7 @@ fn step_stops_at_a_logical_application_and_cancel_progresses_without_client_poll
     for _ in 0..1000 {
         let batch = next(
             &runtime,
-            "/api/advance",
+            "/api/output",
             json!({"run":run,"budget":19}),
             &mut ack,
         );
@@ -203,7 +215,7 @@ fn step_stops_at_a_logical_application_and_cancel_progresses_without_client_poll
     assert_eq!(
         next(
             &runtime,
-            "/api/advance",
+            "/api/output",
             json!({"run":run,"budget":4096}),
             &mut ack
         )["applications"],
@@ -213,7 +225,7 @@ fn step_stops_at_a_logical_application_and_cancel_progresses_without_client_poll
     assert!(
         next(
             &runtime,
-            "/api/advance",
+            "/api/output",
             json!({"run":run,"budget":4096}),
             &mut ack
         )["applications"]
@@ -250,7 +262,7 @@ fn malformed_requests_are_rejected_before_creating_or_mutating_a_run() {
     assert_eq!(
         runtime
             .request(
-                "/api/advance",
+                "/api/output",
                 &execution_body(&runtime, json!({"run":run,"budget":4097}))
             )
             .status,
@@ -270,10 +282,7 @@ fn malformed_requests_are_rejected_before_creating_or_mutating_a_run() {
     );
     assert_eq!(
         runtime
-            .request(
-                "/api/advance",
-                &execution_body(&runtime, json!({"run":999}))
-            )
+            .request("/api/output", &execution_body(&runtime, json!({"run":999})))
             .status,
         404
     );
@@ -316,9 +325,99 @@ fn loopback_http_serves_the_notebook_and_enforces_request_boundaries() {
             .unwrap();
         socket.write_all(request.as_bytes()).unwrap();
         let mut result = String::new();
-        socket.read_to_string(&mut result).unwrap();
+        socket.read_to_string(&mut result).unwrap_or_else(|error| {
+            panic!(
+                "{}: {error}; response so far: {result}",
+                request.lines().next().unwrap()
+            )
+        });
         result
     };
+    let post = |route: &str, body: Value| {
+        let body = body.to_string();
+        let response = send(format!(
+            "POST /api/{route} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        ));
+        assert!(response.starts_with("HTTP/1.1 200"), "{route}: {response}");
+        serde_json::from_str::<Value>(response.split_once("\r\n\r\n").unwrap().1).unwrap()
+    };
+    let token = post("hello", json!({}))["boot"].clone();
+    let owner = post("reserve", json!({"boot":token}))["owner"].clone();
+    post("attach", json!({"boot":token,"owner":owner}));
+    let mut model = post("parse", json!({"program":"", "query":"p(A);q(A)"}));
+    model["boot"] = token.clone();
+    model["owner"] = owner.clone();
+    model["command"] = json!(1);
+    let run = post("start", model)["run"].clone();
+    // No HTTP requests, including status or delivery, during this interval.
+    std::thread::sleep(std::time::Duration::from_millis(150));
+    let identity = json!({"boot":token,"owner":owner,"run":run});
+    assert_eq!(post("status", identity.clone())["execution_done"], true);
+    let mut request = identity.clone();
+    request["budget"] = json!(1);
+    let first = post("output", request.clone());
+    assert_eq!(
+        post("output", request.clone()),
+        first,
+        "lost delivery replays exactly"
+    );
+    let mut batch = first;
+    let mut events = Vec::new();
+    loop {
+        events.extend(batch["events"].as_array().unwrap().clone());
+        if batch["delivery_done"] == true {
+            break;
+        }
+        request["ack"] = batch["sequence"].clone();
+        batch = post("output", request.clone());
+    }
+    assert_eq!(events.iter().filter(|e| e["kind"] == "end").count(), 2);
+    assert_eq!(events.iter().filter(|e| e["kind"] == "fact").count(), 2);
+    post("close", identity);
+
+    let mut model = post("parse", json!({"program":"p <=> q. q <=> p.", "query":"p"}));
+    model["boot"] = token.clone();
+    model["owner"] = owner.clone();
+    model["command"] = json!(2);
+    model["paused"] = json!(true);
+    let run = post("start", model)["run"].clone();
+    let identity = json!({"boot":token,"owner":owner,"run":run});
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert_eq!(post("status", identity.clone())["applications"], 0);
+    let mut control = identity.clone();
+    control["command"] = json!(3);
+    post("step", control.clone());
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(post("status", identity.clone())["applications"], 1);
+    assert_eq!(post("status", identity.clone())["running"], false);
+    control["command"] = json!(4);
+    post("resume", control.clone());
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Continuous execution must hand the owner lock to waiting HTTP requests.
+    for _ in 0..16 {
+        assert_eq!(post("status", identity.clone())["running"], true);
+    }
+    control["command"] = json!(5);
+    post("pause", control.clone());
+    let paused = post("status", identity.clone())["applications"]
+        .as_u64()
+        .unwrap();
+    assert!(paused > 1);
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert_eq!(post("status", identity.clone())["applications"], paused);
+    assert_eq!(post("pause", control.clone()), json!({}));
+    control["command"] = json!(6);
+    post("resume", control);
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    post("cancel", identity.clone());
+    let canceled = post("status", identity.clone())["applications"].clone();
+    assert!(canceled.as_u64().unwrap() > paused);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let status = post("status", identity.clone());
+    assert_eq!(status["applications"], canceled);
+    assert_eq!(status["cancel_done"], true);
+    post("close", identity);
     let home = send(format!("GET / HTTP/1.1\r\nHost: {address}\r\n\r\n"));
     assert!(home.starts_with("HTTP/1.1 200"));
     assert!(home.contains("CHR · Language notebook"));
@@ -364,7 +463,7 @@ fn releasing_a_recorded_execution_reclaims_its_run_without_losing_other_runs() {
     for _ in 0..50 {
         next(
             &runtime,
-            "/api/advance",
+            "/api/output",
             json!({"run":closing,"budget":4096}),
             &mut ack,
         );
@@ -441,20 +540,20 @@ fn unacknowledged_output_batches_are_replayed_exactly_after_response_loss() {
     let mut ack = None;
     let first = next(
         &runtime,
-        "/api/advance",
+        "/api/output",
         json!({"run":run,"budget":4096}),
         &mut ack,
     );
     assert!(!first["events"].as_array().unwrap().is_empty());
     for _ in 0..3 {
         assert_eq!(
-            ok(&runtime, "/api/advance", json!({"run":run,"budget":1})),
+            ok(&runtime, "/api/output", json!({"run":run,"budget":1})),
             first
         );
     }
     let second = next(
         &runtime,
-        "/api/advance",
+        "/api/output",
         json!({"run":run,"budget":4096}),
         &mut ack,
     );
@@ -463,7 +562,7 @@ fn unacknowledged_output_batches_are_replayed_exactly_after_response_loss() {
     assert_eq!(
         runtime
             .request(
-                "/api/advance",
+                "/api/output",
                 &execution_body(&runtime, json!({"run":run,"ack":99}))
             )
             .status,
@@ -510,7 +609,7 @@ fn unacknowledged_output_batches_are_replayed_exactly_after_response_loss() {
 fn releasing_inspection_zero_preserves_source_recovery() {
     let runtime = Client::default();
     let run = start(&runtime, "", "p(A)", false)["run"].clone();
-    let batch = ok(&runtime, "/api/advance", json!({"run":run,"budget":4096}));
+    let batch = ok(&runtime, "/api/output", json!({"run":run,"budget":4096}));
     let inspection = retry(&runtime, "/api/inspect", json!({"run":run}))["inspection"].clone();
     // Release is idempotent, including an already absent inspector zero.
     retry(
@@ -537,7 +636,7 @@ fn releasing_inspection_zero_preserves_source_recovery() {
         json!({"run":run,"inspection":inspection}),
     );
     assert_eq!(
-        ok(&runtime, "/api/advance", json!({"run":run,"budget":1})),
+        ok(&runtime, "/api/output", json!({"run":run,"budget":1})),
         batch
     );
 }
@@ -546,7 +645,7 @@ fn releasing_inspection_zero_preserves_source_recovery() {
 fn closing_discards_inspections_created_after_source_cancellation() {
     let runtime = Client::default();
     let run = start(&runtime, "", "p(A)", true)["run"].clone();
-    ok(&runtime, "/api/advance", json!({"run":run,"budget":4096}));
+    ok(&runtime, "/api/output", json!({"run":run,"budget":4096}));
     let views = ok(&runtime, "/api/views", json!({"run":run}));
     let snapshot = views["snapshots"].as_array().unwrap().last().unwrap()["id"].clone();
     ok(&runtime, "/api/cancel", json!({"run":run}));
@@ -590,7 +689,7 @@ fn metadata_pages_round_trip_without_replaying_prefixes() {
     for _ in 0..100 {
         next(
             &runtime,
-            "/api/advance",
+            "/api/output",
             json!({"run":run,"budget":4096}),
             &mut ack,
         );
@@ -638,7 +737,7 @@ fn logical_step_inspection_streams_the_pending_rhs_with_string_variable_ids() {
     for _ in 0..100 {
         let batch = next(
             &runtime,
-            "/api/advance",
+            "/api/output",
             json!({"run":run,"budget":4096}),
             &mut ack,
         );
@@ -872,7 +971,7 @@ fn server_incarnation_rejects_stale_execution_requests_before_lookup_or_mutation
     assert_eq!(old_run, current_run, "exercise reused numeric run IDs");
     let before = ok(&current, "/api/status", json!({"run":current_run}));
     for route in [
-        "advance",
+        "output",
         "cancel",
         "close",
         "inspect",
@@ -1007,7 +1106,7 @@ fn lost_control_responses_replay_without_new_inspections_or_step_controllers() {
     for _ in 0..1000 {
         let batch = next(
             &runtime,
-            "/api/advance",
+            "/api/output",
             json!({"run":run,"budget":4096}),
             &mut ack,
         );
@@ -1021,7 +1120,7 @@ fn lost_control_responses_replay_without_new_inspections_or_step_controllers() {
     assert_eq!(runtime.request("/api/step", &step).body, first_step.body);
     let batch = next(
         &runtime,
-        "/api/advance",
+        "/api/output",
         json!({"run":run,"budget":4096}),
         &mut ack,
     );
@@ -1080,7 +1179,7 @@ fn owner_retirement_fences_reservations_and_cross_owner_execution() {
     for route in [
         "cancel",
         "close",
-        "advance",
+        "output",
         "inspect",
         "step",
         "resume",
@@ -1240,7 +1339,7 @@ fn flat_choice_metadata_labels_the_actual_contiguous_partitions() {
     for _ in 0..1000 {
         let batch = next(
             &runtime,
-            "/api/advance",
+            "/api/output",
             json!({"run":run,"budget":128}),
             &mut ack,
         );

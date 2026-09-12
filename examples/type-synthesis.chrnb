@@ -1,0 +1,2685 @@
+{
+  "activeQuery": "query-1",
+  "format": "chr-notebook",
+  "layouts": {},
+  "program": {
+    "rules": [
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          }
+        ],
+        "name": "k_consistent",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          }
+        ],
+        "name": "s_consistent",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "kind": "equal",
+              "left": "A0",
+              "right": "B0"
+            },
+            {
+              "kind": "equal",
+              "left": "A1",
+              "right": "B1"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          }
+        ],
+        "name": "app_consistent",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "app"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "kind": "equal",
+              "left": "A0",
+              "right": "B0"
+            },
+            {
+              "kind": "equal",
+              "left": "A1",
+              "right": "B1"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "arrow"
+          }
+        ],
+        "name": "arrow_consistent",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "arrow"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_a"
+          }
+        ],
+        "name": "type_a_consistent",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_a"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_b"
+          }
+        ],
+        "name": "type_b_consistent",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_b"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_c"
+          }
+        ],
+        "name": "type_c_consistent",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_c"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_s_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_app_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "app"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_arrow_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "arrow"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_type_a_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_a"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_type_b_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_b"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_type_c_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_c"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_app_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "app"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_arrow_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "arrow"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_type_a_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_a"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_type_b_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_b"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_type_c_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_c"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "app_arrow_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "arrow"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "app_type_a_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_a"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "app_type_b_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_b"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "app_type_c_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_c"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "arrow_type_a_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "arrow"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_a"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "arrow_type_b_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "arrow"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_b"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "arrow_type_c_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "arrow"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_c"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "type_a_type_b_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_a"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_b"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "type_a_type_c_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_a"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_c"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "type_b_type_c_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_b"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "type_c"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "X"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "N",
+                  "A0"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "N",
+                  "A1"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "arrow"
+          }
+        ],
+        "name": null,
+        "removed": []
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "A0"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "A1"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y",
+              "A0",
+              "A1"
+            ],
+            "relation": "arrow"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "N",
+                  "A0"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "N",
+                  "A1"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          }
+        ],
+        "name": null,
+        "removed": []
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "A0"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "A1"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y"
+            ],
+            "relation": "k"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y"
+            ],
+            "relation": "s"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y"
+            ],
+            "relation": "type_a"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y"
+            ],
+            "relation": "type_b"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y"
+            ],
+            "relation": "type_c"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "P"
+                    ],
+                    "relation": "k"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "T",
+                      "A",
+                      "R"
+                    ],
+                    "relation": "arrow"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "R",
+                      "B",
+                      "A"
+                    ],
+                    "relation": "arrow"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "P"
+                    ],
+                    "relation": "s"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "T",
+                      "F",
+                      "R"
+                    ],
+                    "relation": "arrow"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "F",
+                      "A",
+                      "G"
+                    ],
+                    "relation": "arrow"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "G",
+                      "B",
+                      "C"
+                    ],
+                    "relation": "arrow"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "R",
+                      "H",
+                      "Q"
+                    ],
+                    "relation": "arrow"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "H",
+                      "A",
+                      "B"
+                    ],
+                    "relation": "arrow"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Q",
+                      "A",
+                      "C"
+                    ],
+                    "relation": "arrow"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "P",
+                      "F",
+                      "X"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "F",
+                      "FT"
+                    ],
+                    "relation": "infer"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "FT",
+                      "X",
+                      "T"
+                    ],
+                    "relation": "apply_type"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            }
+          ],
+          "kind": "or"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "P",
+              "T"
+            ],
+            "relation": "infer"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "kind": "equal",
+              "left": "R",
+              "right": "T"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "XT"
+                ],
+                "relation": "infer"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "FT",
+              "XT",
+              "R"
+            ],
+            "relation": "arrow"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "FT",
+              "X",
+              "T"
+            ],
+            "relation": "apply_type"
+          }
+        ]
+      }
+    ]
+  },
+  "queries": [
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Type",
+                "N1",
+                "N2"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-1",
+      "name": "Synthesize identity"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3",
+                "N4"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Type",
+                "N1",
+                "N2"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-2",
+      "name": "Synthesize constant"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3",
+                "N4"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Type",
+                "N1",
+                "N2"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-3",
+      "name": "Synthesize second argument"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "type_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N5"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7",
+                "N8",
+                "N9"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N11"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N12"
+              ],
+              "relation": "type_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10",
+                "N11",
+                "N12"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6",
+                "N7",
+                "N10"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Type",
+                "N1",
+                "N6"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-4",
+      "name": "Synthesize substitution"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "type_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5",
+                "N6",
+                "N7"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10"
+              ],
+              "relation": "type_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8",
+                "N9",
+                "N10"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5",
+                "N8"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Type",
+                "N1",
+                "N4"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-5",
+      "name": "Synthesize composition"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "type_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N5"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10"
+              ],
+              "relation": "type_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8",
+                "N9",
+                "N10"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6",
+                "N7",
+                "N8"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Type",
+                "N1",
+                "N6"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-6",
+      "name": "Synthesize swap arguments"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N5"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6",
+                "N7",
+                "N8"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Type",
+                "N1",
+                "N6"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-7",
+      "name": "Synthesize duplicate argument"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "type_a"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N5"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "type_b"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3",
+                "N6"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Type",
+                "N1",
+                "N2"
+              ],
+              "relation": "arrow"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-8",
+      "name": "Synthesize apply to a function"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Program"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-9",
+      "name": "Infer the type of K"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Program"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-10",
+      "name": "Infer the type of S"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "N1",
+                "N4"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-11",
+      "name": "Infer the type of identity"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N5"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "N1",
+                "N6"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-12",
+      "name": "Infer the type of composition"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8",
+                "N9",
+                "N10"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6",
+                "N7",
+                "N8"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N11"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5",
+                "N6",
+                "N11"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N14"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N16"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N17"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N15",
+                "N16",
+                "N17"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N13",
+                "N14",
+                "N15"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N18"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N12",
+                "N13",
+                "N18"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5",
+                "N12"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N19"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N19"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N21"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N22"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N20",
+                "N21",
+                "N22"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "N1",
+                "N20"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-13",
+      "name": "Infer the type of swap"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5",
+                "N6"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "N1",
+                "N4"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-14",
+      "name": "Infer the type of duplicator"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "Type"
+              ],
+              "relation": "infer"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5",
+                "N6"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N7"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N11"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9",
+                "N10",
+                "N11"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N12"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8",
+                "N9",
+                "N12"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Program",
+                "N1",
+                "N8"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-15",
+      "name": "Reject self-application with a finite simple type"
+    }
+  ],
+  "title": "Type-driven combinator synthesis",
+  "version": 1
+}

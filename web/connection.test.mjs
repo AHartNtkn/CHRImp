@@ -180,14 +180,14 @@ await test('one tab holds the controller through recovery and hands off on close
   await second.close();
 });
 
-await test('quota cannot prevent stopping an existing run and status survives reload', async () => {
+for (const paused of [false,true]) await test(`quota preserves last-known ${paused ? 'paused' : 'running'} phase while server cancellation survives reload`, async () => {
   const store = journal(), backend = server(store), mutex = locks();
   let client = connection(store,backend,mutex);
-  await client.request('start',model);
+  await client.request('start',{...model,paused});
   store.rejectWrites = true;
   await assert.rejects(client.request('cancel',{run:1}),/storage unavailable/);
   assert.equal(backend.canceled.has(1),true);
-  assert.equal(store.rows.get('live:run:1').phase,'paused');
+  assert.equal(store.rows.get('live:run:1').phase,paused ? 'paused' : 'running');
   await client.close(); client = connection(store,backend,mutex);
   assert.equal((await client.request('status',{run:1})).canceled,true);
   await client.close();

@@ -6,7 +6,22 @@ Start the local browser notebook:
 cargo run --release --offline -- --notebook
 ```
 
-Open the printed URL. Program displays the editable rule diagrams; Query displays the editable query and its Run and Step controls, with answers underneath. Select a relation or compartment to edit it. Source text is available in the optional Source text section. History recording is optional and off by default. Saved answers remain in this browser; execution handles and recorded states last until released or the server stops. Use `--port PORT` to choose a port.
+Open the printed URL. Program displays the editable rule diagrams; Query displays the editable query and its Run and Step controls, with answers underneath. Select a relation or compartment to edit it. Source text is available in the optional Source text section. History recording is optional and off by default. Saved answers remain in this browser; execution handles and recorded states last until released or the server stops. The default address uses port `7878`, preserving the browser storage origin across restarts. Use `--port PORT` to choose a different port; that address has separate browser storage.
+
+Choose **Examples → Open example** to open one of four complete notebooks:
+
+| Notebook | Queries | Coverage |
+| --- | ---: | --- |
+| [Arithmetic](examples/arithmetic.chrnb) | 12 | Forward addition, either missing operand, all decompositions of a sum, subtraction, partial answers, inconsistent inputs and successor cycles. |
+| [Type-driven synthesis](examples/type-synthesis.chrnb) | 15 | Identity, constant, second selector, substitution, composition, argument swapping, duplication and application-to-a-function targets; principal type inference and rejection of self-application with finite simple types. |
+| [Behavior-driven synthesis](examples/behavior-synthesis.chrnb) | 19 | The same combinator behaviors plus self-application, forward and underapplied evaluation, residual holes and the no-constant restriction. |
+| [Lambda expressions](examples/lambda.chrnb) | 39 | Rewrite arms, recursive normalization, backward synthesis, structural consistency, disequality, normal-form constraints and shared versus distinct binder/argument wires. |
+
+Each file contains its whole program and editable queries. Structure is expressed through ordinary relations: e.g. `app(Root,Function,Argument)`, `arrow(Type,Domain,Codomain)` and `succ(Number,Predecessor)`. The program supplies structural consistency and finite-structure constraints; these are not language built-ins. In the lambda notebook, binder and occurrence ports reference unscoped variable identities. Connections are intentional; equal printed lexical names are not the binding model.
+
+The combinator notebooks use SK expressions, with unrestricted recursive search rather than a catalog of answers. `type_a`, `type_b` and `type_c` mark distinct rigid type parameters in synthesis targets; inference queries leave types open. Opaque test symbols in behavioral targets cannot occur inside a synthesized program because of `no_c`. An ignored argument may remain an unknown wire with a residual restriction. Pause and Resume continue enumeration; search need not exhaust. Unrestricted identity and constant-function synthesis produce validated answers. Composition, argument swapping and duplication remain expensive; the performance suite reports incomplete prefixes explicitly. Tests separately verify every target against a combinator checked by an independent SK reducer, plus unrestricted identity synthesis and continued constant-function enumeration; they do not claim prompt unrestricted synthesis of every target.
+
+These notebooks adapt the [arithmetic, SK, typing and lambda programs](https://github.com/AHartNtkn/CHRLang/blob/reference-interpreter/crates/chr-programs/src/lib.rs) into the variable-only language. Their runnable definitions are the `.chrnb` files themselves.
 
 Use **New**, **Open**, **Save**, and **Save as** for `.chrnb` notebook files containing the program, named queries, and diagram positions. Browsers with file-system pickers save back to the chosen file; other browsers download a notebook file and reopen it through Open. Browser recovery also keeps the working notebook between visits.
 
@@ -14,7 +29,7 @@ Create, rename, duplicate, or switch queries above the query diagram. Shift-clic
 
 Export SVG saves a whole diagram, including offscreen content. Answer exports contain complete bindings, facts, ordered ports, and pending alternatives; choose one answer, all saved answers, or a complete answer SVG. Ctrl/Cmd+C/X/V/D, Z, Shift+Z (or Y), and Delete/Backspace operate on diagram selections; text fields keep native editing. Ctrl/Cmd+S saves, Shift+S saves as, O opens, and F focuses Find.
 
-Reloading the same notebook restores its editor, saved inspection, and paused execution while the server remains running. Resume continues that execution. One browser tab controls the notebook at a time; other tabs can browse saved answers.
+Normal execution runs independently of the browser. Closing the page or delaying answer reads does not stop computation; the runtime retains produced output until the execution is closed or the server stops. Reloading the same notebook restores its editor, saved inspection, and execution status. Pause explicitly suspends execution, and Resume continues it. One browser tab controls the notebook at a time; other tabs can browse saved answers. The CLI and notebook use the same execution driver and language engine.
 
 Step pauses after one rule application in the selected alternative. Pause can suspend an unfinished step; Resume step continues that same application, including after reload. Choice and history selection stay fixed until the step finishes or is canceled.
 
@@ -78,8 +93,12 @@ The engine reclaims completed choices during continuing execution when they no l
 
 Run the checks with `cargo test --offline`.
 
-Measure complete engine runs with `cargo run --release --example measure -- --list`,
-then choose a case and size, for example `cargo run --release --example measure -- dense 32`.
-The runner checks exact ordered tuples and answer multiplicity. It reports preparation,
-execution and delivery, disposal, and sampled memory separately; execution timings include
-the output checks. A run that reaches its work or time limit is reported as incomplete.
+List performance probes with `cargo run --release --example measure -- --list`.
+For example, `cargo run --release --example measure -- rejected3 128` measures an
+unsuccessful three-head join. Use `answers 128 --rows 0` for complete delivery of
+empty alternatives, or `notebook-type-i 1` for unrestricted synthesis through its first answer.
+The suite checks exact results and reports first-answer latency, validation cost,
+collection work, sampled storage, and cancellation/reclamation. Answer and application
+prefixes are labeled separately from exhausted searches; a limit reached before the
+requested result is incomplete. Lifecycle and runtime probes cover continuing execution,
+retained history, and delayed answer reads. Memory counts are not byte or exact-peak measurements.

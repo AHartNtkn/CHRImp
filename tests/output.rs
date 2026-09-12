@@ -66,7 +66,7 @@ fn outputs_keep_duplicate_occurrences_and_nullary_relations() {
     let rows = a
         .rows
         .iter()
-        .filter(|r| e.program().signatures[r.relation].name == "p")
+        .filter(|r| e.program().signatures()[r.relation].name == "p")
         .collect::<Vec<_>>();
     assert_ne!(rows[0].occurrence, rows[1].occurrence);
     assert_eq!(rows[0].ports, rows[1].ports);
@@ -83,7 +83,12 @@ fn choices_in_distinct_rule_applications_remain_independent() {
             let mut rows = a
                 .rows
                 .iter()
-                .map(|r| (r.ports[0], e.program().signatures[r.relation].name.clone()))
+                .map(|r| {
+                    (
+                        r.ports[0],
+                        e.program().signatures()[r.relation].name.clone(),
+                    )
+                })
                 .collect::<Vec<_>>();
             rows.sort();
             rows
@@ -187,5 +192,67 @@ fn repeated_collection_requests_cannot_starve_duplicate_delivery() {
     assert_eq!(answers.len(), 2);
     for a in answers {
         assert_eq!(facts(&e, &a), ["live", "witness"]);
+    }
+}
+
+#[test]
+fn indexed_delivery_keeps_aliases_and_duplicate_histories_under_collection_and_backpressure() {
+    let query = format!(
+        "edge(A,B),({})",
+        vec!["(A=B,p(A),tag();p(B),q(A))"; 16].join(";")
+    );
+    let mut e = engine("p(X) ==> witness(X).", &query);
+    let mut reader = Reader::default();
+    let mut answers = Vec::new();
+    for tick in 0..500_000 {
+        if tick % 1000 == 0 && e.collections() < 3 {
+            e.request_collection();
+        }
+        e.advance(1);
+        // Leave the scalar slot full while other runnable work advances.
+        if tick % 19 != 0
+            && let Some(answer) = reader.next(&mut e)
+        {
+            answers.push(answer);
+        }
+        if e.delivery_done() {
+            break;
+        }
+    }
+    assert!(e.delivery_done());
+    assert_eq!(answers.len(), 32);
+    assert_eq!(
+        answers
+            .iter()
+            .filter(|a| a.variables[0] == a.variables[1])
+            .count(),
+        16
+    );
+    let ids = answers
+        .iter()
+        .map(|a| a.id)
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(ids.len(), 32);
+    for answer in answers {
+        let mut names = facts(&e, &answer);
+        names.sort();
+        let equal = answer.variables[0] == answer.variables[1];
+        assert_eq!(
+            names,
+            if equal {
+                vec!["edge", "p", "tag", "witness"]
+            } else {
+                vec!["edge", "p", "q", "witness"]
+            }
+        );
+        for row in answer.rows {
+            match e.program().signatures()[row.relation].name.as_str() {
+                "edge" => assert_eq!(row.ports, answer.variables),
+                "p" | "witness" => assert_eq!(row.ports, [answer.variables[1]]),
+                "q" => assert_eq!(row.ports, [answer.variables[0]]),
+                "tag" => assert!(row.ports.is_empty()),
+                _ => unreachable!(),
+            }
+        }
     }
 }

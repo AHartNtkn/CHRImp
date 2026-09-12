@@ -12,7 +12,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     if path == "--notebook" {
         let port = match args.next().as_deref() {
-            None => 0,
+            None => 7878,
             Some("--port") => args.next().ok_or("expected port")?.parse::<u16>()?,
             _ => return Err("expected --port PORT".into()),
         };
@@ -27,7 +27,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if path == "--help" {
         println!(
-            "Usage: chr PROGRAM.chr --query 'RELATIONS'\n\nRun a relational program and stream each answer as JSON graph events.\nUse --notebook [--port PORT] to open the browser notebook."
+            "Usage: chr PROGRAM.chr --query 'RELATIONS'\n\nRun a relational program and stream each answer as JSON graph events.\nUse --notebook [--port PORT] to open the browser notebook (default port: 7878)."
         );
         return Ok(());
     }
@@ -57,21 +57,21 @@ fn execute(engine: &mut Engine, mut stdout: impl Write) -> Result<(), Box<dyn st
             &mut stdout,
             &Header {
                 kind: "program",
-                signatures: &code.signatures,
-                variables: &code.query_variables,
+                signatures: code.signatures(),
+                variables: code.query_variables(),
             },
         )?;
         stdout.write_all(b"\n")?;
         stdout.flush()?;
         while !engine.delivery_done() {
-            engine.advance(1);
-            if let Some(event) = engine.take_output() {
+            chr::runtime::drive(engine, 4096, |event| {
                 serde_json::to_writer(&mut stdout, &event)?;
                 stdout.write_all(b"\n")?;
                 if matches!(event, Output::End) {
                     stdout.flush()?;
                 }
-            }
+                Ok(())
+            })?;
         }
         stdout.flush()?;
         Ok(())

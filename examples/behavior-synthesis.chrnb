@@ -1,0 +1,5133 @@
+{
+  "activeQuery": "query-1",
+  "format": "chr-notebook",
+  "layouts": {},
+  "program": {
+    "rules": [
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          }
+        ],
+        "name": "k_consistent",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          }
+        ],
+        "name": "s_consistent",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "kind": "equal",
+              "left": "A0",
+              "right": "B0"
+            },
+            {
+              "kind": "equal",
+              "left": "A1",
+              "right": "B1"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          }
+        ],
+        "name": "app_consistent",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "app"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "equal",
+          "left": "A0",
+          "right": "B0"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "A0"
+            ],
+            "relation": "constant"
+          }
+        ],
+        "name": "constant_consistent",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "B0"
+            ],
+            "relation": "constant"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "nil"
+          }
+        ],
+        "name": "nil_consistent",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "nil"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "kind": "equal",
+              "left": "A0",
+              "right": "B0"
+            },
+            {
+              "kind": "equal",
+              "left": "A1",
+              "right": "B1"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "cons"
+          }
+        ],
+        "name": "cons_consistent",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "cons"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_x"
+          }
+        ],
+        "name": "symbol_x_consistent",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_x"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_y"
+          }
+        ],
+        "name": "symbol_y_consistent",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_y"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_z"
+          }
+        ],
+        "name": "symbol_z_consistent",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_z"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_s_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_app_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "app"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_constant_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N",
+              "B0"
+            ],
+            "relation": "constant"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_nil_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "nil"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_cons_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "cons"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_symbol_x_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_x"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_symbol_y_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_y"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "k_symbol_z_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "k"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_z"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_app_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "app"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_constant_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N",
+              "B0"
+            ],
+            "relation": "constant"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_nil_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "nil"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_cons_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "cons"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_symbol_x_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_x"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_symbol_y_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_y"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "s_symbol_z_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "s"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_z"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "app_constant_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "N",
+              "B0"
+            ],
+            "relation": "constant"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "app_nil_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "nil"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "app_cons_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "cons"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "app_symbol_x_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_x"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "app_symbol_y_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_y"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "app_symbol_z_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_z"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "constant_nil_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0"
+            ],
+            "relation": "constant"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "nil"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "constant_cons_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0"
+            ],
+            "relation": "constant"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "cons"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "constant_symbol_x_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0"
+            ],
+            "relation": "constant"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_x"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "constant_symbol_y_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0"
+            ],
+            "relation": "constant"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_y"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "constant_symbol_z_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0"
+            ],
+            "relation": "constant"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_z"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "nil_cons_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "nil"
+          },
+          {
+            "args": [
+              "N",
+              "B0",
+              "B1"
+            ],
+            "relation": "cons"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "nil_symbol_x_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "nil"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_x"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "nil_symbol_y_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "nil"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_y"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "nil_symbol_z_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "nil"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_z"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "cons_symbol_x_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "cons"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_x"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "cons_symbol_y_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "cons"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_y"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "cons_symbol_z_clash",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "cons"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_z"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "symbol_x_symbol_y_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_x"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_y"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "symbol_x_symbol_z_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_x"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_z"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": "symbol_y_symbol_z_clash",
+        "removed": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_y"
+          },
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "symbol_z"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "X"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "N",
+                  "A0"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "N",
+                  "A1"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          }
+        ],
+        "name": null,
+        "removed": []
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "A0"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "A1"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y",
+              "A0",
+              "A1"
+            ],
+            "relation": "app"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "N",
+                  "A0"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "N",
+                  "A1"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "A0",
+              "A1"
+            ],
+            "relation": "cons"
+          }
+        ],
+        "name": null,
+        "removed": []
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "A0"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "A1"
+                ],
+                "relation": "avoid"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y",
+              "A0",
+              "A1"
+            ],
+            "relation": "cons"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "atom": {
+            "args": [
+              "N",
+              "A0"
+            ],
+            "relation": "avoid"
+          },
+          "kind": "atom"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "A0"
+            ],
+            "relation": "constant"
+          }
+        ],
+        "name": null,
+        "removed": []
+      },
+      {
+        "body": {
+          "atom": {
+            "args": [
+              "X",
+              "A0"
+            ],
+            "relation": "avoid"
+          },
+          "kind": "atom"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y",
+              "A0"
+            ],
+            "relation": "constant"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y"
+            ],
+            "relation": "k"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y"
+            ],
+            "relation": "s"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y"
+            ],
+            "relation": "nil"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y"
+            ],
+            "relation": "symbol_x"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y"
+            ],
+            "relation": "symbol_y"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "Y"
+            ],
+            "relation": "symbol_z"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y"
+            ],
+            "relation": "avoid"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "T",
+                      "C"
+                    ],
+                    "relation": "constant"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "kind": "equal",
+                  "left": "T",
+                  "right": "O"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "T"
+                    ],
+                    "relation": "k"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "O"
+                    ],
+                    "relation": "k"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "T"
+                    ],
+                    "relation": "s"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "O"
+                    ],
+                    "relation": "s"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "T",
+                      "F",
+                      "X"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Next",
+                      "X",
+                      "Sp"
+                    ],
+                    "relation": "cons"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "F",
+                      "Next",
+                      "O"
+                    ],
+                    "relation": "eval"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            }
+          ],
+          "kind": "or"
+        },
+        "kept": [
+          {
+            "args": [
+              "Sp"
+            ],
+            "relation": "nil"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "T",
+              "Sp",
+              "O"
+            ],
+            "relation": "eval"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "T",
+                      "C"
+                    ],
+                    "relation": "constant"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Empty"
+                    ],
+                    "relation": "nil"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "X",
+                      "Empty",
+                      "NX"
+                    ],
+                    "relation": "eval"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Next",
+                      "T",
+                      "NX"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Next",
+                      "R",
+                      "O"
+                    ],
+                    "relation": "fold"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "T"
+                    ],
+                    "relation": "k"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "T",
+                      "X",
+                      "R",
+                      "O"
+                    ],
+                    "relation": "apply_k"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "T"
+                    ],
+                    "relation": "s"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "T",
+                      "X",
+                      "R",
+                      "O"
+                    ],
+                    "relation": "apply_s"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "T",
+                      "F",
+                      "Y"
+                    ],
+                    "relation": "app"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Next",
+                      "Y",
+                      "Sp"
+                    ],
+                    "relation": "cons"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "F",
+                      "Next",
+                      "O"
+                    ],
+                    "relation": "eval"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            }
+          ],
+          "kind": "or"
+        },
+        "kept": [
+          {
+            "args": [
+              "Sp",
+              "X",
+              "R"
+            ],
+            "relation": "cons"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "T",
+              "Sp",
+              "O"
+            ],
+            "relation": "eval"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "Empty"
+                ],
+                "relation": "nil"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "Empty",
+                  "NX"
+                ],
+                "relation": "eval"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "O",
+                  "T",
+                  "NX"
+                ],
+                "relation": "app"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "R"
+            ],
+            "relation": "nil"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "T",
+              "X",
+              "R",
+              "O"
+            ],
+            "relation": "apply_k"
+          }
+        ]
+      },
+      {
+        "body": {
+          "atom": {
+            "args": [
+              "X",
+              "Rest",
+              "O"
+            ],
+            "relation": "eval"
+          },
+          "kind": "atom"
+        },
+        "kept": [
+          {
+            "args": [
+              "R",
+              "Y",
+              "Rest"
+            ],
+            "relation": "cons"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "T",
+              "X",
+              "R",
+              "O"
+            ],
+            "relation": "apply_k"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "Empty"
+                ],
+                "relation": "nil"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "Empty",
+                  "NX"
+                ],
+                "relation": "eval"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "O",
+                  "T",
+                  "NX"
+                ],
+                "relation": "app"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "R"
+            ],
+            "relation": "nil"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "T",
+              "X",
+              "R",
+              "O"
+            ],
+            "relation": "apply_s"
+          }
+        ]
+      },
+      {
+        "body": {
+          "atom": {
+            "args": [
+              "T",
+              "X",
+              "Y",
+              "Rest",
+              "O"
+            ],
+            "relation": "apply_s_two"
+          },
+          "kind": "atom"
+        },
+        "kept": [
+          {
+            "args": [
+              "R",
+              "Y",
+              "Rest"
+            ],
+            "relation": "cons"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "T",
+              "X",
+              "R",
+              "O"
+            ],
+            "relation": "apply_s"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "Empty"
+                ],
+                "relation": "nil"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "Empty",
+                  "NX"
+                ],
+                "relation": "eval"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "Y",
+                  "Empty",
+                  "NY"
+                ],
+                "relation": "eval"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "Partial",
+                  "T",
+                  "NX"
+                ],
+                "relation": "app"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "O",
+                  "Partial",
+                  "NY"
+                ],
+                "relation": "app"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "Rest"
+            ],
+            "relation": "nil"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "T",
+              "X",
+              "Y",
+              "Rest",
+              "O"
+            ],
+            "relation": "apply_s_two"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "YZ",
+                  "Y",
+                  "Z"
+                ],
+                "relation": "app"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "Next",
+                  "Z",
+                  "Then"
+                ],
+                "relation": "cons"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "Then",
+                  "YZ",
+                  "Tail"
+                ],
+                "relation": "cons"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "Next",
+                  "O"
+                ],
+                "relation": "eval"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "Rest",
+              "Z",
+              "Tail"
+            ],
+            "relation": "cons"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "T",
+              "X",
+              "Y",
+              "Rest",
+              "O"
+            ],
+            "relation": "apply_s_two"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "equal",
+          "left": "T",
+          "right": "O"
+        },
+        "kept": [
+          {
+            "args": [
+              "Sp"
+            ],
+            "relation": "nil"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "T",
+              "Sp",
+              "O"
+            ],
+            "relation": "fold"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "Empty"
+                ],
+                "relation": "nil"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X",
+                  "Empty",
+                  "NX"
+                ],
+                "relation": "eval"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "Next",
+                  "T",
+                  "NX"
+                ],
+                "relation": "app"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "Next",
+                  "Rest",
+                  "O"
+                ],
+                "relation": "fold"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "Sp",
+              "X",
+              "Rest"
+            ],
+            "relation": "cons"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "T",
+              "Sp",
+              "O"
+            ],
+            "relation": "fold"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "P"
+            ],
+            "relation": "k"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "P"
+            ],
+            "relation": "no_c"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "P"
+            ],
+            "relation": "s"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "P"
+            ],
+            "relation": "no_c"
+          }
+        ]
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "atom": {
+                "args": [
+                  "F"
+                ],
+                "relation": "no_c"
+              },
+              "kind": "atom"
+            },
+            {
+              "atom": {
+                "args": [
+                  "X"
+                ],
+                "relation": "no_c"
+              },
+              "kind": "atom"
+            }
+          ],
+          "kind": "and"
+        },
+        "kept": [
+          {
+            "args": [
+              "P",
+              "F",
+              "X"
+            ],
+            "relation": "app"
+          }
+        ],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "P"
+            ],
+            "relation": "no_c"
+          }
+        ]
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [],
+        "name": null,
+        "removed": [
+          {
+            "args": [
+              "P",
+              "C"
+            ],
+            "relation": "constant"
+          },
+          {
+            "args": [
+              "P"
+            ],
+            "relation": "no_c"
+          }
+        ]
+      }
+    ]
+  },
+  "queries": [
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program"
+              ],
+              "relation": "no_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Program",
+                "N1"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Output",
+                "N3"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-1",
+      "name": "Synthesize identity"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program"
+              ],
+              "relation": "no_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "Program",
+                "N2"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N4"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Output",
+                "N6"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-2",
+      "name": "Synthesize constant"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program"
+              ],
+              "relation": "no_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "Program",
+                "N2"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N4"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Output",
+                "N6"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-3",
+      "name": "Synthesize second argument"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program"
+              ],
+              "relation": "no_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "Program",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5",
+                "N6"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N5"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8"
+              ],
+              "relation": "symbol_z"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7",
+                "N8"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N7"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N11"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10",
+                "N11"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N13"
+              ],
+              "relation": "symbol_z"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N12",
+                "N13"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9",
+                "N10",
+                "N12"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N16"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N15",
+                "N16"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N18"
+              ],
+              "relation": "symbol_z"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N17",
+                "N18"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N14",
+                "N15",
+                "N17"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Output",
+                "N9",
+                "N14"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-4",
+      "name": "Synthesize substitution"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program"
+              ],
+              "relation": "no_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "Program",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5",
+                "N6"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N5"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8"
+              ],
+              "relation": "symbol_z"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7",
+                "N8"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N7"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9",
+                "N10"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N13"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N12",
+                "N13"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N15"
+              ],
+              "relation": "symbol_z"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N14",
+                "N15"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N11",
+                "N12",
+                "N14"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Output",
+                "N9",
+                "N11"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-5",
+      "name": "Synthesize composition"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program"
+              ],
+              "relation": "no_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "Program",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5",
+                "N6"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N5"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8"
+              ],
+              "relation": "symbol_z"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7",
+                "N8"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N7"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N11"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10",
+                "N11"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N13"
+              ],
+              "relation": "symbol_z"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N12",
+                "N13"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9",
+                "N10",
+                "N12"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N15"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N14",
+                "N15"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Output",
+                "N9",
+                "N14"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-6",
+      "name": "Synthesize swap arguments"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program"
+              ],
+              "relation": "no_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "Program",
+                "N2"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N4"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7",
+                "N8"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9",
+                "N10"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6",
+                "N7",
+                "N9"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N12"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N11",
+                "N12"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Output",
+                "N6",
+                "N11"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-7",
+      "name": "Synthesize duplicate argument"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program"
+              ],
+              "relation": "no_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "Program",
+                "N2"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N4"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6",
+                "N7"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8",
+                "N9"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Output",
+                "N6",
+                "N8"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-8",
+      "name": "Synthesize apply to a function"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Program"
+              ],
+              "relation": "no_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Program",
+                "N1"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5",
+                "N6"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Output",
+                "N3",
+                "N5"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-9",
+      "name": "Synthesize self-application"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3",
+                "N4"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N5"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6",
+                "N7"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N6"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-10",
+      "name": "Evaluate identity"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5",
+                "N6"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N5"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-11",
+      "name": "Evaluate constant"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3",
+                "N4"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6",
+                "N7"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N6"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9"
+              ],
+              "relation": "symbol_z"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8",
+                "N9"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N8"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-12",
+      "name": "Evaluate substitution"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6",
+                "N7",
+                "N8"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5",
+                "N6"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N9"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N11"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10",
+                "N11"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3",
+                "N10"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N13"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N12",
+                "N13"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N12"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N15"
+              ],
+              "relation": "symbol_z"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N14",
+                "N15"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N14"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-13",
+      "name": "Evaluate composition"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N12"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N13"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N11",
+                "N12",
+                "N13"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9",
+                "N10",
+                "N11"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N14"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8",
+                "N9",
+                "N14"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N17"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N19"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N20"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N18",
+                "N19",
+                "N20"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N16",
+                "N17",
+                "N18"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N21"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N15",
+                "N16",
+                "N21"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7",
+                "N8",
+                "N15"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N22"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6",
+                "N7",
+                "N22"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5",
+                "N6"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N24"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N25"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N23",
+                "N24",
+                "N25"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N23"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N27"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N26",
+                "N27"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3",
+                "N26"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N29"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N28",
+                "N29"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N28"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N31"
+              ],
+              "relation": "symbol_z"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N30",
+                "N31"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N30"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-14",
+      "name": "Evaluate swap"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N5"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6",
+                "N7",
+                "N8"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3",
+                "N6"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N10"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N9",
+                "N10"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N9"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N12"
+              ],
+              "relation": "symbol_y"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N11",
+                "N12"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N11"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-15",
+      "name": "Evaluate duplicator"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N5"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N3",
+                "N6"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N2"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-16",
+      "name": "Evaluate underapplied K"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N6"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5",
+                "N6"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N7"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "N4",
+                "N7"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N8"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N8"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-17",
+      "name": "Evaluate underapplied S"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Input"
+              ],
+              "relation": "no_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "Hole"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-18",
+      "name": "An ignored hole retains its no-constant constraint"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "Input"
+              ],
+              "relation": "no_c"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "Empty",
+                "Output"
+              ],
+              "relation": "eval"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2"
+              ],
+              "relation": "k"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3"
+              ],
+              "relation": "s"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N5"
+              ],
+              "relation": "symbol_x"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N5"
+              ],
+              "relation": "constant"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Input",
+                "N1",
+                "N4"
+              ],
+              "relation": "app"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Empty"
+              ],
+              "relation": "nil"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-19",
+      "name": "Reject a hidden constant in an ignored argument"
+    }
+  ],
+  "title": "Behavior-driven combinator synthesis",
+  "version": 1
+}

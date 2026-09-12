@@ -22,7 +22,7 @@ fn merges_do_not_reconsider_identity_independent_propagation() {
                 let rows = answer
                     .rows
                     .iter()
-                    .filter(|row| e.program().signatures[row.relation].name == name)
+                    .filter(|row| e.program().signatures()[row.relation].name == name)
                     .collect::<Vec<_>>();
                 assert_eq!(rows.len(), n + 1);
                 assert!(rows.iter().all(|row| row.ports == [answer.variables[0]]));
@@ -71,7 +71,7 @@ fn proof_example_preserves_direct_and_composed_derivations() {
         answer
             .rows
             .iter()
-            .filter(|row| e.program().signatures[row.relation].name == name)
+            .filter(|row| e.program().signatures()[row.relation].name == name)
             .map(|row| row.ports.clone())
             .collect::<Vec<_>>()
     };
@@ -111,7 +111,7 @@ fn synthesis_example_filters_explicit_program_choices_by_examples() {
             if let Some(answer) = reader.next(&mut e) {
                 let mut selected = 0;
                 for row in &answer.rows {
-                    let name = e.program().signatures[row.relation].name.as_str();
+                    let name = e.program().signatures()[row.relation].name.as_str();
                     assert!(!["evaluate", "synthesize", "identity"].contains(&name));
                     if ["constant", "negate"].contains(&name) {
                         assert_eq!(row.ports[0], answer.variables[0]);
@@ -222,7 +222,7 @@ fn fresh_locals_and_duplicate_occurrences_survive_real_execution() {
     let locals = a
         .rows
         .iter()
-        .filter(|r| e.program().signatures[r.relation].name == "witness")
+        .filter(|r| e.program().signatures()[r.relation].name == "witness")
         .map(|r| {
             assert_eq!(r.ports[0], a.variables[0]);
             r.ports[1]
@@ -258,7 +258,7 @@ fn cyclic_multihead_join_checks_every_ordered_port() {
     let triangles = a
         .rows
         .iter()
-        .filter(|r| e.program().signatures[r.relation].name == "triangle")
+        .filter(|r| e.program().signatures()[r.relation].name == "triangle")
         .collect::<Vec<_>>();
     assert_eq!(triangles.len(), 3);
     assert!(triangles.iter().all(|r| !r.ports.contains(&a.variables[3])));
@@ -295,7 +295,7 @@ fn high_degree_merge_activates_every_cross_predicate_partner() {
         let mut reached = a
             .rows
             .iter()
-            .filter(|r| e.program().signatures[r.relation].name == "reach")
+            .filter(|r| e.program().signatures()[r.relation].name == "reach")
             .map(|r| r.ports[0])
             .collect::<Vec<_>>();
         reached.sort();

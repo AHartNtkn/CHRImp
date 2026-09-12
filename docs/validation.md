@@ -12,19 +12,41 @@ The implemented language includes variable-only relation arguments, explicit equ
 | Finite progress beside divergence and bounded delivery | `tests/progress.rs`, `tests/step.rs`, `tests/output.rs` |
 | Continuing reclamation and retained-state ownership | `tests/lifecycle.rs`, `tests/compaction.rs`, `tests/cancel.rs`, `tests/arc_ownership.rs` |
 | Notebook protocol, editing, recovery and recording | `tests/notebook.rs`, `tests/inspection.rs`, `tests/pending_body.rs`, `web/*.test.mjs` |
-| Usable examples | `examples/reachability.chr`, `examples/proofs.chr`, `examples/synthesis.chr`, tested in `tests/semantics.rs` |
+| Autonomous notebook execution and shared CLI driver | `src/runtime.rs`, `tests/cli.rs`, `tests/notebook.rs`; the HTTP test leaves execution running without requests, then reads its retained answers |
+| Arithmetic, type synthesis, behavior synthesis and lambda notebooks | `examples/*.chrnb`, `tests/notebook_arithmetic.rs`, `tests/notebook_synthesis.rs`, `tests/notebook_lambda.rs` |
+| Validated public execution plans and borrowed graph access | Compile-fail examples in `src/program.rs` and `src/engine.rs`, plus `tests/lifecycle.rs` |
 
-At `20db986`, all 295 Rust tests and strict Clippy passed. The notebook session suite passed 103 tests; all four web test files passed. Real-browser checks exercised editing, execution, stepping, pause/resume, alternative selection, history and release. Retained `keep(A),p(A)` inspection survived a subsequent application and cancellation with the release-queue implementation.
+Notebook tests check execution without browser requests, exact replay of retained output, explicit pause/resume/step/cancel, and control responsiveness during continuing execution. The synthesis checks use independent SK reduction and type inference; the lambda benchmark checks a permitted reduction history and its exact residual graph.
 
 Fair service includes source work, completion, observation and reclamation. A frozen pending-work view excludes unfinished scopes; children are admitted before their parent obligation retires. The FIFO mutation lane revalidates against current state before publication. Immutable readers and explicit snapshots retain their dependencies. Tests exercise these obligations under divergence, conditional updates, collection and cancellation; they are not a formal proof over every program.
 
 ## Performance and limits
 
-Measurements cover sparse/dense joins, aliases, high-degree merges, cycles, common and distinct alternatives, failure, continuing execution and retained views. The executable `examples/measure.rs` checks exact tuples, identities and multiplicity and reports preparation, execution/delivery, disposal and sampled storage separately.
+The existing `measure` executable covers unsuccessful and successful joins, conditional equality and consumption, correlated choices with two answers, independently sized answer streams, recursive reachability, preparation, continuing execution, retained archives, and actual notebook programs. `life-archive` holds a fixed number of snapshots while measuring 2,048 additional applications; `life-history-choice` grows history with a live choice. These distinguish archive size from useful execution work.
 
-Historical equivalent-control measurements at `294c010` versus CHRLang `4ed9c045` found size-128 runtime ratios of 13.29 for aliases, 8.87 for sparse joins, 3.10 for dense joins, 0.323 for cycles and 0.520 for 128-way common work. Ratios below one favor this engine. Two-way common work and distinct work also had substantial overhead. These are historical results, not timings of the current revision or a universal performance prediction. Later changes reduced redundant work and allocation, with modest or mixed timing gains. No numerical performance-parity target was specified.
+Compare geometric sizes within a regime. Exact tuple/identity/multiplicity checks remain enabled; validator time is reported separately. First-answer latency ends at a complete answer. Prefix success does not claim search exhaustion. Collection-flag ticks include time awaiting the maintenance lane, so they are not an internal phase profile. Sampled object counts are neither byte usage nor exact peaks.
 
-Sharing avoids repeated common execution, not necessary answer enumeration. Output and explicitly retained history can grow. Continuing-memory tests distinguish bounded live workloads from growing frontiers; sampled object counts are not exact byte peaks or comparative RSS measurements. The older CHRLang checkout is currently unavailable at its recorded path, so its historical comparison cannot be rerun there.
+Measured changes, using deterministic `advance(1)` work and the same validated workload on each side:
+
+| Workload | Before | After | Change |
+|---|---:|---:|---|
+| Rejected three-head join, 128 rows per head | 900,799 | 78,118 | Selective partner planning and complete-tuple lookup |
+| Repeated aliases, 128 aliases and probes | 368,639 | 71,092 | Bound index planning by the cost of scanning the relation |
+| 256 empty answers | 890,774 | 197,435 | Shared support summaries during enumeration |
+| 256 index leaves sharing a 64-choice condition | 83,199 | under 4,000 | Reuse each condition's substitution within the pass |
+| 2,048 applications with 2,048 fixed snapshots | 469,468 | 83,645 | Cache immutable archive reachability |
+
+These are isolated comparisons, not additive speedups. The current combined suite takes 78,116 ticks for the rejected join and 204,424 for 256 empty answers. Fixed-archive continuation takes 83,008 / 82,141 / 83,645 ticks with 128 / 512 / 2,048 snapshots. Growing history with a live choice takes 563,304 / 1,132,656 / 2,271,360 ticks for 8,192 / 16,384 / 32,768 applications. Every archive run checks retained answers and complete reclamation after release.
+
+Three-run median process CPU time confirms material improvements for the matching probes: rejected join 98.5→11.7 ms, multiport rejection 29.7→9.0 ms, and repeated aliases 52.6→9.1 ms. These include process startup and answer validation and are specific to the measured machine.
+
+Boolean decomposition order adapts independently of semantic choice identities. A grouped 12-pair correlation probe retains 35 condition nodes after collection, versus 12,284 with its original order. This is a bounded heuristic; some orderings still cost more. Archive protection also has a memory cost: condition nodes are 88 rather than 64 bytes, and persistent index records are 112 rather than 104 bytes on the measured 64-bit build. Ordinary execution does not retain snapshots or history unless requested.
+
+Output, explicit history and genuine search frontiers can grow. Unrestricted synthesis may exceed its budget; an incomplete search is not evidence that no answer exists. A faster probe is meaningful only with correct answers, preserved fairness, and complete reclamation after ownership is released.
+
+Current notebook probes reach a first validated type-driven identity in 10,344,621 ticks and a behavioral identity in 1,851,550. Composition, swapping and duplication do not reach a first answer within the tested 50-million-tick/15-second limits. Two nested lambda identity applications reach their first validated answer in 126,600,717 ticks (about 29.8 seconds in that run); cleanup fully reclaims unowned payloads. This remains expensive. A phase profile of its first 50 million ticks attributes 26.69 million to search/matching/commit and 13.79 million to completion scanning. Actual collector work, including subsequent cleanup, totals about 8.02 million ticks. The collection-status counter must not be used to attribute that run to GC.
+
+Final targeted checks of unchanged-condition proof reuse, older-prefix projection and unchanged-input completion reuse did not demonstrate another major end-to-end improvement. Remaining Boolean-processing hotspots are documented as performance limits, not proven unavoidable costs. The optimization pass stops at this evidence boundary rather than treating every possible improvement as unfinished delivery.
 
 ## Running checks
 
@@ -35,6 +57,10 @@ cargo fmt --check
 node web/notebook.test.mjs
 node --test web/*.test.mjs
 cargo run --release --offline --example measure -- sparse 128
+cargo run --release --offline --example measure -- rejected3 128
+cargo run --release --offline --example measure -- answers 256 --rows 0
+cargo run --release --offline --example measure -- life-archive 512
+cargo run --release --offline --example measure -- notebook-type-i 1
 cargo run --release --offline -- --notebook
 ```
 

@@ -1,4 +1,4 @@
-//! Loopback notebook transport. Each execution request has a finite work budget.
+//! Loopback notebook transport. The scheduler owns execution and retained output.
 use crate::engine::{Engine, InspectionError, SnapshotKind, ViewId};
 use crate::observe::Output;
 use crate::program::prepare;
@@ -9,12 +9,14 @@ use crate::syntax::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, hash_map::RandomState};
+use std::fs::{File, OpenOptions};
 use std::hash::BuildHasher;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::net::{TcpListener, TcpStream};
 use std::ops::Bound::{Excluded, Included, Unbounded};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, mpsc};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use std::time::Duration;
 
 const BODY_LIMIT: usize = 4 * 1024 * 1024;
@@ -54,11 +56,26 @@ impl Default for Runtime {
 struct Owners {
     issued: u64,
     admitted: u64,
-    entries: BTreeMap<u64, Arc<Mutex<Owner>>>,
+    entries: BTreeMap<u64, Arc<Owner>>,
     runs: BTreeMap<u64, u64>,
 }
 #[derive(Default)]
 struct Owner {
+    waiting: AtomicUsize,
+    state: Mutex<OwnerState>,
+}
+impl Owner {
+    fn request(&self) -> MutexGuard<'_, OwnerState> {
+        // Register before blocking so maintenance cannot repeatedly reacquire
+        // the mutex ahead of an HTTP worker woken at the end of a quantum.
+        self.waiting.fetch_add(1, Ordering::SeqCst);
+        let state = self.state.lock().unwrap();
+        self.waiting.fetch_sub(1, Ordering::SeqCst);
+        state
+    }
+}
+#[derive(Default)]
+struct OwnerState {
     retired: bool,
     runs: usize,
     receipt: Option<Receipt>,
@@ -69,7 +86,7 @@ struct Receipt {
     request: String,
     response: Value,
 }
-impl Owner {
+impl OwnerState {
     fn replay(&self, command: u64, path: &str, request: &str) -> Result<Option<Value>, Response> {
         if let Some(receipt) = &self.receipt
             && command == receipt.command
@@ -109,7 +126,12 @@ fn safe_id(value: u64, name: &str) -> Result<u64, Response> {
 fn control(path: &str) -> bool {
     matches!(
         path,
-        "/api/start" | "/api/inspect" | "/api/step" | "/api/resume" | "/api/snapshot"
+        "/api/start"
+            | "/api/inspect"
+            | "/api/step"
+            | "/api/resume"
+            | "/api/pause"
+            | "/api/snapshot"
     )
 }
 fn unknown_owner() -> Response {
@@ -128,9 +150,84 @@ struct OwnerRequest {
 struct Runs {
     closing: BTreeMap<u64, bool>,
     next: u64,
-    entries: BTreeMap<u64, Arc<Mutex<Engine>>>,
+    entries: BTreeMap<u64, Arc<Mutex<Run>>>,
     after: Option<u64>,
     round: Option<u64>,
+    active: bool,
+}
+// Output is retained until explicit close. Only one bounded delivery batch lives
+// in RAM; acknowledgements replay that batch and never control source execution.
+struct Spool {
+    writer: BufWriter<File>,
+    reader: File,
+    path: PathBuf,
+    written: u64,
+    read: u64,
+}
+impl Spool {
+    fn new(boot: &str, run: u64) -> io::Result<Self> {
+        let path = std::env::temp_dir().join(format!("chr-{boot}-{run}.jsonl"));
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options.open(&path)?;
+        let reader = File::open(&path)?;
+        // The open handles own this process-local spool, including on abrupt exit.
+        #[cfg(unix)]
+        std::fs::remove_file(&path)?;
+        Ok(Self {
+            writer: BufWriter::new(file),
+            reader,
+            path,
+            written: 0,
+            read: 0,
+        })
+    }
+    fn append(&mut self, event: Value) -> io::Result<()> {
+        let mut bytes = serde_json::to_vec(&event)?;
+        bytes.push(b'\n');
+        self.writer.write_all(&bytes)?;
+        self.written += bytes.len() as u64;
+        Ok(())
+    }
+    fn read(&mut self, limit: usize) -> io::Result<Vec<Value>> {
+        self.writer.flush()?;
+        self.reader.seek(SeekFrom::Start(self.read))?;
+        let mut reader = BufReader::new((&mut self.reader).take(self.written - self.read));
+        let mut events = Vec::new();
+        let mut consumed = 0;
+        let mut line = String::new();
+        for _ in 0..limit {
+            line.clear();
+            let n = reader.read_line(&mut line)?;
+            if n == 0 {
+                break;
+            }
+            events.push(serde_json::from_str(&line)?);
+            consumed += n as u64;
+        }
+        self.read += consumed;
+        Ok(events)
+    }
+    fn drained(&self) -> bool {
+        self.read == self.written
+    }
+}
+impl Drop for Spool {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+struct Run {
+    engine: Engine,
+    spool: Spool,
+    running: bool,
+    stepping: bool,
+    error: Option<String>,
 }
 #[derive(Debug)]
 pub struct Response {
@@ -165,6 +262,8 @@ struct Model {
     query: Body,
     #[serde(default)]
     record_history: bool,
+    #[serde(default)]
+    paused: bool,
 }
 #[derive(Clone, Copy)]
 struct Id(u64);
@@ -201,6 +300,8 @@ struct RunRequest {
     owner: u64,
     command: Option<u64>,
     run: u64,
+    #[serde(default)]
+    continue_step: bool,
     #[serde(default)]
     ack: Option<u64>,
     #[serde(default = "budget")]
@@ -293,7 +394,7 @@ impl Runtime {
         self.dispatch(path, body)
             .unwrap_or_else(|response| response)
     }
-    fn owner(&self, id: u64) -> Result<Arc<Mutex<Owner>>, Response> {
+    fn owner(&self, id: u64) -> Result<Arc<Owner>, Response> {
         self.owners
             .lock()
             .unwrap()
@@ -354,7 +455,7 @@ impl Runtime {
                 if path == "/api/attach" {
                     if let Some(entry) = owners.entries.get(&owner).cloned() {
                         drop(owners);
-                        if entry.lock().unwrap().retired {
+                        if entry.request().retired {
                             return Err(unknown_owner());
                         }
                         return Ok(Response::ok(json!({})));
@@ -363,14 +464,12 @@ impl Runtime {
                         return Err(unknown_owner());
                     }
                     owners.admitted = owner;
-                    owners
-                        .entries
-                        .insert(owner, Arc::new(Mutex::new(Owner::default())));
+                    owners.entries.insert(owner, Arc::new(Owner::default()));
                     return Ok(Response::ok(json!({})));
                 }
                 if let Some(entry) = owners.entries.get(&owner).cloned() {
                     drop(owners);
-                    let mut entry = entry.lock().unwrap();
+                    let mut entry = entry.request();
                     if entry.runs != 0 {
                         return Err(Response {
                             status: 409,
@@ -422,7 +521,7 @@ impl Runtime {
                     "command",
                 )?;
                 let entry = self.owner(owner)?;
-                let mut entry = entry.lock().unwrap();
+                let mut entry = entry.request();
                 if entry.retired {
                     return Err(unknown_owner());
                 }
@@ -442,11 +541,21 @@ impl Runtime {
                 }
                 runs.next += 1;
                 let run = runs.next;
-                runs.entries.insert(run, Arc::new(Mutex::new(engine)));
+                let spool = Spool::new(&self.boot, run).map_err(|e| Response::error(500, e))?;
+                runs.entries.insert(
+                    run,
+                    Arc::new(Mutex::new(Run {
+                        engine,
+                        spool,
+                        running: !input.paused,
+                        stepping: false,
+                        error: None,
+                    })),
+                );
                 self.owners.lock().unwrap().runs.insert(run, owner);
                 entry.runs += 1;
                 drop(runs);
-                let response = json!({"run":run,"signatures":code.signatures,"variables":code.query_variables});
+                let response = json!({"run":run,"signatures":code.signatures(),"variables":code.query_variables()});
                 entry.remember(command, path, body, &response);
                 return Ok(Response::ok(response));
             }
@@ -456,6 +565,12 @@ impl Runtime {
         self.validate_boot(&request.boot)?;
         if request.budget > BUDGET_LIMIT {
             return Err(Response::error(400, "work budget exceeds 4096"));
+        }
+        if request.continue_step && path != "/api/resume" {
+            return Err(Response::error(
+                400,
+                "continue_step is only valid for resume",
+            ));
         }
         let owner = safe_id(request.owner, "owner")?;
         let command = if control(path) {
@@ -474,7 +589,7 @@ impl Runtime {
         // Never hold the registry while waiting on an owner. Only this owner's
         // commands are serialized across engine effects and receipt publication.
         let entry = self.owner(owner)?;
-        let mut entry = entry.lock().unwrap();
+        let mut entry = entry.request();
         if entry.retired {
             return Err(unknown_owner());
         }
@@ -525,7 +640,7 @@ impl Runtime {
             }
         }
         let stream = match path {
-            "/api/advance" => Some((request.run, None)),
+            "/api/output" => Some((request.run, None)),
             "/api/inspect_advance" => Some((
                 request.run,
                 Some(
@@ -566,40 +681,52 @@ impl Runtime {
         }
         let raw_request = body;
         let mut body = match path {
-            "/api/advance" => {
-                let mut events = vec![];
-                for _ in 0..request.budget {
-                    e.advance(1);
-                    if let Some(output) = e.take_output() {
-                        events.push(event(output));
+            "/api/output" => {
+                let events = match e.spool.read(request.budget) {
+                    Ok(events) => events,
+                    Err(error) => {
+                        e.error = Some(error.to_string());
+                        e.running = false;
+                        e.engine.cancel();
+                        return Err(Response::error(500, error));
                     }
-                }
-                json!({"events":events,"applications":e.applications(),"exhausted":e.exhausted(),"delivery_done":e.delivery_done(),"canceled":e.canceled(),"step":e.step_status()})
+                };
+                json!({"events":events,"applications":e.engine.applications(),"exhausted":e.engine.exhausted(),"delivery_done":e.engine.delivery_done() && e.spool.drained(),"canceled":e.engine.canceled(),"step":e.engine.step_status(),"running":e.running,"output_drained":e.spool.drained(),"error":e.error})
+            }
+            "/api/pause" => {
+                e.running = false;
+                json!({})
             }
             "/api/step" => {
-                view_result(e.request_step(choices(&request)?))?;
-                json!({"step":e.step_status()})
+                view_result(e.engine.request_step(choices(&request)?))?;
+                e.running = true;
+                e.stepping = true;
+                json!({"step":e.engine.step_status()})
             }
             "/api/resume" => {
-                view_result(e.resume())?;
+                if e.engine.canceled() {
+                    return Err(Response::error(400, InspectionError::Canceled));
+                }
+                if request.continue_step {
+                    if !e.stepping {
+                        return Err(Response::error(400, "no admitted step to continue"));
+                    }
+                    e.running = !e.engine.step_status().done;
+                } else {
+                    view_result(e.engine.resume())?;
+                    e.stepping = false;
+                    e.running = !e.engine.delivery_done();
+                }
                 json!({})
             }
             "/api/maintenance" => {
-                e.maintain(request.budget);
-                json!({"collecting":e.collecting()})
+                e.engine.maintain(request.budget);
+                json!({"collecting":e.engine.collecting()})
             }
             "/api/inspect" => {
-                // Initial identifier allocation is the only source work allowed by an inspection retry.
-                if !e.canceled() && e.query_variables().len() != e.program().query_variables.len() {
-                    for _ in 0..request.budget {
-                        if e.query_variables().len() == e.program().query_variables.len() {
-                            break;
-                        }
-                        e.advance(1);
-                    }
-                }
                 let id = view_result(
-                    e.start_inspection(request.snapshot.map(Id::view), choices(&request)?),
+                    e.engine
+                        .start_inspection(request.snapshot.map(Id::view), choices(&request)?),
                 )?;
                 json!({"inspection":id.0.to_string()})
             }
@@ -610,15 +737,15 @@ impl Runtime {
                     .view();
                 let mut events = vec![];
                 for _ in 0..request.budget {
-                    view_result(e.advance_inspection(id, 1))?;
-                    if let Some(output) = view_result(e.take_inspection_output(id))? {
+                    view_result(e.engine.advance_inspection(id, 1))?;
+                    if let Some(output) = view_result(e.engine.take_inspection_output(id))? {
                         events.push(event(output));
                     }
-                    if view_result(e.inspection_status(id))?.done {
+                    if view_result(e.engine.inspection_status(id))?.done {
                         break;
                     }
                 }
-                let status = view_result(e.inspection_status(id))?;
+                let status = view_result(e.engine.inspection_status(id))?;
                 json!({"events":events,"done":status.done,"canceled":status.canceled,"error":status.error})
             }
             "/api/inspect_cancel" => {
@@ -626,22 +753,22 @@ impl Runtime {
                     .inspection
                     .ok_or_else(|| Response::error(400, "missing inspection"))?
                     .view();
-                view_result(e.cancel_inspection(id))?;
-                view_result(e.advance_inspection(id, request.budget))?;
+                view_result(e.engine.cancel_inspection(id))?;
+                view_result(e.engine.advance_inspection(id, request.budget))?;
                 let pending = self
                     .batches
                     .lock()
                     .unwrap()
                     .get(&(request.run, Some(id.0)))
                     .cloned();
-                json!({"done":view_result(e.inspection_status(id))?.done,"pending":pending})
+                json!({"done":view_result(e.engine.inspection_status(id))?.done,"pending":pending})
             }
             "/api/inspect_release" => {
                 let id = request
                     .inspection
                     .ok_or_else(|| Response::error(400, "missing inspection"))?
                     .view();
-                match e.release_inspection(id) {
+                match e.engine.release_inspection(id) {
                     Ok(()) | Err(InspectionError::UnknownInspection) => {}
                     Err(error) => {
                         view_result::<()>(Err(error))?;
@@ -654,14 +781,14 @@ impl Runtime {
                 json!({})
             }
             "/api/snapshot" => {
-                let snapshot = view_result(e.capture_snapshot())?;
+                let snapshot = view_result(e.engine.capture_snapshot())?;
                 json!({"snapshot":snapshot.0.to_string()})
             }
             "/api/snapshot_release" => {
                 let snapshot = request
                     .snapshot
                     .ok_or_else(|| Response::error(400, "missing snapshot"))?;
-                match e.release_snapshot(snapshot.view()) {
+                match e.engine.release_snapshot(snapshot.view()) {
                     Ok(()) | Err(InspectionError::UnknownSnapshot) => {}
                     Err(error) => {
                         view_result::<()>(Err(error))?;
@@ -671,11 +798,11 @@ impl Runtime {
             }
             "/api/views" => {
                 let cutoff = if let Some(id) = request.inspection {
-                    view_result(e.inspection_snapshot_info(id.view()))?.last_choice
+                    view_result(e.engine.inspection_snapshot_info(id.view()))?.last_choice
                 } else if let Some(id) = request.snapshot {
-                    view_result(e.snapshot_info(id.view()))?.last_choice
+                    view_result(e.engine.snapshot_info(id.view()))?.last_choice
                 } else {
-                    e.choices().next_back().map(|(&id, _)| id)
+                    e.engine.choices().next_back().map(|(&id, _)| id)
                 };
                 if (request.after_choice.is_some() && request.before_choice.is_some())
                     || (request.after_snapshot.is_some() && request.before_snapshot.is_some())
@@ -683,7 +810,8 @@ impl Runtime {
                     return Err(Response::error(400, "choose one page direction"));
                 }
                 let choice_rows: Vec<_> = if let Some(before) = request.before_choice {
-                    e.choices_before(before.0, cutoff)
+                    e.engine
+                        .choices_before(before.0, cutoff)
                         .take(64)
                         .map(|(&id, _)| id)
                         .collect::<Vec<_>>()
@@ -691,47 +819,50 @@ impl Runtime {
                         .rev()
                         .collect()
                 } else {
-                    e.choices_after(request.after_choice.map(|id| id.0), cutoff)
+                    e.engine
+                        .choices_after(request.after_choice.map(|id| id.0), cutoff)
                         .take(64)
                         .map(|(&id, _)| id)
                         .collect()
                 };
                 let prev_choice = choice_rows
                     .first()
-                    .filter(|&&id| e.choices_before(id, cutoff).next().is_some())
+                    .filter(|&&id| e.engine.choices_before(id, cutoff).next().is_some())
                     .map(|id| id.to_string());
                 let next_choice = choice_rows
                     .last()
-                    .filter(|&&id| e.choices_after(Some(id), cutoff).next().is_some())
+                    .filter(|&&id| e.engine.choices_after(Some(id), cutoff).next().is_some())
                     .map(|id| id.to_string());
                 let choices: Vec<_> = choice_rows
                     .into_iter()
                     .map(|id| {
-                        let birth = e.choices_after(id.checked_sub(1), Some(id)).next().unwrap().1;
+                        let birth = e.engine.choices_after(id.checked_sub(1), Some(id)).next().unwrap().1;
                         json!({"id":id.to_string(),"label":format!(
                             "Choice {} (event {}): First arms {}–{}; Second arms {}–{}",
                             id+1, birth.event, birth.start+1, birth.split, birth.split+1, birth.end)})
                     })
                     .collect();
                 let snapshot_rows: Vec<_> = if let Some(before) = request.before_snapshot {
-                    e.snapshots_before(before.view())
+                    e.engine
+                        .snapshots_before(before.view())
                         .take(64)
                         .collect::<Vec<_>>()
                         .into_iter()
                         .rev()
                         .collect()
                 } else {
-                    e.snapshots_after(request.after_snapshot.map(Id::view))
+                    e.engine
+                        .snapshots_after(request.after_snapshot.map(Id::view))
                         .take(64)
                         .collect()
                 };
                 let prev_snapshot = snapshot_rows
                     .first()
-                    .filter(|s| e.snapshots_before(s.id).next().is_some())
+                    .filter(|s| e.engine.snapshots_before(s.id).next().is_some())
                     .map(|s| s.id.0.to_string());
                 let next_snapshot = snapshot_rows
                     .last()
-                    .filter(|s| e.snapshots_after(Some(s.id)).next().is_some())
+                    .filter(|s| e.engine.snapshots_after(Some(s.id)).next().is_some())
                     .map(|s| s.id.0.to_string());
                 let snapshots: Vec<_> = snapshot_rows.into_iter().map(|s| {
                     let action = match s.kind { SnapshotKind::Initial=>"initial query",SnapshotKind::Requested=>"retained view",SnapshotKind::Application{..}=>"rule application",SnapshotKind::Post{..}=>"relation posted",SnapshotKind::Merge=>"variables merged",SnapshotKind::Choice=>"disjunction",SnapshotKind::Failure=>"failure",SnapshotKind::NormalForm=>"normal form" };
@@ -740,17 +871,19 @@ impl Runtime {
                 json!({"choices":choices,"snapshots":snapshots,"next_choice":next_choice,"next_snapshot":next_snapshot,"prev_choice":prev_choice,"prev_snapshot":prev_snapshot})
             }
             "/api/cancel" => {
-                e.cancel();
+                e.running = false;
+                e.engine.cancel();
                 let pending = self
                     .batches
                     .lock()
                     .unwrap()
                     .get(&(request.run, None))
                     .cloned();
-                json!({"done":e.cancel_done(),"pending":pending})
+                json!({"done":e.engine.cancel_done(),"pending":pending,"output_pending":!e.spool.drained()})
             }
             "/api/close" => {
-                e.cancel();
+                e.running = false;
+                e.engine.cancel();
                 self.runs
                     .lock()
                     .unwrap()
@@ -760,7 +893,7 @@ impl Runtime {
                 json!({})
             }
             "/api/status" => {
-                json!({"applications":e.applications(),"canceled":e.canceled(),"cancel_done":e.cancel_done(),"memory":e.memory()})
+                json!({"applications":e.engine.applications(),"canceled":e.engine.canceled(),"cancel_done":e.engine.cancel_done(),"memory":e.engine.memory(),"running":e.running,"execution_done":e.engine.delivery_done(),"error":e.error})
             }
             _ => return Err(Response::error(404, "unknown API route")),
         };
@@ -774,14 +907,15 @@ impl Runtime {
         Ok(Response::ok(body))
     }
     /// One run per maintenance turn, with a frozen admission boundary for fairness.
-    pub fn tick(&self) {
+    pub fn tick(&self) -> bool {
         let run = {
             let mut runs = self.runs.lock().unwrap();
             if runs.round.is_none() {
                 runs.round = runs.entries.last_key_value().map(|(&id, _)| id);
+                runs.active = false;
             }
             let Some(last) = runs.round else {
-                return;
+                return false;
             };
             let next = runs
                 .entries
@@ -794,11 +928,11 @@ impl Runtime {
             } else {
                 runs.after = None;
                 runs.round = None;
-                None
+                return runs.active;
             }
         };
         let Some((id, run, closing)) = run else {
-            return;
+            return true;
         };
         let owner = {
             let owners = self.owners.lock().unwrap();
@@ -809,21 +943,31 @@ impl Runtime {
                 .cloned()
         };
         let Some(owner) = owner else {
-            return;
+            return false;
         };
-        if let Ok(mut owner) = owner.try_lock()
+        // ponytail: request floods can defer this owner's maintenance; use FIFO
+        // admission if fairness under a continuous request flood is required.
+        if owner.waiting.load(Ordering::SeqCst) == 0
+            && let Ok(mut owner) = owner.state.try_lock()
             && !owner.retired
             && let Ok(mut e) = run.try_lock()
         {
             // Another maintenance caller may have reclaimed the selected run
             // between the registry lookup and this nonblocking owner lock.
             if !self.owners.lock().unwrap().runs.contains_key(&id) {
-                return;
+                return false;
             }
+            let active = closing.is_some()
+                || e.running
+                || (e.engine.canceled() && !e.engine.cancel_done())
+                || (!e.engine.canceled()
+                    && e.engine.query_variables().len()
+                        != e.engine.program().query_variables().len());
+            self.runs.lock().unwrap().active |= active;
             match closing {
                 Some(false) => {
-                    e.advance(512);
-                    if e.cancel_done() {
+                    e.engine.advance(512);
+                    if e.engine.cancel_done() {
                         self.runs.lock().unwrap().closing.insert(id, true);
                     }
                 }
@@ -833,19 +977,22 @@ impl Runtime {
                     // remaining history once per snapshot.
                     let mut released_all = false;
                     for _ in 0..512 {
-                        let snapshot = e.snapshots().next().map(|s| s.id);
-                        let inspection = e.inspections().next();
+                        let snapshot = e.engine.snapshots().next().map(|s| s.id);
+                        let inspection = e.engine.inspections().next();
                         if let Some(snapshot) = snapshot {
-                            if e.release_snapshot(snapshot).is_err() {
+                            if e.engine.release_snapshot(snapshot).is_err() {
                                 break;
                             }
                         } else if let Some(inspection) = inspection {
-                            if e.inspection_status(inspection).is_ok_and(|s| !s.done) {
-                                let _ = e.discard_inspection(inspection, 512);
-                                let _ = e.release_inspection(inspection);
+                            if e.engine
+                                .inspection_status(inspection)
+                                .is_ok_and(|s| !s.done)
+                            {
+                                let _ = e.engine.discard_inspection(inspection, 512);
+                                let _ = e.engine.release_inspection(inspection);
                                 break;
                             }
-                            if e.release_inspection(inspection).is_err() {
+                            if e.engine.release_inspection(inspection).is_err() {
                                 break;
                             }
                         } else {
@@ -854,10 +1001,10 @@ impl Runtime {
                         }
                     }
                     if released_all {
-                        e.advance(512);
-                        if e.cancel_done()
-                            && e.memory().graph_nodes == 0
-                            && e.memory().conditions == 0
+                        e.engine.advance(512);
+                        if e.engine.cancel_done()
+                            && e.engine.memory().graph_nodes == 0
+                            && e.engine.memory().conditions == 0
                         {
                             let mut batches = self.batches.lock().unwrap();
                             let batch = batches
@@ -866,7 +1013,7 @@ impl Runtime {
                                 .map(|(&key, _)| key);
                             if let Some(key) = batch {
                                 batches.remove(&key);
-                                return;
+                                return false;
                             }
                             drop(batches);
                             drop(e);
@@ -884,12 +1031,57 @@ impl Runtime {
                     }
                 }
                 None => {
-                    if e.canceled() {
-                        e.advance(512);
+                    if e.engine.canceled() {
+                        e.running = false;
+                        e.engine.advance(512);
+                    } else if e.running {
+                        let Run {
+                            engine,
+                            spool,
+                            error,
+                            ..
+                        } = &mut *e;
+                        if let Err(failure) = crate::runtime::drive(engine, 4096, |output| {
+                            spool.append(event(output))
+                        }) {
+                            *error = Some(failure.to_string());
+                        }
+                        if e.engine.delivery_done()
+                            || e.engine.canceled()
+                            || (e.stepping && e.engine.step_status().done)
+                        {
+                            e.running = false;
+                        }
+                    } else if e.engine.query_variables().len()
+                        != e.engine.program().query_variables().len()
+                    {
+                        // Admission initializes identifiers even for an initially paused run.
+                        for _ in 0..512 {
+                            if e.engine.query_variables().len()
+                                == e.engine.program().query_variables().len()
+                            {
+                                break;
+                            }
+                            let Run {
+                                engine,
+                                spool,
+                                error,
+                                ..
+                            } = &mut *e;
+                            if let Err(failure) = crate::runtime::drive(engine, 1, |output| {
+                                spool.append(event(output))
+                            }) {
+                                *error = Some(failure.to_string());
+                                break;
+                            }
+                        }
+                    } else {
+                        e.engine.maintain(512);
                     }
                 }
             }
         }
+        true
     }
 }
 
@@ -905,8 +1097,9 @@ pub fn serve(listener: TcpListener) -> io::Result<()> {
     let maintenance = runtime.clone();
     std::thread::spawn(move || {
         loop {
-            maintenance.tick();
-            std::thread::sleep(Duration::from_millis(5));
+            if !maintenance.tick() {
+                std::thread::sleep(Duration::from_millis(1));
+            }
         }
     });
     let (send, receive) = mpsc::sync_channel::<TcpStream>(64);
@@ -1040,6 +1233,22 @@ fn connection(mut stream: TcpStream, runtime: &Runtime, port: u16) -> io::Result
                 "text/javascript; charset=utf-8",
                 include_bytes!("../web/graph.mjs").as_slice(),
             )),
+            "/examples/arithmetic.chrnb" => Some((
+                "application/json",
+                include_bytes!("../examples/arithmetic.chrnb").as_slice(),
+            )),
+            "/examples/type-synthesis.chrnb" => Some((
+                "application/json",
+                include_bytes!("../examples/type-synthesis.chrnb").as_slice(),
+            )),
+            "/examples/behavior-synthesis.chrnb" => Some((
+                "application/json",
+                include_bytes!("../examples/behavior-synthesis.chrnb").as_slice(),
+            )),
+            "/examples/lambda.chrnb" => Some((
+                "application/json",
+                include_bytes!("../examples/lambda.chrnb").as_slice(),
+            )),
             _ => None,
         };
         return match asset {
@@ -1125,12 +1334,178 @@ mod owner_tests {
         json!({"boot":runtime.boot,"owner":owner,"command":1,"program":{"rules":[]},"query":{"kind":"true"}}).to_string()
     }
     #[test]
+    fn scheduler_executes_without_output_requests_and_retains_results() {
+        let runtime = Runtime::default();
+        let owner = attach(&runtime);
+        let run = runtime
+            .request("/api/start", &start_body(&runtime, owner))
+            .body["run"]
+            .clone();
+        for _ in 0..1000 {
+            runtime.tick();
+        }
+        let request = json!({"boot":runtime.boot,"owner":owner,"run":run}).to_string();
+        let status = runtime.request("/api/status", &request);
+        assert_eq!(status.body["execution_done"], true);
+        let result = runtime.request("/api/output", &request);
+        assert_eq!(result.status, 200);
+        assert_eq!(
+            result.body["events"].as_array().unwrap().last().unwrap()["kind"],
+            "end"
+        );
+        assert_eq!(result.body["delivery_done"], true);
+        assert_eq!(runtime.request("/api/output", &request).body, result.body);
+    }
+    #[test]
+    fn continuing_a_completed_step_preserves_its_boundary() {
+        let runtime = Runtime::default();
+        let owner = attach(&runtime);
+        let mut model = runtime
+            .request(
+                "/api/parse",
+                &json!({"program":"p <=> q. q <=> p.","query":"p"}).to_string(),
+            )
+            .body;
+        model["boot"] = json!(runtime.boot);
+        model["owner"] = json!(owner);
+        model["command"] = json!(1);
+        model["paused"] = json!(true);
+        let run = runtime.request("/api/start", &model.to_string()).body["run"].clone();
+        let mut request = json!({"boot":runtime.boot,"owner":owner,"run":run,"command":2});
+        assert_eq!(
+            runtime.request("/api/step", &request.to_string()).status,
+            200
+        );
+        request["command"] = json!(3);
+        assert_eq!(
+            runtime.request("/api/pause", &request.to_string()).status,
+            200
+        );
+        for _ in 0..1000 {
+            runtime.tick();
+        }
+        let identity = json!({"boot":runtime.boot,"owner":owner,"run":run}).to_string();
+        assert_eq!(
+            runtime.request("/api/status", &identity).body["applications"],
+            0
+        );
+        request["command"] = json!(4);
+        request["continue_step"] = json!(true);
+        assert_eq!(
+            runtime.request("/api/resume", &request.to_string()).status,
+            200
+        );
+        for _ in 0..1000 {
+            runtime.tick();
+        }
+        request["command"] = json!(5);
+        request["continue_step"] = json!(true);
+        assert_eq!(
+            runtime.request("/api/resume", &request.to_string()).status,
+            200
+        );
+        for _ in 0..1000 {
+            runtime.tick();
+        }
+        let status = runtime.request(
+            "/api/status",
+            &json!({"boot":runtime.boot,"owner":owner,"run":run}).to_string(),
+        );
+        assert_eq!(status.body["applications"], 1);
+        assert_eq!(status.body["running"], false);
+    }
+    #[test]
+    fn output_reads_never_drive_source_and_spool_flush_failure_is_reported() {
+        let runtime = Runtime::default();
+        let owner = attach(&runtime);
+        let run = runtime
+            .request("/api/start", &start_body(&runtime, owner))
+            .body["run"]
+            .as_u64()
+            .unwrap();
+        let mut request = json!({"boot":runtime.boot,"owner":owner,"run":run});
+        for _ in 0..10 {
+            let response = runtime.request("/api/output", &request.to_string());
+            assert_eq!(response.body["events"], json!([]));
+            assert_eq!(response.body["delivery_done"], false);
+            request["ack"] = response.body["sequence"].clone();
+        }
+        let entry = runtime.runs.lock().unwrap().entries[&run].clone();
+        {
+            let mut run = entry.lock().unwrap();
+            // A read-only writer accepts this tiny answer into its buffer;
+            // publication must surface the later flush failure.
+            run.spool.writer = BufWriter::new(run.spool.reader.try_clone().unwrap());
+        }
+        for _ in 0..1000 {
+            runtime.tick();
+        }
+        assert!(entry.lock().unwrap().engine.delivery_done());
+        assert_eq!(
+            runtime.request("/api/output", &request.to_string()).status,
+            500
+        );
+        let run = entry.lock().unwrap();
+        assert!(run.error.is_some());
+        assert!(run.engine.canceled());
+        assert!(!run.running);
+    }
+    #[test]
+    fn spool_retains_more_than_ram_capacity_and_pages_exactly() {
+        let runtime = Runtime::default();
+        let mut spool = Spool::new(&runtime.boot, 1).unwrap();
+        for n in 0..20000 {
+            spool
+                .append(json!({"kind":"port","variable":n.to_string()}))
+                .unwrap();
+        }
+        assert!(spool.written > spool.writer.capacity() as u64);
+        assert!(spool.writer.buffer().len() <= spool.writer.capacity());
+        for n in 0..20000 {
+            assert_eq!(
+                spool.read(1).unwrap(),
+                vec![json!({"kind":"port","variable":n.to_string()})]
+            );
+        }
+        assert!(spool.drained());
+    }
+    #[test]
+    fn waiting_requests_defer_only_their_owners_maintenance() {
+        let runtime = Runtime::default();
+        let a = attach(&runtime);
+        let b = attach(&runtime);
+        let runs: Vec<_> = [a, b]
+            .into_iter()
+            .map(|owner| {
+                let id = runtime
+                    .request("/api/start", &start_body(&runtime, owner))
+                    .body["run"]
+                    .as_u64()
+                    .unwrap();
+                runtime.runs.lock().unwrap().entries[&id].clone()
+            })
+            .collect();
+        let owner = runtime.owner(a).unwrap();
+        // A request is preempted after registering, before acquiring the mutex.
+        owner.waiting.store(1, Ordering::SeqCst);
+        for _ in 0..100 {
+            runtime.tick();
+        }
+        assert!(!runs[0].lock().unwrap().engine.delivery_done());
+        assert!(runs[1].lock().unwrap().engine.delivery_done());
+        owner.waiting.store(0, Ordering::SeqCst);
+        for _ in 0..100 {
+            runtime.tick();
+        }
+        assert!(runs[0].lock().unwrap().engine.delivery_done());
+    }
+    #[test]
     fn independent_owners_and_reservation_do_not_wait_for_a_busy_owner() {
         let runtime = Arc::new(Runtime::default());
         let a = attach(&runtime);
         let b = attach(&runtime);
         let entry = runtime.owner(a).unwrap();
-        let guard = entry.lock().unwrap();
+        let guard = entry.request();
         let (send, receive) = mpsc::channel();
         let other = runtime.clone();
         let worker = std::thread::spawn(move || {
@@ -1161,6 +1536,7 @@ mod owner_tests {
             !runtime.runs.lock().unwrap().entries[&run]
                 .lock()
                 .unwrap()
+                .engine
                 .canceled()
         );
         runtime.owners.lock().unwrap().runs.insert(run, b);
@@ -1179,7 +1555,7 @@ mod owner_tests {
                 json!({"boot":runtime.boot,"owner":owner,"run":run,"command":command}).to_string();
             assert_eq!(runtime.request("/api/resume", &body).status, 200);
             let entry = runtime.owner(owner).unwrap();
-            let entry = entry.lock().unwrap();
+            let entry = entry.request();
             let receipt = entry.receipt.as_ref().unwrap();
             assert_eq!(receipt.command, command);
             assert_eq!(receipt.request, body);
@@ -1204,10 +1580,10 @@ mod owner_tests {
         }
         assert!(runtime.runs.lock().unwrap().entries.is_empty());
         let retained = runtime.owner(owner).unwrap();
-        assert_eq!(retained.lock().unwrap().runs, 0);
+        assert_eq!(retained.request().runs, 0);
         let retire = json!({"boot":runtime.boot,"owner":owner}).to_string();
         assert_eq!(runtime.request("/api/retire", &retire).status, 200);
-        assert!(retained.lock().unwrap().retired);
+        assert!(retained.request().retired);
         assert!(runtime.owners.lock().unwrap().entries.is_empty());
         assert!(runtime.owners.lock().unwrap().runs.is_empty());
         assert_eq!(
@@ -1267,9 +1643,9 @@ mod owner_tests {
         let engine = runtime.runs.lock().unwrap().entries[&run].clone();
         {
             let mut engine = engine.lock().unwrap();
-            engine.request_collection();
-            engine.advance(1);
-            assert!(engine.collecting());
+            engine.engine.request_collection();
+            engine.engine.advance(1);
+            assert!(engine.engine.collecting());
         }
         let request = json!({"boot":runtime.boot,"owner":owner,"run":run,"command":2}).to_string();
         let busy = runtime.request("/api/snapshot", &request);
@@ -1279,8 +1655,7 @@ mod owner_tests {
             runtime
                 .owner(owner)
                 .unwrap()
-                .lock()
-                .unwrap()
+                .request()
                 .receipt
                 .as_ref()
                 .unwrap()
@@ -1292,7 +1667,7 @@ mod owner_tests {
                 "/api/maintenance",
                 &json!({"boot":runtime.boot,"owner":owner,"run":run,"budget":4096}).to_string(),
             );
-            if !engine.lock().unwrap().collecting() {
+            if !engine.lock().unwrap().engine.collecting() {
                 break;
             }
         }

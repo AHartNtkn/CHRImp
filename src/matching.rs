@@ -43,6 +43,13 @@ impl std::fmt::Display for MatchError {
 }
 impl std::error::Error for MatchError {}
 
+#[derive(Clone, Copy)]
+enum Lookup {
+    Relation,
+    Port { port: usize, variable: u64 },
+    Tuple(u64),
+}
+
 enum SourceKind {
     One {
         occurrence: Option<u64>,
@@ -75,7 +82,7 @@ impl Source {
         root: Root,
         relation: usize,
         scope: Condition,
-        bound: Option<(usize, u64)>,
+        lookup: Lookup,
         anchor: Option<u64>,
     ) -> Self {
         let kind = if let Some(id) = anchor {
@@ -83,19 +90,21 @@ impl Source {
                 occurrence: Some(id),
                 relation,
             }
-        } else if let Some((port, variable)) = bound {
-            SourceKind::Port {
-                members: Box::new(Members::new(g, root.clone(), variable, scope)),
-                bucket: None,
-                membership: Condition::FALSE,
-                relation,
-                port,
-            }
         } else {
-            SourceKind::Relation(
-                g.relation(root.clone(), relation)
-                    .expect("prepared relation"),
-            )
+            match lookup {
+                Lookup::Port { port, variable } => SourceKind::Port {
+                    members: Box::new(Members::new(g, root.clone(), variable, scope)),
+                    bucket: None,
+                    membership: Condition::FALSE,
+                    relation,
+                    port,
+                },
+                Lookup::Relation => SourceKind::Relation(
+                    g.relation(root.clone(), relation)
+                        .expect("prepared relation"),
+                ),
+                Lookup::Tuple(hash) => SourceKind::Relation(g.tuple(root.clone(), relation, hash)),
+            }
         };
         Self {
             root,
@@ -243,8 +252,15 @@ pub struct Matches {
     select_head: usize,
     select_port: usize,
     score: usize,
-    key_port: Option<usize>,
-    best: Option<(usize, usize, Option<usize>)>,
+    lookup: Lookup,
+    tuple_hash: u64,
+    tuple_bound: bool,
+    key_count: usize,
+    select_members: Option<Members>,
+    select_count: usize,
+    relation_count: usize,
+    select_discard: bool,
+    best: Option<(usize, usize, usize, Lookup)>,
     candidate: u64,
     current: Condition,
     position: usize,
@@ -288,7 +304,14 @@ impl Matches {
             select_head: 0,
             select_port: 0,
             score: 0,
-            key_port: None,
+            lookup: Lookup::Relation,
+            tuple_hash: 0,
+            tuple_bound: false,
+            key_count: usize::MAX,
+            select_members: None,
+            select_count: 0,
+            relation_count: 0,
+            select_discard: false,
             best: None,
             candidate: 0,
             current: scope,
@@ -320,32 +343,36 @@ impl Matches {
                     .flat_map(|f| [f.hit].into_iter().chain(f.source.roots())),
             )
             .chain(self.equality.iter().flat_map(|e| e.condition_roots()))
+            .chain(
+                self.select_members
+                    .iter()
+                    .flat_map(Members::condition_roots),
+            )
             .chain(self.output.iter().map(|o| o.support))
     }
     fn select(&mut self) {
         self.select_head = 0;
         self.select_port = 0;
         self.score = 0;
-        self.key_port = None;
+        self.lookup = Lookup::Relation;
+        self.key_count = usize::MAX;
         self.best = None;
         self.phase = Phase::Select;
     }
-    fn push_frame(&mut self, g: &Graph, head: usize, port: Option<usize>, anchor: Option<u64>) {
+    fn push_frame(&mut self, g: &Graph, head: usize, lookup: Lookup, anchor: Option<u64>) {
         let atom = &self.code.rules[self.rule].heads[head];
         let scope = self.frames.last().map_or(self.scope, |f| f.hit);
-        let bound = port.map(|p| {
-            (
-                p,
-                self.bindings[atom.args[p]].expect("bound selection port"),
-            )
-        });
-        let source = Source::new(g, self.root.clone(), atom.relation, scope, bound, anchor);
+        let verified_port = match lookup {
+            Lookup::Port { port, .. } => Some(port),
+            _ => None,
+        };
+        let source = Source::new(g, self.root.clone(), atom.relation, scope, lookup, anchor);
         self.frames.push(Frame {
             head,
             source,
             before: self.trail.len(),
             hit: scope,
-            verified_port: port,
+            verified_port,
         });
         self.phase = Phase::Candidate;
     }
@@ -368,7 +395,11 @@ impl Matches {
         }
         match self.discard {
             1 => {
-                if let Some(e) = &mut self.equality {
+                if let Some(m) = &mut self.select_members {
+                    if m.discard_tick() {
+                        self.select_members = None;
+                    }
+                } else if let Some(e) = &mut self.equality {
                     if e.discard_tick() {
                         self.equality = None;
                     }
@@ -404,28 +435,100 @@ impl Matches {
                     self.position = 0;
                     self.phase = Phase::Copy;
                 } else if let Some((head, id)) = self.anchor.take() {
-                    self.push_frame(g, head, None, Some(id));
+                    self.push_frame(g, head, Lookup::Relation, Some(id));
                 } else if self.select_head == self.occurrences.len() {
-                    let (_, head, port) = self.best.expect("unmatched head");
-                    self.push_frame(g, head, port, None);
+                    let (_, _, head, lookup) = self.best.expect("unmatched head");
+                    self.push_frame(g, head, lookup, None);
                 } else if self.occurrences[self.select_head].is_some() {
                     self.select_head += 1;
                 } else {
                     let atom = &self.code.rules[self.rule].heads[self.select_head];
+                    if self.select_port == 0 && self.select_members.is_none() {
+                        self.relation_count = g.relation_count(&self.root, atom.relation);
+                        self.key_count = self.relation_count;
+                        self.tuple_hash = 0;
+                        self.tuple_bound = g.has_tuple_index(atom.relation);
+                    }
                     if self.select_port < atom.args.len() {
-                        if self.bindings[atom.args[self.select_port]].is_some() {
+                        if let Some(members) = &mut self.select_members {
+                            // Do not enumerate a large class merely to plan a small
+                            // relation lookup. A relation scan checks every port using
+                            // Equal, preserving conditional and nonbinding semantics.
+                            self.select_discard |= members.visits()
+                                > self
+                                    .relation_count
+                                    .saturating_mul(2 + self.occurrences.len() + atom.args.len())
+                                    as u64;
+                            if self.select_discard {
+                                if members.discard_tick() {
+                                    self.select_members = None;
+                                    self.select_discard = false;
+                                    self.select_port += 1;
+                                }
+                                return MatchStatus::Pending;
+                            }
+                            match members.tick(g, a) {
+                                ResolveStatus::Found { variable, .. } => {
+                                    // Count all supported alias buckets, not just the raw
+                                    // binding. Disjoint membership fragments may count a
+                                    // bucket twice, matching the source's traversal cost.
+                                    self.select_count =
+                                        self.select_count.saturating_add(g.port_count(
+                                            &self.root,
+                                            atom.relation,
+                                            self.select_port,
+                                            variable,
+                                        ));
+                                }
+                                ResolveStatus::Done => {
+                                    if self.select_count < self.key_count {
+                                        self.lookup = Lookup::Port {
+                                            port: self.select_port,
+                                            variable: self.bindings[atom.args[self.select_port]]
+                                                .unwrap(),
+                                        };
+                                        self.key_count = self.select_count;
+                                    }
+                                    self.select_members = None;
+                                    self.select_port += 1;
+                                }
+                                ResolveStatus::Pending => {}
+                            }
+                        } else if let Some(variable) = self.bindings[atom.args[self.select_port]] {
                             self.score += 1;
-                            self.key_port.get_or_insert(self.select_port);
+                            self.tuple_hash = crate::graph::tuple_hash(self.tuple_hash, variable);
+                            self.tuple_bound &= g.singleton(&self.root, variable);
+                            if self.relation_count <= 1 {
+                                self.select_port += 1;
+                                return MatchStatus::Pending;
+                            }
+                            self.select_count = 0;
+                            let scope = self.frames.last().map_or(self.scope, |f| f.hit);
+                            self.select_members =
+                                Some(Members::new(g, self.root.clone(), variable, scope));
+                        } else {
+                            self.tuple_bound = false;
+                            self.select_port += 1;
                         }
-                        self.select_port += 1;
                     } else {
-                        if self.best.is_none_or(|(score, _, _)| self.score > score) {
-                            self.best = Some((self.score, self.select_head, self.key_port));
+                        if self.tuple_bound {
+                            let count = g.tuple_count(&self.root, atom.relation, self.tuple_hash);
+                            if count < self.key_count {
+                                self.key_count = count;
+                                self.lookup = Lookup::Tuple(self.tuple_hash);
+                            }
+                        }
+                        if self.best.is_none_or(|(score, count, _, _)| {
+                            self.score > score || (self.score == score && self.key_count < count)
+                        }) {
+                            self.best =
+                                Some((self.score, self.key_count, self.select_head, self.lookup));
                         }
                         self.select_head += 1;
                         self.select_port = 0;
                         self.score = 0;
-                        self.key_port = None;
+                        self.lookup = Lookup::Relation;
+                        self.key_count = usize::MAX;
                     }
                 }
             }
@@ -589,6 +692,7 @@ impl Trace for Matches {
                 Some(output) => cursor.fields(&[output.support]),
                 None => cursor.advance(),
             },
+            4 => cursor.optional(self.select_members.as_ref()),
             _ => Step::Done,
         }
     }

@@ -53,7 +53,7 @@ fn run(
 #[test]
 fn propagation_records_tuple_once_and_allocates_fresh_locals_only_when_applying() {
     let p = code("p(X) ==> witness(Y,X).");
-    let mut g = Graph::new(&p.signatures);
+    let mut g = Graph::new(p.signatures());
     let mut h = History::default();
     let mut a = Arena::default();
     let mut ids = FreshIds::default();
@@ -84,7 +84,7 @@ fn propagation_records_tuple_once_and_allocates_fresh_locals_only_when_applying(
 #[test]
 fn additional_support_gets_a_distinct_fresh_event_without_replaying_overlap() {
     let p = code("p(X) ==> witness(Y,X).");
-    let mut g = Graph::new(&p.signatures);
+    let mut g = Graph::new(p.signatures());
     let mut h = History::default();
     let mut a = Arena::default();
     let (_, c) = a.fresh_choice();
@@ -126,7 +126,7 @@ fn additional_support_gets_a_distinct_fresh_event_without_replaying_overlap() {
 #[test]
 fn stale_kept_heads_shrink_commitment_and_only_removed_heads_are_consumed() {
     let p = code("p(X) \\ q(X) <=> result(X,Fresh).");
-    let mut g = Graph::new(&p.signatures);
+    let mut g = Graph::new(p.signatures());
     let mut h = History::default();
     let mut a = Arena::default();
     let (_, c) = a.fresh_choice();
@@ -170,7 +170,7 @@ fn stale_kept_heads_shrink_commitment_and_only_removed_heads_are_consumed() {
 #[test]
 fn malformed_identity_claim_cannot_bind_variables_or_consume_facts() {
     let p = code("p(X) \\ q(X) <=> result(X).");
-    let mut g = Graph::new(&p.signatures);
+    let mut g = Graph::new(p.signatures());
     let mut h = History::default();
     let mut a = Arena::default();
     let mut ids = FreshIds::default();
@@ -205,7 +205,7 @@ fn malformed_identity_claim_cannot_bind_variables_or_consume_facts() {
 #[test]
 fn duplicate_head_ids_and_failed_regions_cannot_apply() {
     let p = code("p(X), p(Y) <=> result(X,Y).");
-    let mut g = Graph::new(&p.signatures);
+    let mut g = Graph::new(p.signatures());
     let mut h = History::default();
     let mut a = Arena::default();
     let mut ids = FreshIds::default();
@@ -235,7 +235,7 @@ fn collection_at_every_commit_boundary_preserves_staged_updates_and_guards() {
         "p(X,X), p(X,X) ==> result(X,Fresh).",
     ] {
         let p = code(source);
-        let mut g = Graph::new(&p.signatures);
+        let mut g = Graph::new(p.signatures());
         let mut a = Arena::default();
         let mut h = History::default();
         let mut ids = FreshIds::default();
@@ -301,7 +301,7 @@ fn collection_at_every_commit_boundary_preserves_staged_updates_and_guards() {
         let applied = result.expect("finite transaction completes");
         assert_eq!(applied.application.support, c);
         assert_eq!(applied.application.variables.as_slice(), [x, 2]);
-        if p.rules[0].kept == 0 {
+        if p.rules()[0].kept == 0 {
             for id in [first, second] {
                 assert_eq!(
                     g.fact(applied.state.graph.clone(), id).unwrap().support,

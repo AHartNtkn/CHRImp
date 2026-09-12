@@ -44,7 +44,7 @@ fn single_head_conditional_repetition_freshness_and_history_under_gc() {
         let hits = a
             .rows
             .iter()
-            .filter(|r| e.program().signatures[r.relation].name == "hit")
+            .filter(|r| e.program().signatures()[r.relation].name == "hit")
             .collect::<Vec<_>>();
         if merged {
             assert_ne!(hits[0].ports[1], hits[1].ports[1]);

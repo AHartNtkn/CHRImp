@@ -66,7 +66,7 @@ fn committed_rewrite_snapshot_keeps_the_unposted_rhs_after_resume_gc_and_cancel(
     );
     let q = e
         .program()
-        .signatures
+        .signatures()
         .iter()
         .position(|s| s.name == "q")
         .unwrap();
@@ -192,7 +192,7 @@ fn every_partial_nested_and_or_snapshot_contains_exact_remaining_expressions() {
             .iter()
             .map(|name| {
                 e.program()
-                    .signatures
+                    .signatures()
                     .iter()
                     .position(|s| s.name == *name)
                     .unwrap()
@@ -244,7 +244,7 @@ fn every_partial_nested_and_or_snapshot_contains_exact_remaining_expressions() {
                             .iter()
                             .map(|name| {
                                 e.program()
-                                    .signatures
+                                    .signatures()
                                     .iter()
                                     .position(|s| s.name == *name)
                                     .unwrap()
@@ -408,7 +408,7 @@ fn a_shared_application_projects_the_same_remaining_body_in_each_selected_siblin
             match output {
                 Output::PendingBegin { event } => source = Some(event),
                 Output::ExpressionRelation { relation } if source == Some(event) => {
-                    assert_eq!(e.program().signatures[relation].name, "q");
+                    assert_eq!(e.program().signatures()[relation].name, "q");
                     bodies += 1;
                 }
                 Output::PendingEnd => source = None,
@@ -464,7 +464,7 @@ fn balanced_ranges_project_original_flat_arms_at_each_suspension() {
             }
         }
         for (id, instruction, start, split, end) in births {
-            let chr::program::Instruction::Or(items) = &e.program().instructions[instruction]
+            let chr::program::Instruction::Or(items) = &e.program().instructions()[instruction]
             else {
                 panic!()
             };

@@ -13,6 +13,7 @@ h1,h2,h3,p{margin:0}h1{font-size:19px;letter-spacing:-.4px}h1 span{font-size:14p
 .mark{font-size:28px;color:var(--cyan);margin-right:8px}.runtime{font-size:11px;gap:12px;color:var(--muted)}.status-dot{width:6px;height:6px;background:#159289;border-radius:50%}
 .runbar{padding:9px 24px;background:white;border-bottom:1px solid var(--line);gap:12px;flex-wrap:wrap}.runbar>label[for=execution]{margin:0 0 0 auto;font-size:11px;color:var(--muted)}.runbar .button-group{gap:5px}.runbar>select{font-size:12px}.runbar>button{font-size:11px}
 .document-bar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:9px 24px;background:white;border-bottom:1px solid var(--line);font-size:12px}
+#examples{max-width:190px}
 #notebook-title{flex:1 1 180px;min-width:0;max-width:300px;font-weight:600}#file-status{flex:1 1 140px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}#notebook-search{flex:1 1 220px;min-width:0;max-width:320px;margin-left:auto}
 #search-results{flex-basis:100%;min-width:0;display:grid;gap:4px;max-height:min(18rem,40vh);overflow:auto;overscroll-behavior:contain;padding:8px;border:1px solid var(--line);border-radius:6px;background:#f8fafc}
 #search-results>button{width:100%;min-width:0;text-align:left;white-space:normal;overflow-wrap:anywhere;border-color:transparent;line-height:1.5}#search-results>p{padding:5px 8px;color:var(--muted)}

@@ -389,6 +389,7 @@ impl Engine {
         self.snapshots
             .remove(&id.0)
             .ok_or(InspectionError::UnknownSnapshot)?;
+        self.archive.invalidate();
         self.request_collection();
         Ok(())
     }
@@ -584,5 +585,86 @@ mod tests {
             e.inspection_status(waiting).unwrap().done,
             "later arrivals must not indefinitely postpone the existing discard"
         );
+    }
+}
+
+#[cfg(test)]
+mod cutoff_tests {
+    use super::*;
+    fn check(e: &Engine) {
+        let cutoffs = e
+            .snapshots
+            .values()
+            .map(|s| s.info.last_choice)
+            .collect::<Vec<_>>();
+        assert!(cutoffs.windows(2).all(|w| w[0] <= w[1]));
+        assert_eq!(
+            e.snapshots
+                .last_key_value()
+                .and_then(|(_, s)| s.info.last_choice),
+            cutoffs.into_iter().flatten().max()
+        );
+    }
+    #[test]
+    fn capture_order_bounds_cutoffs_through_collection_release_and_old_inspection_clones() {
+        for history in [false, true] {
+            let code = crate::program::prepare(
+                &crate::syntax::parse_program("").unwrap(),
+                &crate::syntax::parse_query("(a();b()),(c();d())").unwrap(),
+            )
+            .unwrap();
+            let mut e = Engine::with_history(Arc::new(code), history);
+            let initial = e.capture_snapshot().unwrap();
+            assert_eq!(e.snapshot_info(initial).unwrap().last_choice, None);
+            let mut choices = 0;
+            for _ in 0..100_000 {
+                e.advance(1);
+                e.take_output();
+                if !e.collecting() && e.births.len() > choices {
+                    choices = e.births.len();
+                    e.capture_snapshot().unwrap();
+                    e.capture_snapshot().unwrap();
+                    check(&e);
+                }
+                if e.delivery_done() {
+                    break;
+                }
+            }
+            assert!(e.delivery_done());
+            check(&e);
+            e.cancel();
+            for _ in 0..100_000 {
+                e.advance(1);
+                if e.cancel_done() {
+                    break;
+                }
+            }
+            assert!(e.cancel_done());
+            e.capture_snapshot().unwrap();
+            check(&e);
+            let old = e
+                .snapshots
+                .values()
+                .find(|s| s.info.last_choice == Some(0))
+                .unwrap()
+                .info
+                .id;
+            let clone = e.start_inspection(Some(old), vec![]).unwrap();
+            let mut ids = e.snapshots.keys().copied().collect::<Vec<_>>();
+            while let Some(id) = ids.pop() {
+                e.release_snapshot(ViewId(id)).unwrap();
+                e.maintain(100_000);
+                check(&e);
+                ids.reverse();
+            }
+            assert!(e.snapshots.is_empty());
+            assert_eq!(e.births.last_key_value().map(|(&id, _)| id), Some(0));
+            e.cancel_inspection(clone).unwrap();
+            e.advance_inspection(clone, 100_000).unwrap();
+            assert!(e.inspection_status(clone).unwrap().done);
+            e.release_inspection(clone).unwrap();
+            e.maintain(100_000);
+            assert!(e.births.is_empty());
+        }
     }
 }

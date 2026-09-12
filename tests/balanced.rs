@@ -17,7 +17,7 @@ fn nested_duplicate_failure_and_fresh_correlated_arms() {
             let q = a
                 .rows
                 .iter()
-                .find(|r| e.program().signatures[r.relation].name == "q")
+                .find(|r| e.program().signatures()[r.relation].name == "q")
                 .unwrap();
             assert_eq!(q.ports[0], a.variables[0]);
             assert_ne!(q.ports[1], a.variables[0]);
@@ -126,11 +126,11 @@ fn conditional_identity_stays_correlated_with_selected_arms() {
             let has_p = a
                 .rows
                 .iter()
-                .any(|r| e.program().signatures[r.relation].name == "p");
+                .any(|r| e.program().signatures()[r.relation].name == "p");
             let has_hit = a
                 .rows
                 .iter()
-                .any(|r| e.program().signatures[r.relation].name == "hit");
+                .any(|r| e.program().signatures()[r.relation].name == "hit");
             assert_eq!(has_hit, b && has_p);
             hits += usize::from(has_hit);
             seen.push((b, c, has_p));

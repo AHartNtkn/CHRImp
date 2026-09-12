@@ -64,3 +64,55 @@ fn program_files_run_as_a_language_and_stream_complete_graphs() {
     assert!(invalid.stdout.is_empty());
     assert!(!invalid.stderr.is_empty());
 }
+
+#[test]
+fn notebook_default_origin_is_stable_and_port_override_is_honored() {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+    use std::time::Duration;
+
+    fn launch(args: &[&str]) -> (String, std::process::Output) {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_chr"))
+            .arg("--notebook")
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let (send, receive) = std::sync::mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            let mut line = String::new();
+            let result = BufReader::new(stdout).read_line(&mut line).map(|_| line);
+            let _ = send.send(result);
+        });
+        let result = receive.recv_timeout(Duration::from_secs(5));
+        let _ = child.kill();
+        let output = child.wait_with_output().unwrap();
+        reader.join().unwrap();
+        let line = result.expect("notebook startup timed out").unwrap();
+        (line, output)
+    }
+
+    for _ in 0..2 {
+        assert_eq!(launch(&[]).0, "Notebook: http://127.0.0.1:7878\n");
+    }
+    // An occupied default must fail, rather than silently change storage origin.
+    let occupied = std::net::TcpListener::bind(("127.0.0.1", 7878)).unwrap();
+    let (line, output) = launch(&[]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(line.is_empty());
+    let address: std::net::SocketAddr = launch(&["--port", "0"])
+        .0
+        .trim()
+        .strip_prefix("Notebook: http://")
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_ne!(address.port(), 0);
+    assert_ne!(address.port(), occupied.local_addr().unwrap().port());
+    assert_eq!(
+        launch(&["--port", &address.port().to_string()]).0,
+        format!("Notebook: http://{address}\n")
+    );
+}

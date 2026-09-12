@@ -3,7 +3,7 @@ import {OutputAssembler} from './answers.mjs';
 const check = (ok, message) => { if (!ok) throw new Error(message); };
 const positive = value => { check(Number.isSafeInteger(value) && value > 0, 'Invalid notebook identifier.'); return value; };
 const decimal = value => { check(typeof value === 'string' && /^(0|[1-9][0-9]*)$/.test(value) && BigInt(value) <= 18446744073709551615n, 'Invalid view identifier.'); return value; };
-const controls = new Set(['start', 'inspect', 'step', 'resume', 'snapshot']);
+const controls = new Set(['start', 'inspect', 'step', 'resume', 'pause', 'snapshot']);
 const pause = () => new Promise(resolve => setTimeout(resolve, 0));
 
 export class NotebookConnection {
@@ -168,7 +168,7 @@ export class NotebookConnection {
     if (pending.route === 'start') {
       const run = positive(response.run);
       await this.store.saveRecovery(`live:source:${run}`, {submission:{program:payload.program, query:payload.query}, recordHistory:payload.record_history === true});
-      const archive = await this.store.create(response, `Run ${run}`, {id:`live:run:${run}`, value:{run, phase:'paused', ack:null, index:0, sequence:null, applications:0, stepPending:false}});
+      const archive = await this.store.create(response, `Run ${run}`, {id:`live:run:${run}`, value:{run, phase:payload.paused ? 'paused' : 'running', ack:null, index:0, sequence:null, applications:0, stepPending:false}});
       return {...response, archive};
     }
     if (pending.route === 'inspect') {
@@ -184,7 +184,12 @@ export class NotebookConnection {
     } else {
       const run = await this.store.recovery(runKey);
       check(run, 'The command has no saved execution.');
-      await this.store.saveRecovery(runKey, {...run, stepPending:pending.route === 'step'});
+      let phase = run.phase;
+      if (pending.route === 'pause' && !['done','canceled','error'].includes(phase)) phase = 'paused';
+      if (pending.route === 'resume') phase = payload.continue_step ? 'stepping' : 'running';
+      if (pending.route === 'step') phase = 'stepping';
+      await this.store.saveRecovery(runKey, {...run, phase,
+        stepPending:pending.route === 'step' || (pending.route === 'resume' ? payload.continue_step === true : run.stepPending === true)});
     }
     return response;
   }

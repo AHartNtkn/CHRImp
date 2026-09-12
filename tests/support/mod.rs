@@ -99,7 +99,7 @@ pub fn facts(e: &Engine, a: &Answer) -> Vec<String> {
     let mut names = a
         .rows
         .iter()
-        .map(|r| e.program().signatures[r.relation].name.clone())
+        .map(|r| e.program().signatures()[r.relation].name.clone())
         .collect::<Vec<_>>();
     names.sort();
     names

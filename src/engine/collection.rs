@@ -34,6 +34,21 @@ enum Phase {
     Pending,
     Arena,
 }
+// Snapshots are immutable and capture IDs increase. Register only their suffix;
+// release or a changed condition decomposition rebuilds protection from all
+// remaining snapshots. Inspections remain ordinary, independently owned roots.
+#[derive(Default)]
+pub(super) struct Archive {
+    after: Option<u64>,
+    reset: bool,
+    order_epoch: u64,
+}
+impl Archive {
+    pub(super) fn invalidate(&mut self) {
+        self.after = None;
+        self.reset = true;
+    }
+}
 pub(super) struct Collection {
     phase: Phase,
     compact: Option<super::compact::Compact>,
@@ -49,6 +64,9 @@ pub(super) struct Collection {
     after: Option<u64>,
     slot: usize,
     trace: TraceCursor,
+    archive_graph_roots: Vec<Root>,
+    archive_pending_roots: Vec<PendingRoot>,
+    archive_conditions: Vec<Condition>,
     graph_roots: Vec<Root>,
     history_roots: Vec<Root>,
     pending_roots: Vec<PendingRoot>,
@@ -125,6 +143,10 @@ impl Engine {
     }
     pub(super) fn collect_heap_mode(&mut self, semantic: bool) -> bool {
         if self.collector.is_none() {
+            if self.archive.order_epoch != self.arena.representation_epoch() {
+                self.archive.invalidate();
+                self.archive.order_epoch = self.arena.representation_epoch();
+            }
             let memory = self.memory().total();
             let explicit = self.collection_requested;
             // Semantic obsolescence is independent of physical node churn. Pure
@@ -199,7 +221,10 @@ impl Engine {
                 },
                 compact: owns_lane.then(|| super::compact::Compact::new(self)),
                 owns_lane,
-                retain_choice: None,
+                retain_choice: self
+                    .snapshots
+                    .last_key_value()
+                    .and_then(|(_, s)| s.info.last_choice),
                 prune: None,
                 prune_graph: None,
                 variable_groups: BTreeMap::new(),
@@ -210,6 +235,9 @@ impl Engine {
                 after: None,
                 slot: 0,
                 trace: TraceCursor::default(),
+                archive_graph_roots: vec![],
+                archive_pending_roots: vec![],
+                archive_conditions: vec![],
                 graph_roots: if owns_lane {
                     vec![]
                 } else {
@@ -399,7 +427,7 @@ impl Engine {
                             Step::Pending => {}
                             Step::Done => {
                                 c.phase = Phase::Snapshots;
-                                c.after = None;
+                                c.after = self.archive.after;
                                 c.slot = 0;
                                 c.trace = TraceCursor::default();
                             }
@@ -407,7 +435,7 @@ impl Engine {
                     }
                 } else {
                     c.phase = Phase::Snapshots;
-                    c.after = None;
+                    c.after = self.archive.after;
                     c.slot = 0;
                     c.trace = TraceCursor::default();
                 }
@@ -418,11 +446,12 @@ impl Engine {
                     None => self.snapshots.first_key_value(),
                 };
                 if let Some((&id, snapshot)) = next {
-                    c.graph_roots.push(snapshot.graph.clone());
-                    c.pending_roots.push(snapshot.obligations.clone());
+                    c.archive_graph_roots.push(snapshot.graph.clone());
+                    c.archive_pending_roots.push(snapshot.obligations.clone());
                     c.retain_choice = c.retain_choice.max(snapshot.info.last_choice);
-                    retain_condition(&mut c.conditions, snapshot.scope);
+                    retain_condition(&mut c.archive_conditions, snapshot.scope);
                     c.after = Some(id);
+                    self.archive.after = Some(id);
                 } else {
                     c.phase = Phase::Inspections;
                     c.after = None;
@@ -532,17 +561,25 @@ impl Engine {
             Phase::Graph => {
                 if let Some(gc) = &mut c.graph {
                     if let Some(root) = gc.tick(&mut self.graph) {
-                        retain_condition(&mut c.conditions, root);
+                        retain_condition(
+                            if gc.archiving() {
+                                &mut c.archive_conditions
+                            } else {
+                                &mut c.conditions
+                            },
+                            root,
+                        );
                     }
                     if gc.done() {
                         c.graph = None;
                         c.phase = Phase::History;
                     }
                 } else {
-                    c.graph = Some(
-                        self.graph
-                            .collect(std::mem::take(&mut c.graph_roots).into_iter()),
-                    );
+                    c.graph = Some(self.graph.collect_archived(
+                        std::mem::take(&mut c.graph_roots).into_iter(),
+                        std::mem::take(&mut c.archive_graph_roots),
+                        self.archive.reset,
+                    ));
                 }
             }
             Phase::History => {
@@ -564,52 +601,59 @@ impl Engine {
             Phase::Pending => {
                 if let Some(gc) = &mut c.pending {
                     if let Some(roots) = gc.tick(&mut self.obligations) {
-                        c.conditions
-                            .extend(roots.into_iter().filter(|root| !root.is_terminal()));
+                        let conditions = if gc.archiving() {
+                            &mut c.archive_conditions
+                        } else {
+                            &mut c.conditions
+                        };
+                        conditions.extend(roots.into_iter().filter(|root| !root.is_terminal()));
                     }
                     if gc.done() {
                         c.pending = None;
                         c.phase = Phase::Arena;
                     }
                 } else {
-                    c.pending = Some(
-                        self.obligations
-                            .collect(std::mem::take(&mut c.pending_roots).into_iter()),
-                    );
+                    c.pending = Some(self.obligations.collect_archived(
+                        std::mem::take(&mut c.pending_roots).into_iter(),
+                        std::mem::take(&mut c.archive_pending_roots),
+                        self.archive.reset,
+                    ));
                 }
             }
             Phase::Arena => {
                 if let Some(gc) = &mut c.arena {
                     if gc.tick(&mut self.arena) {
                         c.arena = None;
-                        self.collections += 1;
-                        if c.owns_lane {
-                            self.release_lane();
-                        }
-                        if c.owns_lane {
-                            self.graph.semantic_collected();
-                            self.semantic_regions = false;
-                        }
-                        // A completed finite pass yields to one ordinary service
-                        // step. Repeated requests cannot consume every advance.
-                        self.collection_yield = true;
-                        self.collection_limit = self
-                            .memory()
-                            .total()
-                            .saturating_mul(2)
-                            .saturating_add(CLEANUP_ALLOWANCE);
+                        self.finish_collection(&c);
                         return true;
                     }
                 } else {
-                    c.arena = Some(
-                        self.arena
-                            .collect(std::mem::take(&mut c.conditions).into_iter()),
-                    );
+                    c.arena = Some(self.arena.collect_archived(
+                        std::mem::take(&mut c.conditions).into_iter(),
+                        std::mem::take(&mut c.archive_conditions),
+                        self.archive.reset,
+                    ));
                 }
             }
         }
         self.collector = Some(c);
         true
+    }
+    fn finish_collection(&mut self, c: &Collection) {
+        self.collections += 1;
+        self.archive.reset = false;
+        if c.owns_lane {
+            self.release_lane();
+            self.graph.semantic_collected();
+            self.semantic_regions = false;
+        }
+        self.collection_limit = self
+            .memory()
+            .total()
+            .saturating_mul(2)
+            .saturating_add(CLEANUP_ALLOWANCE);
+        // Every finite pass yields the same ordinary service opportunity.
+        self.collection_yield = true;
     }
 }
 impl Trace for Scheduled {
@@ -917,6 +961,54 @@ mod frontier_tests {
         e
     }
     #[test]
+    fn semantic_pruning_and_explicit_collection_preserve_retained_roots() {
+        let mut e = engine(0);
+        e.variables = Arc::new(vec![]); // The fixture query has no variables.
+        let saved = e.capture_snapshot().unwrap();
+        e.request_collection();
+        assert!(e.collect_heap());
+        for _ in 0..10000 {
+            if e.collector.is_none() {
+                break;
+            }
+            e.collect_heap();
+        }
+        assert!(e.collector.is_none());
+        e.capture_snapshot().unwrap();
+        let retained = e.state.graph.clone();
+        e.active = Condition::FALSE;
+        e.semantic_regions = true;
+        assert!(e.collect_heap());
+        for _ in 0..10000 {
+            if e.collector.is_none() {
+                break;
+            }
+            e.collect_heap();
+        }
+        assert!(e.collector.is_none());
+        assert_eq!(e.state.graph, e.graph.empty());
+        assert_eq!(e.graph.semantic_debt(), 0);
+        assert!(!e.semantic_regions);
+        e.request_collection();
+        assert!(e.collect_heap());
+        for _ in 0..10000 {
+            if e.collector.is_none() {
+                break;
+            }
+            e.collect_heap();
+        }
+        assert!(e.collector.is_none());
+        assert_eq!(e.snapshots[&saved.0].graph, retained);
+        assert!(
+            e.graph
+                .relation(retained, 0)
+                .unwrap()
+                .next(&e.graph)
+                .is_some()
+        );
+        assert!(e.collection_limit < usize::MAX);
+    }
+    #[test]
     fn exact_frontier_boundary_and_explicit_region_requests_are_preserved() {
         let e = engine(0);
         let minimum = e.variables.len() + e.pending_tasks() + CLEANUP_ALLOWANCE;
@@ -934,6 +1026,206 @@ mod frontier_tests {
             }
             assert!(e.collect_heap());
             assert!(e.collector.is_some());
+        }
+    }
+}
+
+#[cfg(test)]
+mod retained_work_tests {
+    use super::*;
+    #[test]
+    fn retained_history_does_not_make_each_semantic_pass_walk_the_archive() {
+        for query in ["keep(A),loop(A)", "keep(A),(left();right()),loop(A)"] {
+            let code = crate::program::prepare(
+                &crate::syntax::parse_program("loop(X) <=> loop(X).").unwrap(),
+                &crate::syntax::parse_query(query).unwrap(),
+            )
+            .unwrap();
+            let mut e = Engine::with_history(Arc::new(code), true);
+            let mut steps = 0;
+            while e.applications() < 8192 {
+                e.advance(1);
+                steps += 1;
+                assert!(steps < 2_000_000);
+            }
+            assert!(e.snapshots.len() >= 16384);
+            let keep = e
+                .code
+                .signatures
+                .iter()
+                .position(|s| s.name == "keep")
+                .unwrap();
+            for snapshot in e.snapshots.values().filter(|s| s.info.applications > 0) {
+                let mut rows = e.graph.relation(snapshot.graph.clone(), keep).unwrap();
+                let fact = rows.next(&e.graph).expect("the retained keep(A) fact");
+                assert_eq!(fact.1, Condition::TRUE);
+                assert_eq!(
+                    e.graph.fact(snapshot.graph.clone(), fact.0).unwrap().args,
+                    e.variables.as_slice()
+                );
+                assert!(rows.next(&e.graph).is_none(), "exact retained multiplicity");
+            }
+            assert!(
+                steps < 900_000,
+                "8192 history applications for {query} took {steps} steps"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod archive_work_tests {
+    use super::*;
+    #[test]
+    fn fixed_archive_collection_tracks_the_working_frontier() {
+        for size in [512, 2048] {
+            let code = crate::program::prepare(
+                &crate::syntax::parse_program("loop(X) <=> loop(X).").unwrap(),
+                &crate::syntax::parse_query("keep(A),(left();right()),loop(A)").unwrap(),
+            )
+            .unwrap();
+            let mut e = Engine::with_history(Arc::new(code), true);
+            while e.applications() < size {
+                e.advance(1);
+            }
+            e.record_history = false;
+            let snapshots = e.snapshots.len();
+            let mut steps = 0;
+            while e.applications() < size + 2048 {
+                e.advance(1);
+                steps += 1;
+                assert!(steps < 2_000_000);
+            }
+            assert_eq!(e.snapshots.len(), snapshots);
+            assert!(
+                steps < 200_000,
+                "fixed archive {snapshots}: {steps} working steps"
+            );
+            while e.collecting() {
+                e.advance(1);
+            }
+            let ids: Vec<_> = e.snapshots.values().map(|s| s.info.id).collect();
+            for id in ids {
+                e.release_snapshot(id).unwrap();
+            }
+            e.maintain(2_000_000);
+            assert!(!e.collecting());
+            let start = e.applications();
+            let mut steps = 0;
+            let mut peak = 0;
+            while e.applications() < start + 2048 {
+                e.advance(1);
+                steps += 1;
+                peak = peak.max(e.memory().occurrences);
+                assert!(steps < 200_000, "post-release working cost: {steps}");
+            }
+            assert!(peak < 512, "post-release working payload bound: {peak}");
+            e.cancel();
+            for _ in 0..100_000 {
+                e.advance(1);
+                if e.cancel_done() {
+                    break;
+                }
+            }
+            assert!(e.cancel_done());
+            let m = e.memory();
+            assert_eq!(
+                m.graph_nodes
+                    + m.occurrences
+                    + m.conditions
+                    + m.pending_nodes
+                    + m.obligation_descriptors
+                    + m.choices
+                    + m.snapshots,
+                0
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod archive_cancel_tests {
+    use super::*;
+    #[test]
+    fn cancel_during_archive_registration_or_rebuild_preserves_views_until_release() {
+        for rebuild in [false, true] {
+            for phase in [Phase::Snapshots, Phase::Graph, Phase::Pending, Phase::Arena] {
+                let code = crate::program::prepare(
+                    &crate::syntax::parse_program("loop(X) <=> loop(X).").unwrap(),
+                    &crate::syntax::parse_query("keep(A),(left();right()),loop(A)").unwrap(),
+                )
+                .unwrap();
+                let mut e = Engine::with_history(Arc::new(code), true);
+                while e.applications() < 32 {
+                    e.advance(1);
+                }
+                if rebuild {
+                    e.request_collection();
+                    while e.collecting() {
+                        e.advance(1);
+                    }
+                    let oldest = e.snapshots.first_key_value().unwrap().1.info.id;
+                    e.release_snapshot(oldest).unwrap();
+                }
+                e.request_collection();
+                let mut reached = false;
+                for _ in 0..100_000 {
+                    e.advance(1);
+                    if e.collector
+                        .as_ref()
+                        .is_some_and(|c| c.phase as u8 == phase as u8)
+                    {
+                        reached = true;
+                        break;
+                    }
+                }
+                assert!(reached);
+                e.advance(3);
+                e.cancel();
+                for _ in 0..100_000 {
+                    e.advance(1);
+                    if e.cancel_done() {
+                        break;
+                    }
+                }
+                assert!(e.cancel_done());
+                let keep = e
+                    .code
+                    .signatures
+                    .iter()
+                    .position(|s| s.name == "keep")
+                    .unwrap();
+                for snapshot in e.snapshots.values().filter(|s| s.info.applications > 0) {
+                    let mut rows = e.graph.relation(snapshot.graph.clone(), keep).unwrap();
+                    let (id, support) = rows.next(&e.graph).expect("retained keep fact");
+                    assert_eq!(support, Condition::TRUE);
+                    assert_eq!(
+                        e.graph.fact(snapshot.graph.clone(), id).unwrap().args.len(),
+                        1
+                    );
+                    assert!(rows.next(&e.graph).is_none());
+                    assert!(e.arena.contains(snapshot.scope));
+                }
+                let ids = e.snapshots.values().map(|s| s.info.id).collect::<Vec<_>>();
+                for id in ids {
+                    e.release_snapshot(id).unwrap();
+                }
+                e.maintain(100_000);
+                assert!(e.cancel_done());
+                let m = e.memory();
+                assert_eq!(
+                    m.graph_nodes
+                        + m.occurrences
+                        + m.conditions
+                        + m.pending_nodes
+                        + m.obligation_descriptors
+                        + m.history_nodes
+                        + m.history_records
+                        + m.choices
+                        + m.snapshots,
+                    0
+                );
+            }
         }
     }
 }

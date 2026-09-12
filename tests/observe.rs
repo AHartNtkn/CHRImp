@@ -118,7 +118,7 @@ fn empty_alternatives(events: &[Output], count: u64) {
 #[test]
 fn empty_graph_preserves_active_duplicate_choices_and_empty_scope() {
     let code = code("true");
-    let mut g = Graph::new(&code.signatures);
+    let mut g = Graph::new(code.signatures());
     let mut a = Arena::default();
     let mut births = BTreeMap::new();
     for count in 0..=2 {
@@ -183,7 +183,7 @@ fn correlated_births_prune_by_completion_support_and_ignore_future_births() {
 #[test]
 fn conditional_query_variables_and_ordered_ports_are_resolved_in_each_history() {
     let code = code("p(X,Y), q(X), zero()");
-    let mut g = Graph::new(&code.signatures);
+    let mut g = Graph::new(code.signatures());
     let mut a = Arena::default();
     let mut births = BTreeMap::new();
     let (last, c) = birth(&mut a, &mut births, Condition::TRUE);
@@ -402,7 +402,7 @@ fn discard_cancels_nested_projection_without_enumerating_remaining_alternatives(
     .map(|n| (n, false))
     .chain([1, 3, 8].into_iter().map(|n| (n, true)))
     {
-        let mut g = Graph::new(&prepared.signatures);
+        let mut g = Graph::new(prepared.signatures());
         let mut a = Arena::default();
         let mut births = BTreeMap::new();
         let mut last = None;

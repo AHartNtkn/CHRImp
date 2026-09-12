@@ -129,6 +129,7 @@ struct Record<V: Value> {
     leaves: usize,
     node: Node<V>,
     marked: AtomicU64,
+    archived: AtomicU64,
     queue: Weak<Queue<V>>,
     stats: Arc<Stats>,
 }
@@ -209,6 +210,8 @@ pub struct Store<V: Value> {
     owner: u32,
     epoch: u64,
     completed: u64,
+    archive_epoch: u64,
+    archive_completed: u64,
     frozen: Arc<AtomicBool>,
     queue: Arc<Queue<V>>,
     stats: Arc<Stats>,
@@ -221,6 +224,8 @@ impl<V: Value> Default for Store<V> {
                 .expect("index identity exhausted"),
             epoch: 0,
             completed: 0,
+            archive_epoch: 1,
+            archive_completed: 1,
             frozen: Arc::new(AtomicBool::new(false)),
             queue: Arc::new(Queue::new()),
             stats: Arc::new(Stats::default()),
@@ -261,7 +266,9 @@ impl<V: Value> Store<V> {
     pub fn contains(&self, root: &Root<V>) -> bool {
         root.is_empty()
             || (root.owner == self.owner
-                && root.node.as_ref().unwrap().marked.load(Relaxed) >= self.completed)
+                && (root.node.as_ref().unwrap().marked.load(Relaxed) >= self.completed
+                    || root.node.as_ref().unwrap().archived.load(Relaxed)
+                        >= self.archive_completed))
     }
     pub fn allocations(&self) -> usize {
         self.stats.allocated.load(Relaxed)
@@ -313,6 +320,7 @@ impl<V: Value> Store<V> {
                 leaves,
                 node,
                 marked: AtomicU64::new(self.epoch),
+                archived: AtomicU64::new(0),
                 queue: Arc::downgrade(&self.queue),
                 stats: self.stats.clone(),
             })),
@@ -321,6 +329,9 @@ impl<V: Value> Store<V> {
     fn unique(&mut self, root: &mut Root<V>) {
         assert!(self.contains(root));
         if Arc::get_mut(root.node.as_mut().unwrap()).is_some() {
+            let record = root.node.as_ref().unwrap();
+            record.archived.store(0, Relaxed);
+            record.marked.store(self.epoch, Relaxed);
             self.stats.unique.fetch_add(1, Relaxed);
         } else {
             self.stats.copied.fetch_add(1, Relaxed);
@@ -491,7 +502,23 @@ impl<V: Value> Store<V> {
         }
     }
     pub fn collect<I: Iterator<Item = Root<V>>>(&mut self, roots: I) -> Collector<I, V> {
+        self.collect_archived(roots, vec![], true)
+    }
+    // Internal callers finish registration, or reset and supply all remaining
+    // archive roots after an abort. Ordinary public collection always resets.
+    pub(crate) fn collect_archived<I: Iterator<Item = Root<V>>>(
+        &mut self,
+        roots: I,
+        archived: Vec<Root<V>>,
+        reset: bool,
+    ) -> Collector<I, V> {
         let lease = GcLease::acquire(&self.frozen);
+        if reset {
+            self.archive_epoch = self
+                .archive_epoch
+                .checked_add(1)
+                .expect("archive epoch exhausted");
+        }
         self.epoch = self
             .epoch
             .checked_add(1)
@@ -501,6 +528,8 @@ impl<V: Value> Store<V> {
             epoch: self.epoch,
             _lease: lease,
             roots,
+            archiving: !archived.is_empty(),
+            archived: archived.into_iter(),
             pending: Vec::new(),
             marking: true,
             done: false,
@@ -689,6 +718,8 @@ pub struct Collector<I, V: Value = Condition> {
     epoch: u64,
     _lease: GcLease,
     roots: I,
+    archived: std::vec::IntoIter<Root<V>>,
+    archiving: bool,
     pending: Vec<Root<V>>,
     marking: bool,
     done: bool,
@@ -701,17 +732,32 @@ impl<I: Iterator<Item = Root<V>>, V: Value> Collector<I, V> {
     pub fn done(&self) -> bool {
         self.done
     }
+    pub(crate) fn archiving(&self) -> bool {
+        self.archiving
+    }
     pub fn tick(&mut self, store: &mut Store<V>) -> Option<(Key, V)> {
         self.validate(store);
         if self.done {
             return None;
         }
         if self.marking {
-            if let Some(root) = self.pending.pop().or_else(|| self.roots.next()) {
+            if let Some(root) = self.pending.pop().or_else(|| {
+                if self.archiving {
+                    self.archived.next()
+                } else {
+                    self.roots.next()
+                }
+            }) {
                 assert!(store.contains(&root), "stale or foreign collection root");
                 if !root.is_empty() {
                     let record = store.record(&root);
-                    if record.marked.swap(self.epoch, Relaxed) != self.epoch {
+                    let fresh = if self.archiving {
+                        record.archived.swap(store.archive_epoch, Relaxed) != store.archive_epoch
+                    } else {
+                        record.archived.load(Relaxed) != store.archive_epoch
+                            && record.marked.swap(self.epoch, Relaxed) != self.epoch
+                    };
+                    if fresh {
                         match &record.node {
                             Node::Leaf { key, value } => return Some((*key, *value)),
                             Node::Branch { left, right, .. } => {
@@ -720,8 +766,11 @@ impl<I: Iterator<Item = Root<V>>, V: Value> Collector<I, V> {
                         }
                     }
                 }
+            } else if self.archiving {
+                self.archiving = false;
             } else {
                 store.completed = self.epoch;
+                store.archive_completed = store.archive_epoch;
                 self.marking = false;
             }
         } else if store.release_tick() {

@@ -109,13 +109,18 @@ fn opposite_conditional_losers_cover_every_new_multihead_match_on_frozen_root() 
         )
         .unwrap(),
     );
-    let mut g = Graph::new(&code.signatures);
+    let mut g = Graph::new(code.signatures());
     let mut a = Arena::default();
     let (_, c) = a.fresh_choice();
     let (_, d) = a.fresh_choice();
     let keep = [c, d];
     let mut root = g.empty();
-    let relation = |name: &str| code.signatures.iter().position(|s| s.name == name).unwrap();
+    let relation = |name: &str| {
+        code.signatures()
+            .iter()
+            .position(|s| s.name == name)
+            .unwrap()
+    };
     for args in [
         vec![0, 1],
         vec![2, 3],
@@ -141,7 +146,7 @@ fn opposite_conditional_losers_cover_every_new_multihead_match_on_frozen_root() 
     }
     root = merge(&mut g, &mut a, root, 0, 2, c, &keep).0;
     root = merge(&mut g, &mut a, root, 1, 3, c.not(), &keep).0;
-    let before: Vec<_> = (0..code.rules.len())
+    let before: Vec<_> = (0..code.rules().len())
         .map(|r| {
             matches(
                 &g,
@@ -166,7 +171,7 @@ fn opposite_conditional_losers_cover_every_new_multihead_match_on_frozen_root() 
     let mut token_roots = held.clone();
     token_roots.extend(trace(&delta));
     gc(&mut g, &mut a, vec![delta.root()], token_roots);
-    let after: Vec<_> = (0..code.rules.len())
+    let after: Vec<_> = (0..code.rules().len())
         .map(|r| {
             matches(
                 &g,
@@ -214,11 +219,11 @@ fn opposite_conditional_losers_cover_every_new_multihead_match_on_frozen_root() 
         assert!(tick < 99999);
     }
     let mut novel_count = 0;
-    for rule in 0..code.rules.len() {
+    for rule in 0..code.rules().len() {
         let mut covered = Tuples::new();
         for (&id, &scope) in &found {
             let fact = g.fact(frozen.clone(), id).unwrap();
-            for (head, atom) in code.rules[rule].heads.iter().enumerate() {
+            for (head, atom) in code.rules()[rule].heads.iter().enumerate() {
                 if atom.relation == fact.relation {
                     for (tuple, c) in matches(
                         &g,

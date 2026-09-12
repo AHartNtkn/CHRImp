@@ -6,7 +6,6 @@ use std::ops::Bound::{Excluded, Unbounded};
 
 #[derive(Clone, Copy)]
 enum Phase {
-    Snapshots,
     Inspections,
     Choices,
     Global,
@@ -48,12 +47,21 @@ pub(super) struct Compact {
 impl Compact {
     pub(super) fn new(e: &Engine) -> Self {
         Self {
-            phase: Phase::Snapshots,
+            phase: Phase::Inspections,
+            // Stored snapshots are fresh captures with increasing IDs. Every
+            // retained cutoff pins its birth prefix, so a later capture cannot
+            // have a smaller cutoff (or None after Some). Historical inspection
+            // clones live separately and are scanned below.
             pin: e
                 .observer
                 .as_ref()
                 .and_then(Observe::last_choice)
-                .max(e.step_coordinate_cutoff()),
+                .max(e.step_coordinate_cutoff())
+                .max(
+                    e.snapshots
+                        .last_key_value()
+                        .and_then(|(_, snapshot)| snapshot.info.last_choice),
+                ),
             after: None,
             choice: 0,
             image: Condition::FALSE,
@@ -74,19 +82,6 @@ impl Compact {
     pub(super) fn tick(&mut self, e: &mut Engine) -> bool {
         debug_assert!(e.lane == Some(Owner::Collection));
         match self.phase {
-            Phase::Snapshots => {
-                let next = match self.after {
-                    Some(id) => e.snapshots.range((Excluded(id), Unbounded)).next(),
-                    None => e.snapshots.first_key_value(),
-                };
-                if let Some((&id, snapshot)) = next {
-                    self.pin = self.pin.max(snapshot.info.last_choice);
-                    self.after = Some(id);
-                } else {
-                    self.phase = Phase::Inspections;
-                    self.after = None;
-                }
-            }
             Phase::Inspections => {
                 let next = match self.after {
                     Some(id) => e.inspections.range((Excluded(id), Unbounded)).next(),

@@ -33,6 +33,7 @@ struct Descriptor {
 pub(super) struct Obligations {
     pub index: Store<Pending>,
     descriptors: BTreeMap<u64, Descriptor>,
+    unprotected: Option<std::collections::BTreeSet<u64>>,
     next_descriptor: u64,
     capture_epoch: u64,
     epoch: u64,
@@ -87,6 +88,9 @@ impl Obligations {
         self.next_descriptor = id
             .checked_add(1)
             .expect("body descriptor identity exhausted");
+        if let Some(ids) = &mut self.unprotected {
+            ids.insert(id);
+        }
         self.descriptors.insert(
             id,
             Descriptor {
@@ -111,19 +115,41 @@ impl Obligations {
             assignments: Some(assignments),
             draining: BTreeMap::new(),
             condition: None,
+            memo: BTreeMap::new(),
             pending: None,
             parts: [None; 2],
             field: 0,
             result: None,
         }
     }
+    #[cfg(test)]
     pub fn collect(&mut self, roots: std::vec::IntoIter<Root>) -> Collector {
+        self.collect_archived(roots, vec![], true)
+    }
+    pub fn collect_archived(
+        &mut self,
+        roots: std::vec::IntoIter<Root>,
+        archived: Vec<Root>,
+        mut reset: bool,
+    ) -> Collector {
         self.epoch = self
             .epoch
             .checked_add(1)
             .expect("obligation collection epoch exhausted");
+        let deactivate = reset && archived.is_empty() && self.unprotected.is_some();
+        if !archived.is_empty() && self.unprotected.is_none() {
+            self.unprotected = Some(std::collections::BTreeSet::new());
+            reset = true;
+        }
         Collector {
-            index: self.index.collect(roots),
+            index: self.index.collect_archived(roots, archived, reset),
+            deactivate,
+            reset: deactivate
+                || reset
+                    && self
+                        .unprotected
+                        .as_ref()
+                        .is_some_and(|ids| ids.len() != self.descriptors.len()),
             after_descriptor: None,
             done: false,
         }
@@ -137,6 +163,7 @@ pub(super) struct Substitution {
     assignments: Option<Arc<BTreeMap<u64, Condition>>>,
     draining: BTreeMap<u64, Condition>,
     condition: Option<crate::condition::Transform>,
+    memo: BTreeMap<Condition, Condition>,
     pending: Option<Pending>,
     parts: [Option<Obligation>; 2],
     // Zero is the leaf scope; 1..=4 are the two part scope/guard pairs.
@@ -149,6 +176,9 @@ impl Substitution {
         std::iter::once(self.input.clone()).chain(self.filter.roots())
     }
     fn cleanup_tick(&mut self) -> bool {
+        if self.memo.pop_first().is_some() {
+            return false;
+        }
         if let Some(assignments) = self.assignments.take() {
             if let Some(assignments) = Arc::into_inner(assignments) {
                 self.draining = assignments;
@@ -169,33 +199,7 @@ impl Substitution {
         if let Some(root) = self.result.clone() {
             return self.cleanup_tick().then_some(root);
         }
-        if let Some(condition) = &mut self.condition {
-            if let Progress::Complete(scope) = condition.tick(arena) {
-                if self.field == 0 {
-                    let pending = self.pending.as_mut().expect("substituted pending leaf");
-                    pending.scope = scope;
-                    if scope != Condition::FALSE
-                        && let Some(id) = pending.body
-                    {
-                        self.parts = store.descriptors[&id].parts;
-                        self.field = 1;
-                    } else {
-                        self.field = 5;
-                    }
-                } else {
-                    let part = self.parts[(self.field - 1) / 2]
-                        .as_mut()
-                        .expect("substituted part");
-                    if self.field % 2 == 1 {
-                        part.scope = scope;
-                    } else {
-                        part.guard = scope;
-                    }
-                    self.field += 1;
-                }
-                self.condition = None;
-            }
-        } else if let Some(mut pending) = self.pending {
+        if let Some(mut pending) = self.pending {
             if self.field == 5 {
                 if pending.scope != Condition::FALSE
                     && let Some(id) = pending.body
@@ -219,23 +223,61 @@ impl Substitution {
                 }
                 self.pending = None;
                 self.parts = [None; 2];
-            } else if let Some(part) = self.parts[(self.field - 1) / 2] {
-                let scope = if self.field % 2 == 1 {
-                    part.scope
-                } else {
-                    part.guard
-                };
-                self.condition = Some(
-                    arena.substitute(
-                        scope,
-                        self.assignments
-                            .as_ref()
-                            .expect("substitution assignments")
-                            .clone(),
-                    ),
-                );
             } else {
-                self.field += 1;
+                let input = if self.field == 0 {
+                    pending.scope
+                } else if let Some(part) = self.parts[(self.field - 1) / 2] {
+                    if self.field % 2 == 1 {
+                        part.scope
+                    } else {
+                        part.guard
+                    }
+                } else {
+                    self.field += 1;
+                    return None;
+                };
+                let scope = if let Some(&value) = self.memo.get(&input) {
+                    value
+                } else if let Some(condition) = &mut self.condition {
+                    match condition.tick(arena) {
+                        Progress::Pending => return None,
+                        Progress::Complete(value) => {
+                            self.memo.insert(input, value);
+                            self.condition = None;
+                            value
+                        }
+                    }
+                } else {
+                    self.condition = Some(
+                        arena.substitute(
+                            input,
+                            self.assignments
+                                .as_ref()
+                                .expect("substitution assignments")
+                                .clone(),
+                        ),
+                    );
+                    return None;
+                };
+                if self.field == 0 {
+                    self.pending.as_mut().unwrap().scope = scope;
+                    if scope != Condition::FALSE
+                        && let Some(id) = pending.body
+                    {
+                        self.parts = store.descriptors[&id].parts;
+                        self.field = 1;
+                    } else {
+                        self.field = 5;
+                    }
+                } else {
+                    let part = self.parts[(self.field - 1) / 2].as_mut().unwrap();
+                    if self.field % 2 == 1 {
+                        part.scope = scope;
+                    } else {
+                        part.guard = scope;
+                    }
+                    self.field += 1;
+                }
             }
         } else {
             match self.filter.tick(&mut store.index) {
@@ -243,15 +285,6 @@ impl Substitution {
                 crate::store::FilterStatus::Leaf { value, .. } => {
                     self.pending = Some(value);
                     self.field = 0;
-                    self.condition = Some(
-                        arena.substitute(
-                            value.scope,
-                            self.assignments
-                                .as_ref()
-                                .expect("substitution assignments")
-                                .clone(),
-                        ),
-                    );
                 }
                 crate::store::FilterStatus::Complete(root) => self.result = Some(root),
             }
@@ -281,6 +314,7 @@ impl Trace for Substitution {
                 None => cursor.advance(),
             },
             3 => cursor.values(&self.draining),
+            4 => cursor.substitutions(&self.memo),
             _ => Step::Done,
         }
     }
@@ -289,14 +323,41 @@ impl Trace for Substitution {
 pub(super) struct Collector {
     index: crate::store::Collector<std::vec::IntoIter<Root>, Pending>,
     after_descriptor: Option<u64>,
+    reset: bool,
+    deactivate: bool,
     done: bool,
 }
 impl Collector {
     pub fn done(&self) -> bool {
         self.done
     }
+    pub fn archiving(&self) -> bool {
+        self.index.archiving()
+    }
     pub fn tick(&mut self, store: &mut Obligations) -> Option<[Condition; 5]> {
         self.index.validate(&store.index);
+        if self.reset {
+            if self.deactivate {
+                if store.unprotected.as_mut().unwrap().pop_first().is_none() {
+                    store.unprotected = None;
+                    self.reset = false;
+                }
+                return None;
+            }
+            let next = match self.after_descriptor {
+                Some(id) => store.descriptors.range((Excluded(id), Unbounded)).next(),
+                None => store.descriptors.first_key_value(),
+            }
+            .map(|(&id, _)| id);
+            if let Some(id) = next {
+                store.unprotected.as_mut().unwrap().insert(id);
+                self.after_descriptor = Some(id);
+            } else {
+                self.reset = false;
+                self.after_descriptor = None;
+            }
+            return None;
+        }
         if !self.index.done() {
             if let Some((_, value)) = self.index.tick(&mut store.index) {
                 let mut roots = [Condition::FALSE; 5];
@@ -306,7 +367,12 @@ impl Collector {
                         .descriptors
                         .get_mut(&id)
                         .expect("rooted body descriptor");
-                    if descriptor.marked != store.epoch {
+                    let fresh = if self.index.archiving() {
+                        store.unprotected.as_mut().unwrap().remove(&id)
+                    } else {
+                        descriptor.marked != store.epoch
+                    };
+                    if fresh {
                         descriptor.marked = store.epoch;
                         for (part, body) in descriptor.parts.into_iter().enumerate() {
                             if let Some(body) = body {
@@ -319,13 +385,26 @@ impl Collector {
                 return Some(roots);
             }
         } else if !self.done {
-            let next = match self.after_descriptor {
-                Some(id) => store.descriptors.range((Excluded(id), Unbounded)).next(),
-                None => store.descriptors.first_key_value(),
+            let next = if let Some(ids) = &store.unprotected {
+                match self.after_descriptor {
+                    Some(id) => ids.range((Excluded(id), Unbounded)).next(),
+                    None => ids.first(),
+                }
+                .copied()
+            } else {
+                match self.after_descriptor {
+                    Some(id) => store.descriptors.range((Excluded(id), Unbounded)).next(),
+                    None => store.descriptors.first_key_value(),
+                }
+                .map(|(&id, _)| id)
             };
-            if let Some((&id, descriptor)) = next {
+            if let Some(id) = next {
+                let descriptor = &store.descriptors[&id];
                 if descriptor.marked != store.epoch {
                     store.descriptors.remove(&id);
+                    if let Some(ids) = &mut store.unprotected {
+                        ids.remove(&id);
+                    }
                 }
                 self.after_descriptor = Some(id);
             } else {
@@ -1252,5 +1331,59 @@ mod tests {
         assert_eq!(part.guard, image.not());
         assert!(store.descriptors[&body.unwrap()].parts == parts);
         assert_eq!(store.index.get(&old, &[0; 4]).unwrap().scope, x);
+    }
+}
+
+#[cfg(test)]
+mod substitution_work_tests {
+    use super::*;
+    #[test]
+    fn repeated_pending_support_is_transformed_once_per_pass() {
+        let mut arena = Arena::default();
+        let mut input = Condition::TRUE;
+        let mut expected = input;
+        let mut assignments = BTreeMap::new();
+        for i in 0..64 {
+            let (id, c) = arena.fresh_choice();
+            if i == 63 {
+                expected = input;
+                assignments.insert(id, Condition::TRUE);
+            }
+            let mut job = arena.start(Operation::And(input, c));
+            input = loop {
+                if let Progress::Complete(c) = job.tick(&mut arena) {
+                    break c;
+                }
+            };
+        }
+        let mut store = Obligations::default();
+        let mut root = store.empty();
+        for i in 0..256 {
+            root = store.index.insert(
+                root,
+                [i, 0, 0, 0],
+                Pending {
+                    scope: input,
+                    body: None,
+                },
+            );
+        }
+        let mut job = store.substitute(root.clone(), Arc::new(assignments));
+        let mut ticks = 0;
+        let result = loop {
+            ticks += 1;
+            if let Some(root) = job.tick(&mut store, &mut arena) {
+                break root;
+            }
+            assert!(ticks < 200_000);
+        };
+        for i in 0..256 {
+            assert_eq!(store.index.get(&root, &[i, 0, 0, 0]).unwrap().scope, input);
+            assert_eq!(
+                store.index.get(&result, &[i, 0, 0, 0]).unwrap().scope,
+                expected
+            );
+        }
+        assert!(ticks < 4_000, "repeated pending support took {ticks} steps");
     }
 }

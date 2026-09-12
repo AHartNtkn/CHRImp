@@ -134,7 +134,7 @@ fn selections_respect_birth_regions_and_preserve_duplicate_alternatives() {
         let mut names = answers
             .iter()
             .flat_map(|a| a.rows.iter())
-            .map(|row| e.program().signatures[row.relation].name.as_str())
+            .map(|row| e.program().signatures()[row.relation].name.as_str())
             .filter(|name| *name != "hold")
             .collect::<Vec<_>>();
         names.sort();

@@ -1,0 +1,947 @@
+{
+  "activeQuery": "query-1",
+  "format": "chr-notebook",
+  "layouts": {},
+  "program": {
+    "rules": [
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [
+          {
+            "args": [
+              "N"
+            ],
+            "relation": "zero"
+          },
+          {
+            "args": [
+              "N",
+              "Pred"
+            ],
+            "relation": "succ"
+          }
+        ],
+        "name": "constructor_clash",
+        "removed": []
+      },
+      {
+        "body": {
+          "kind": "equal",
+          "left": "P",
+          "right": "Q"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "P"
+            ],
+            "relation": "succ"
+          },
+          {
+            "args": [
+              "N",
+              "Q"
+            ],
+            "relation": "succ"
+          }
+        ],
+        "name": "constructor_consistency",
+        "removed": []
+      },
+      {
+        "body": {
+          "kind": "fail"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "N"
+            ],
+            "relation": "predecessor"
+          }
+        ],
+        "name": "finite_successor_cycle",
+        "removed": []
+      },
+      {
+        "body": {
+          "kind": "true"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "P"
+            ],
+            "relation": "predecessor"
+          }
+        ],
+        "name": "predecessor_set",
+        "removed": [
+          {
+            "args": [
+              "N",
+              "P"
+            ],
+            "relation": "predecessor"
+          }
+        ]
+      },
+      {
+        "body": {
+          "atom": {
+            "args": [
+              "N",
+              "P"
+            ],
+            "relation": "predecessor"
+          },
+          "kind": "atom"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "P"
+            ],
+            "relation": "succ"
+          }
+        ],
+        "name": "successor_predecessor",
+        "removed": []
+      },
+      {
+        "body": {
+          "atom": {
+            "args": [
+              "N",
+              "Q"
+            ],
+            "relation": "predecessor"
+          },
+          "kind": "atom"
+        },
+        "kept": [
+          {
+            "args": [
+              "N",
+              "P"
+            ],
+            "relation": "predecessor"
+          },
+          {
+            "args": [
+              "P",
+              "Q"
+            ],
+            "relation": "succ"
+          }
+        ],
+        "name": "transitive_predecessor",
+        "removed": []
+      },
+      {
+        "body": {
+          "items": [
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "X"
+                    ],
+                    "relation": "zero"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "kind": "equal",
+                  "left": "Y",
+                  "right": "Z"
+                }
+              ],
+              "kind": "and"
+            },
+            {
+              "items": [
+                {
+                  "atom": {
+                    "args": [
+                      "X",
+                      "P"
+                    ],
+                    "relation": "succ"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "Z",
+                      "Q"
+                    ],
+                    "relation": "succ"
+                  },
+                  "kind": "atom"
+                },
+                {
+                  "atom": {
+                    "args": [
+                      "P",
+                      "Y",
+                      "Q"
+                    ],
+                    "relation": "add"
+                  },
+                  "kind": "atom"
+                }
+              ],
+              "kind": "and"
+            }
+          ],
+          "kind": "or"
+        },
+        "kept": [],
+        "name": "addition",
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y",
+              "Z"
+            ],
+            "relation": "add"
+          }
+        ]
+      },
+      {
+        "body": {
+          "atom": {
+            "args": [
+              "Y",
+              "Z",
+              "X"
+            ],
+            "relation": "add"
+          },
+          "kind": "atom"
+        },
+        "kept": [],
+        "name": "subtraction",
+        "removed": [
+          {
+            "args": [
+              "X",
+              "Y",
+              "Z"
+            ],
+            "relation": "sub"
+          }
+        ]
+      }
+    ]
+  },
+  "queries": [
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "N0"
+              ],
+              "relation": "zero"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N0"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "N1"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y",
+                "X"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y",
+                "Z"
+              ],
+              "relation": "add"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-1",
+      "name": "Forward: 2 + 3 = ?"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "N0"
+              ],
+              "relation": "zero"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N0"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N1"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y",
+                "N2"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "Y"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Z",
+                "N4"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y",
+                "Z"
+              ],
+              "relation": "add"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-2",
+      "name": "Missing left: ? + 3 = 5"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "N0"
+              ],
+              "relation": "zero"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N0"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "N1"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "X"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N3"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Z",
+                "N4"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y",
+                "Z"
+              ],
+              "relation": "add"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-3",
+      "name": "Missing right: 2 + ? = 5"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "N0"
+              ],
+              "relation": "zero"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N0"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N2",
+                "N1"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Z",
+                "N2"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y",
+                "Z"
+              ],
+              "relation": "add"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-4",
+      "name": "Decompose 3: X + Y = 3"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "N0"
+              ],
+              "relation": "zero"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N0"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y",
+                "N1"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N3",
+                "Y"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N4",
+                "N3"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "N4"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y",
+                "Z"
+              ],
+              "relation": "sub"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-5",
+      "name": "Subtraction: 5 - 2 = ?"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "N0"
+              ],
+              "relation": "zero"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N0"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "N1"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y",
+                "X"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Z",
+                "Y"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y",
+                "Z"
+              ],
+              "relation": "add"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-6",
+      "name": "Impossible: 2 + 3 = 4"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "N0"
+              ],
+              "relation": "zero"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "N1",
+                "N0"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "N1"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y",
+                "X"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y",
+                "Z"
+              ],
+              "relation": "sub"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-7",
+      "name": "Underflow: 2 - 3 = ?"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "N0"
+              ],
+              "relation": "zero"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "N0"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y",
+                "Z"
+              ],
+              "relation": "add"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-8",
+      "name": "Partial: 1 + Y = Z"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "X"
+              ],
+              "relation": "zero"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Y"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-9",
+      "name": "Inconsistent: zero and successor"
+    },
+    {
+      "body": {
+        "items": [
+          {
+            "atom": {
+              "args": [
+                "N0"
+              ],
+              "relation": "zero"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Z",
+                "N0"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "Z"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "X",
+                "P"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y",
+                "P"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Y",
+                "Q"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "Q",
+                "R"
+              ],
+              "relation": "succ"
+            },
+            "kind": "atom"
+          },
+          {
+            "atom": {
+              "args": [
+                "R"
+              ],
+              "relation": "zero"
+            },
+            "kind": "atom"
+          }
+        ],
+        "kind": "and"
+      },
+      "id": "query-10",
+      "name": "Duplicate successor roots unify children"
+    },
+    {
+      "id": "query-11",
+      "name": "Reject a successor cycle",
+      "body": {
+        "kind": "and",
+        "items": [
+          {
+            "kind": "atom",
+            "atom": {
+              "relation": "succ",
+              "args": [
+                "X",
+                "X"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "query-12",
+      "name": "Impossible: 1 + Y = Y",
+      "body": {
+        "kind": "and",
+        "items": [
+          {
+            "kind": "atom",
+            "atom": {
+              "relation": "zero",
+              "args": [
+                "Z"
+              ]
+            }
+          },
+          {
+            "kind": "atom",
+            "atom": {
+              "relation": "succ",
+              "args": [
+                "One",
+                "Z"
+              ]
+            }
+          },
+          {
+            "kind": "atom",
+            "atom": {
+              "relation": "add",
+              "args": [
+                "One",
+                "Y",
+                "Y"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "title": "Unary arithmetic: recursive relational addition and subtraction",
+  "version": 1
+}

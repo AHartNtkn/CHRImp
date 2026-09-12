@@ -175,6 +175,7 @@ pub struct Engine {
     collection_requested: bool,
     collections: u64,
     collection_limit: usize,
+    archive: collection::Archive,
     semantic_regions: bool,
     collection_yield: bool,
     record_history: bool,
@@ -191,7 +192,7 @@ impl Engine {
         Self::with_history(code, false)
     }
     pub fn with_history(code: Arc<Prepared>, record_history: bool) -> Self {
-        let graph = Graph::new(&code.signatures);
+        let graph = Graph::with_tuple_indexes(&code.signatures, &code.tuple_indexes);
         let history = History::default();
         let state = StateRoot {
             graph: graph.empty(),
@@ -228,6 +229,7 @@ impl Engine {
             collection_requested: false,
             collections: 0,
             collection_limit: 4096,
+            archive: collection::Archive::default(),
             semantic_regions: false,
             collection_yield: false,
             record_history,
@@ -306,8 +308,29 @@ impl Engine {
     pub fn arena(&self) -> &Arena {
         &self.arena
     }
-    pub fn state(&self) -> StateRoot {
-        self.state.clone()
+    /// Read current occurrences while borrowing the execution. Use
+    /// `capture_snapshot` for a view retained across execution or cancellation.
+    ///
+    /// ```compile_fail
+    /// fn inspect(engine: &mut chr::engine::Engine) {
+    ///     let mut facts = engine.facts(0).unwrap();
+    ///     engine.cancel();
+    ///     let _ = facts.next();
+    /// }
+    /// ```
+    pub fn facts(
+        &self,
+        relation: usize,
+    ) -> Result<impl Iterator<Item = crate::graph::Fact<'_>> + '_, crate::graph::GraphError> {
+        let root = self.state.graph.clone();
+        let mut rows = self.graph.relation(root.clone(), relation)?;
+        Ok(std::iter::from_fn(move || {
+            rows.next(&self.graph).map(|(id, _)| {
+                self.graph
+                    .fact(root.clone(), id)
+                    .expect("current occurrence")
+            })
+        }))
     }
     pub fn query_variables(&self) -> &[u64] {
         &self.variables
@@ -818,7 +841,7 @@ impl Engine {
                     self.body(b.event, instruction, b.variables.clone(), b.scope);
                     return true;
                 }
-                let (choice, decision) = self.arena.fresh_choice();
+                let (choice, decision) = self.arena.fresh_scoped_choice(b.scope);
                 b.decision = decision;
                 self.births.insert(
                     choice,

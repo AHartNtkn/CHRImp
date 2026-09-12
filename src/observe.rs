@@ -1,7 +1,11 @@
 //! Lazy causal alternatives and scalar projection of a completed graph snapshot.
 //!
-//! DFS retains only pending scopes, never a Cartesian answer list. Inactive
-//! births advance once; active decisions preserve duplicate successful histories.
+//! Snapshot support summaries prune unrelated births and rows. DFS retains only
+//! pending scopes, never a Cartesian answer list; decisions preserve duplicate
+//! successful histories.
+
+mod index;
+use index::{Found, Index, Search};
 
 use crate::condition::{Arena, Condition, Job, Operation, poll};
 use crate::engine::{Birth, Completion};
@@ -46,13 +50,18 @@ pub enum ObserveStatus {
     Event(Output),
     Done,
 }
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Frame {
-    after: Option<u64>,
+    pending: Option<Arc<Vec<usize>>>,
     scope: Condition,
 }
 #[derive(Clone, Copy)]
 enum Phase {
+    IndexBirths,
+    IndexRows,
+    BuildBirths,
+    BuildRows,
+    FindBirth,
     History,
     Inactive,
     Active,
@@ -62,9 +71,9 @@ enum Phase {
     ResolveVariable,
     Relations,
     Rows,
-    Live,
     Ports,
     ResolvePort,
+    Cleanup,
     Done,
 }
 
@@ -72,6 +81,10 @@ enum Phase {
 /// collection while suspended. The caller separately roots the birth table.
 /// Graph and birth records through `last_choice` must remain a coherent snapshot.
 pub struct Observe {
+    births_index: Index,
+    rows_index: Index,
+    search: Option<Search>,
+    indexed_birth: Option<u64>,
     completion: u64,
     root: Root,
     last_choice: Option<u64>,
@@ -104,6 +117,10 @@ impl Observe {
         query_variables: Arc<Vec<u64>>,
     ) -> Self {
         Self {
+            births_index: Index::default(),
+            rows_index: Index::default(),
+            search: None,
+            indexed_birth: None,
             completion: completion.id,
             root: completion.state.graph,
             last_choice: completion.last_choice,
@@ -113,12 +130,12 @@ impl Observe {
                 Vec::new()
             } else {
                 vec![Frame {
-                    after: None,
+                    pending: None,
                     scope: completion.support,
                 }]
             },
             current: Frame {
-                after: None,
+                pending: None,
                 scope: Condition::FALSE,
             },
             birth_support: Condition::FALSE,
@@ -136,7 +153,11 @@ impl Observe {
             port: 0,
             resolve: None,
             representative: None,
-            phase: Phase::History,
+            phase: if completion.support == Condition::FALSE {
+                Phase::History
+            } else {
+                Phase::IndexBirths
+            },
             discarding: false,
         }
     }
@@ -162,6 +183,9 @@ impl Observe {
             self.left,
         ]
         .into_iter()
+        .chain(self.births_index.roots())
+        .chain(self.rows_index.roots())
+        .chain(self.search.iter().flat_map(Search::roots))
         .chain(self.stack.iter().map(|f| f.scope))
         .chain(self.boolean.iter().flat_map(Job::roots))
         .chain(self.resolve.iter().flat_map(Resolve::condition_roots))
@@ -169,7 +193,7 @@ impl Observe {
     fn push(&mut self, scope: Condition) {
         if scope != Condition::FALSE {
             self.stack.push(Frame {
-                after: self.current.after,
+                pending: self.current.pending.clone(),
                 scope,
             });
         }
@@ -185,12 +209,12 @@ impl Observe {
         self.phase = phase;
     }
     /// Stop projecting immediately; discard at most one nested continuation
-    /// step per call. Scalar stack/cursor/argument backing has no recursive
-    /// payload destructors. Keep graph_root() traced until this token is dropped.
+    /// step per call. History frames release their shared cursor backing one
+    /// frame at a time; cursor and argument payloads contain only scalars. Keep graph_root() traced until this token is dropped.
     pub fn discard_tick(&mut self) -> bool {
         if !self.discarding {
             self.discarding = true;
-            self.stack = Vec::new();
+            self.current.pending = None;
             self.current.scope = Condition::FALSE;
             self.birth_support = Condition::FALSE;
             self.decision = Condition::FALSE;
@@ -201,6 +225,19 @@ impl Observe {
             self.arguments = None;
             self.variables = Arc::new(Vec::new());
             self.representative = None;
+        }
+        if self.stack.pop().is_some() {
+            return false;
+        }
+        self.stack = Vec::new();
+        if !self.births_index.discard_tick() || !self.rows_index.discard_tick() {
+            return false;
+        }
+        if let Some(search) = &mut self.search {
+            if search.discard_tick() {
+                self.search = None;
+            }
+            return false;
         }
         if let Some(job) = self.boolean.as_mut() {
             if job.discard_tick() {
@@ -225,26 +262,78 @@ impl Observe {
     ) -> ObserveStatus {
         assert!(!self.discarding, "observation has been discarded");
         match self.phase {
+            Phase::IndexBirths => {
+                let next = self.last_choice.and_then(|last| {
+                    births
+                        .range((
+                            self.indexed_birth.map_or(Unbounded, Excluded),
+                            Included(last),
+                        ))
+                        .next()
+                });
+                if let Some((&id, birth)) = next {
+                    self.births_index.insert(id, birth.support);
+                    self.indexed_birth = Some(id);
+                } else {
+                    self.phase = Phase::IndexRows;
+                }
+            }
+            Phase::IndexRows => {
+                if let Some(rows) = &mut self.rows {
+                    if let Some((id, support)) = rows.next(g) {
+                        self.rows_index.insert(id, support);
+                    } else {
+                        self.rows = None;
+                        self.relation += 1;
+                    }
+                } else if self.relation < self.code.signatures.len() {
+                    self.rows = Some(
+                        g.relation(self.root.clone(), self.relation)
+                            .expect("prepared relation signature"),
+                    );
+                } else {
+                    self.phase = Phase::BuildBirths;
+                }
+            }
+            Phase::BuildBirths => {
+                if self.births_index.build(a) {
+                    self.phase = Phase::BuildRows;
+                }
+            }
+            Phase::BuildRows => {
+                if self.rows_index.build(a) {
+                    self.phase = Phase::History;
+                }
+            }
             Phase::History => {
                 let Some(frame) = self.stack.pop() else {
                     self.stack = Vec::new();
                     self.current.scope = Condition::FALSE;
-                    self.phase = Phase::Done;
-                    return ObserveStatus::Done;
+                    self.current.pending = None;
+                    self.phase = Phase::Cleanup;
+                    return ObserveStatus::Pending;
                 };
-                self.current = frame;
-                let next = self.last_choice.and_then(|last| {
-                    births
-                        .range((frame.after.map_or(Unbounded, Excluded), Included(last)))
-                        .next()
+                self.search = Some(match &frame.pending {
+                    Some(pending) => Search::resume(frame.scope, pending),
+                    None => self.births_index.search(frame.scope),
                 });
-                if let Some((&id, birth)) = next {
-                    self.current.after = Some(id);
+                self.current = frame;
+                self.phase = Phase::FindBirth;
+            }
+            Phase::FindBirth => match self.search.as_mut().unwrap().tick(&self.births_index, a) {
+                Found::Pending => {}
+                Found::Value(id) => {
+                    self.current.pending = Some(self.search.as_ref().unwrap().continuation());
+                    self.search = None;
+                    let birth = &births[&id];
                     self.birth_support = birth.support;
                     self.decision = birth.decision;
-                    self.boolean = Some(a.start(Operation::Difference(frame.scope, birth.support)));
+                    self.boolean =
+                        Some(a.start(Operation::Difference(self.current.scope, birth.support)));
                     self.phase = Phase::Inactive;
-                } else {
+                }
+                Found::Done => {
+                    self.search = None;
                     self.slot = 0;
                     self.relation = 0;
                     self.phase = Phase::Variables;
@@ -253,7 +342,7 @@ impl Observe {
                         alternative: self.alternative,
                     });
                 }
-            }
+            },
             Phase::Inactive => {
                 if let Some(c) = poll(&mut self.boolean, a) {
                     self.inactive = c;
@@ -327,7 +416,24 @@ impl Observe {
                 }
             }
             Phase::Relations => {
-                if self.relation == self.code.signatures.len() {
+                self.search = Some(self.rows_index.search(self.current.scope));
+                self.phase = Phase::Rows;
+            }
+            Phase::Rows => match self.search.as_mut().unwrap().tick(&self.rows_index, a) {
+                Found::Pending => {}
+                Found::Value(occurrence) => {
+                    self.occurrence = occurrence;
+                    self.relation = g.fact(self.root.clone(), occurrence).unwrap().relation;
+                    self.arguments = Some(g.arguments(occurrence));
+                    self.port = 0;
+                    self.phase = Phase::Ports;
+                    return ObserveStatus::Event(Output::Fact {
+                        occurrence,
+                        relation: self.relation,
+                    });
+                }
+                Found::Done => {
+                    self.search = None;
                     self.alternative = self
                         .alternative
                         .checked_add(1)
@@ -336,40 +442,7 @@ impl Observe {
                     self.phase = Phase::History;
                     return ObserveStatus::Event(Output::End);
                 }
-                self.rows = Some(
-                    g.relation(self.root.clone(), self.relation)
-                        .expect("prepared relation signature"),
-                );
-                self.phase = Phase::Rows;
-            }
-            Phase::Rows => {
-                if let Some((occurrence, support)) =
-                    self.rows.as_mut().expect("relation cursor").next(g)
-                {
-                    self.occurrence = occurrence;
-                    self.boolean = Some(a.start(Operation::And(self.current.scope, support)));
-                    self.phase = Phase::Live;
-                } else {
-                    self.rows = None;
-                    self.relation += 1;
-                    self.phase = Phase::Relations;
-                }
-            }
-            Phase::Live => {
-                if let Some(c) = poll(&mut self.boolean, a) {
-                    if c == Condition::FALSE {
-                        self.phase = Phase::Rows;
-                    } else {
-                        self.arguments = Some(g.arguments(self.occurrence));
-                        self.port = 0;
-                        self.phase = Phase::Ports;
-                        return ObserveStatus::Event(Output::Fact {
-                            occurrence: self.occurrence,
-                            relation: self.relation,
-                        });
-                    }
-                }
-            }
+            },
             Phase::Ports => {
                 if let Some(&variable) = self
                     .arguments
@@ -382,6 +455,12 @@ impl Observe {
                     self.arguments = None;
                     self.phase = Phase::Rows;
                     return ObserveStatus::Event(Output::EndFact);
+                }
+            }
+            Phase::Cleanup => {
+                if self.births_index.discard_tick() && self.rows_index.discard_tick() {
+                    self.phase = Phase::Done;
+                    return ObserveStatus::Done;
                 }
             }
             Phase::Done => return ObserveStatus::Done,
@@ -413,6 +492,9 @@ impl Trace for Observe {
             1 => cursor.vector(self.stack.len(), |i, child| self.stack[i].trace(child)),
             2 => cursor.optional(self.boolean.as_ref()),
             3 => cursor.optional(self.resolve.as_ref()),
+            4 => cursor.optional(Some(&self.births_index)),
+            5 => cursor.optional(Some(&self.rows_index)),
+            6 => cursor.optional(self.search.as_ref()),
             _ => Step::Done,
         }
     }

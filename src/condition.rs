@@ -1,17 +1,20 @@
 //! Canonical Boolean conditions on explicit choices.
 //!
 //! Negation is a complemented edge, not a traversal. General operations and
-//! collection expose one diagram action per tick. Map operations and
+//! collection expose bounded diagram actions per tick. Map operations and
 //! allocation have their ordinary size-dependent costs, not real-time bounds.
+//! Dense results can trigger bounded, resumable variable sifting. Adjacent
+//! swaps preserve semantic handles by changing only their decompositions.
+//! Choice birth IDs remain chronological, independently of diagram order.
 //! Conditions denote sets; causal choice births and answer multiplicity belong
 //! to the executor, never to Boolean simplification.
 
 use crate::gc::GcLease;
 use crate::trace::{Cursor, Step, Trace};
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ops::Bound::{Excluded, Unbounded};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
 pub(crate) fn poll(job: &mut Option<Job>, arena: &mut Arena) -> Option<Condition> {
     match job.as_mut().expect("pending Boolean operation").tick(arena) {
@@ -63,9 +66,22 @@ struct NodeKey {
     high: Condition,
 }
 
+#[derive(Default)]
+struct ChoiceOrder {
+    rank: u64,
+    after: Option<u64>,
+    nodes: BTreeSet<u64>,
+}
+
 struct Node {
     key: NodeKey,
     marked: u64,
+    references: usize,
+    // Working references are initialized lazily from the protected closure.
+    references_epoch: u64,
+    archived: u64,
+    archive_references: usize,
+    max_choice: u64,
 }
 
 /// One node of the represented function, with complemented edges resolved.
@@ -84,11 +100,23 @@ type Pair = (Condition, Condition);
 pub struct Arena {
     owner: u32,
     nodes: BTreeMap<u64, Node>,
+    // Derived sweep candidates only; nodes remains the payload authority.
+    // None is the ordinary path, restored incrementally on final release.
+    unprotected: Option<BTreeSet<u64>>,
+    archive_epoch: u64,
+    archive_branching: bool,
     next_node: u64,
     unique: HashMap<NodeKey, Condition>,
     cache: HashMap<Pair, Condition>,
     cache_order: VecDeque<Pair>,
     next_choice: u64,
+    order: BTreeMap<u64, ChoiceOrder>,
+    ranks: BTreeMap<u64, u64>,
+    sift: Option<Sift>,
+    order_epoch: u64,
+    order_readers: Arc<AtomicUsize>,
+    count_edges: bool,
+    reorder_after: u64,
     epoch: u64,
     frozen: Arc<AtomicBool>,
 }
@@ -100,11 +128,21 @@ impl Default for Arena {
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
                 .expect("condition arena identity exhausted"),
             nodes: BTreeMap::new(),
+            unprotected: None,
+            archive_epoch: 1,
+            archive_branching: false,
             next_node: 0,
             unique: HashMap::new(),
             cache: HashMap::new(),
             cache_order: VecDeque::new(),
             next_choice: 0,
+            order: BTreeMap::new(),
+            ranks: BTreeMap::new(),
+            sift: None,
+            order_epoch: 0,
+            order_readers: Arc::new(AtomicUsize::new(0)),
+            count_edges: false,
+            reorder_after: 256,
             epoch: 0,
             frozen: Arc::new(AtomicBool::new(false)),
         }
@@ -117,6 +155,21 @@ impl Arena {
         let choice = self.next_choice;
         self.next_choice = choice.checked_add(1).expect("choice identity exhausted");
         (choice, self.node(choice, Condition::FALSE, Condition::TRUE))
+    }
+
+    /// Preserve causal predecessors when an executor births a scoped decision.
+    /// The support maximum is a conservative prefix bound, requiring neither
+    /// a support traversal nor ownership of historical scope conditions.
+    pub(crate) fn fresh_scoped_choice(&mut self, scope: Condition) -> (u64, Condition) {
+        assert!(self.contains(scope), "stale or foreign choice scope");
+        let after = self.support_max(scope);
+        let (choice, condition) = self.fresh_choice();
+        self.order.get_mut(&choice).unwrap().after = after;
+        (choice, condition)
+    }
+
+    fn support_max(&self, condition: Condition) -> Option<u64> {
+        (!condition.is_terminal()).then(|| self.nodes[&condition.id].max_choice)
     }
 
     pub fn contains(&self, condition: Condition) -> bool {
@@ -158,6 +211,9 @@ impl Arena {
         }
     }
 
+    pub(crate) fn representation_epoch(&self) -> u64 {
+        self.order_epoch
+    }
     pub fn node_count(&self) -> usize {
         self.unique.len()
     }
@@ -167,6 +223,31 @@ impl Arena {
     }
     pub fn cache_len(&self) -> usize {
         self.cache.len()
+    }
+
+    // Birth IDs stay immutable; only these representation ranks can move.
+    fn precedes(&self, a: u64, b: u64) -> bool {
+        self.order[&a].rank < self.order[&b].rank
+    }
+
+    fn sift_tick(&mut self) -> bool {
+        let Some(mut sift) = self.sift.take() else {
+            return false;
+        };
+        if sift.tick(self) {
+            self.reorder_after = self
+                .next_node
+                .saturating_add(256.max(sift.best_size as u64 * 2));
+            if sift.changed {
+                self.order_epoch = self
+                    .order_epoch
+                    .checked_add(1)
+                    .expect("order epoch exhausted");
+            }
+        } else {
+            self.sift = Some(sift);
+        }
+        true
     }
 
     fn node(&mut self, choice: u64, mut low: Condition, mut high: Condition) -> Condition {
@@ -184,7 +265,36 @@ impl Arena {
         } else {
             let id = self.next_node;
             self.next_node = id.checked_add(1).expect("condition identity exhausted");
-            self.nodes.insert(id, Node { key, marked: 0 });
+            if let Some(ids) = &mut self.unprotected {
+                ids.insert(id);
+            }
+            self.nodes.insert(
+                id,
+                Node {
+                    key,
+                    marked: 0,
+                    references: 0,
+                    references_epoch: 0,
+                    archived: 0,
+                    archive_references: 0,
+                    max_choice: choice
+                        .max(self.support_max(low).unwrap_or(choice))
+                        .max(self.support_max(high).unwrap_or(choice)),
+                },
+            );
+            let order = self.order.entry(choice).or_insert_with(|| {
+                self.ranks.insert(choice, choice);
+                ChoiceOrder {
+                    rank: choice,
+                    after: None,
+                    nodes: BTreeSet::new(),
+                }
+            });
+            order.nodes.insert(id);
+            if self.count_edges {
+                Sift::retain(self, low);
+                Sift::retain(self, high);
+            }
             let handle = Condition {
                 owner: self.owner,
                 id,
@@ -229,6 +339,9 @@ impl Arena {
     pub(crate) fn direct(&self, operation: Operation) -> Option<Condition> {
         let (pair, negative) = self.operands(operation);
         GcLease::assert_mutable(&self.frozen);
+        if self.sift.is_some() {
+            return None;
+        }
         simple(pair).map(|c| if negative { c.not() } else { c })
     }
 
@@ -238,6 +351,10 @@ impl Arena {
         Job {
             owner: self.owner,
             negative,
+            input: known.is_none().then_some(pair),
+            epoch: self.order_epoch,
+            restarting: false,
+            order_lease: None,
             frames: if known.is_some() {
                 Vec::new()
             } else {
@@ -254,9 +371,39 @@ impl Arena {
     /// caller supplies every semantic root, including `Job::roots()` for all
     /// suspended jobs. Unique tables and operation caches are deliberately weak.
     /// The arena remains read-only until the owned collector is dropped,
-    /// including after completion. Dropping it early aborts collection.
+    /// including after completion. Dense live graphs may be reordered after
+    /// sweeping. Dropping early aborts reclamation; subsequent job/collector
+    /// ticks finish any partial swap and restore its best known order.
     pub fn collect<I: Iterator<Item = Condition>>(&mut self, roots: I) -> Collector<I> {
+        self.collect_archived(roots, vec![], true)
+    }
+    // Cached roots require a completed prior collector and an unchanged
+    // representation epoch. Engine owns collectors through completion (including
+    // cancellation), and supplies every archive root after any epoch change.
+    // Public collect always resets and can safely finish an interrupted sift.
+    pub(crate) fn collect_archived<I: Iterator<Item = Condition>>(
+        &mut self,
+        roots: I,
+        archived: Vec<Condition>,
+        mut reset: bool,
+    ) -> Collector<I> {
+        assert!(
+            reset || self.sift.is_none(),
+            "cached archive collection requires completed reordering"
+        );
         let lease = GcLease::acquire(&self.frozen);
+        let deactivate = reset && archived.is_empty() && self.unprotected.is_some();
+        if !archived.is_empty() && self.unprotected.is_none() {
+            self.unprotected = Some(BTreeSet::new());
+            reset = true;
+        }
+        if reset {
+            self.archive_epoch = self
+                .archive_epoch
+                .checked_add(1)
+                .expect("condition archive epoch exhausted");
+            self.archive_branching = false;
+        }
         self.epoch = self
             .epoch
             .checked_add(1)
@@ -266,11 +413,332 @@ impl Arena {
             epoch: self.epoch,
             _lease: lease,
             roots,
+            archiving: !archived.is_empty(),
+            archived: archived.into_iter(),
+            deactivate,
+            reset: deactivate
+                || reset
+                    && self
+                        .unprotected
+                        .as_ref()
+                        .is_some_and(|ids| ids.len() != self.nodes.len()),
+            rebuild_unique: reset || self.unprotected.is_none(),
             pending: Vec::new(),
-            phase: Phase::Cache,
+            phase: Phase::Reorder,
+            branching: self.archive_branching,
             sweep: None,
             unique: HashMap::new(),
         }
+    }
+}
+
+// Sift the live graph while collection owns the mutator barrier. A trial
+// measures all supplied roots, so improving one function cannot hide growth
+// in another. Causal predecessor bounds constrain eligible swaps.
+// ponytail: at most 32 variables and 262144 probing actions per pass; broader
+// searches need measured benefit. Restoration and cleanup finish incrementally.
+struct Sift {
+    phase: SiftPhase,
+    candidates: BTreeMap<(std::cmp::Reverse<usize>, u64), ()>,
+    zeros: Vec<Condition>,
+    best_size: usize,
+    best_rank: u64,
+    moving: u64,
+    remaining: usize,
+    steps: usize,
+    budget: usize,
+    epoch: u64,
+    reclaim: bool,
+    stop: bool,
+    changed: bool,
+}
+#[derive(Clone, Copy)]
+enum Direction {
+    Earlier,
+    Later,
+    Return,
+}
+#[derive(Clone, Copy)]
+enum SiftPhase {
+    Candidates(Option<u64>),
+    Choose,
+    Move(Direction),
+    Swap {
+        left: u64,
+        right: u64,
+        cursor: Option<u64>,
+        end: u64,
+        direction: Direction,
+    },
+    Drain(Direction),
+    Cleanup,
+}
+impl Sift {
+    fn new(arena: &Arena) -> Self {
+        Self {
+            phase: SiftPhase::Candidates(None),
+            candidates: BTreeMap::new(),
+            zeros: Vec::new(),
+            best_size: arena.node_count(),
+            best_rank: 0,
+            moving: 0,
+            remaining: 32,
+            steps: 0,
+            budget: arena
+                .node_count()
+                .saturating_mul(arena.order.len())
+                .saturating_mul(16)
+                .clamp(1024, 262_144),
+            epoch: arena.epoch,
+            reclaim: true,
+            stop: false,
+            changed: false,
+        }
+    }
+    fn retain(arena: &mut Arena, c: Condition) {
+        if !c.is_terminal() {
+            let node = arena.nodes.get_mut(&c.id).unwrap();
+            if node.references_epoch != arena.epoch {
+                node.references = if node.archived == arena.archive_epoch {
+                    node.archive_references
+                } else {
+                    0
+                };
+                node.references_epoch = arena.epoch;
+            }
+            node.references = node
+                .references
+                .checked_add(1)
+                .expect("condition reference count exhausted");
+        }
+    }
+    fn release(&mut self, arena: &mut Arena, c: Condition) {
+        if !c.is_terminal() {
+            let node = arena.nodes.get_mut(&c.id).unwrap();
+            if node.references_epoch != arena.epoch {
+                node.references = if node.archived == arena.archive_epoch {
+                    node.archive_references
+                } else {
+                    0
+                };
+                node.references_epoch = arena.epoch;
+            }
+            node.references = node.references.checked_sub(1).expect("counted live edge");
+            if node.references == 0 {
+                self.zeros.push(c);
+            }
+        }
+    }
+    fn tick(&mut self, arena: &mut Arena) -> bool {
+        // If a collector is dropped early, finish the swap and restore the best
+        // order, but never reclaim nodes against an inventory no longer frozen.
+        self.reclaim &= arena.epoch == self.epoch && arena.frozen.load(Ordering::Acquire);
+        self.stop |= !self.reclaim;
+        self.steps = self.steps.saturating_add(1);
+        self.stop |= self.steps >= self.budget;
+        match self.phase {
+            SiftPhase::Candidates(cursor) => {
+                if self.stop {
+                    self.phase = SiftPhase::Cleanup;
+                } else {
+                    let next = match cursor {
+                        Some(id) => arena.order.range((Excluded(id), Unbounded)).next(),
+                        None => arena.order.first_key_value(),
+                    };
+                    if let Some((&choice, order)) = next {
+                        self.candidates
+                            .insert((std::cmp::Reverse(order.nodes.len()), choice), ());
+                        self.phase = SiftPhase::Candidates(Some(choice));
+                    } else {
+                        self.phase = SiftPhase::Choose;
+                    }
+                }
+            }
+            SiftPhase::Choose => {
+                if self.stop || self.remaining == 0 {
+                    self.phase = SiftPhase::Cleanup;
+                } else if let Some(((.., choice), ())) = self.candidates.pop_first() {
+                    self.remaining -= 1;
+                    self.moving = choice;
+                    self.best_rank = arena.order[&choice].rank;
+                    self.best_size = arena.node_count();
+                    self.phase = SiftPhase::Move(Direction::Earlier);
+                } else {
+                    self.phase = SiftPhase::Cleanup;
+                }
+            }
+            SiftPhase::Move(mut direction) => {
+                if self.stop {
+                    direction = Direction::Return;
+                }
+                let rank = arena.order[&self.moving].rank;
+                if matches!(direction, Direction::Return) && rank == self.best_rank {
+                    self.phase = SiftPhase::Choose;
+                    return false;
+                }
+                let earlier = match direction {
+                    Direction::Earlier => true,
+                    Direction::Later => false,
+                    Direction::Return => rank > self.best_rank,
+                };
+                let neighbor = if earlier {
+                    arena.ranks.range(..rank).next_back()
+                } else {
+                    arena.ranks.range((Excluded(rank), Unbounded)).next()
+                };
+                if let Some((_, &other)) = neighbor {
+                    let (left, right) = if earlier {
+                        (other, self.moving)
+                    } else {
+                        (self.moving, other)
+                    };
+                    if arena.order[&right].after.is_some_and(|bound| left <= bound) {
+                        self.phase = SiftPhase::Move(match direction {
+                            Direction::Earlier => Direction::Later,
+                            Direction::Later => Direction::Return,
+                            Direction::Return => {
+                                unreachable!("best position respects causal predecessors")
+                            }
+                        });
+                        return false;
+                    }
+                    self.phase = SiftPhase::Swap {
+                        left,
+                        right,
+                        cursor: None,
+                        end: arena.next_node,
+                        direction,
+                    };
+                } else {
+                    self.phase = SiftPhase::Move(match direction {
+                        Direction::Earlier => Direction::Later,
+                        Direction::Later => Direction::Return,
+                        Direction::Return => unreachable!("best rank remains live while sifting"),
+                    });
+                }
+            }
+            SiftPhase::Swap {
+                left,
+                right,
+                cursor,
+                end,
+                direction,
+            } => {
+                let level = &arena.order[&left].nodes;
+                let next = match cursor {
+                    Some(id) => level.range((Excluded(id), Excluded(end))).next(),
+                    None => level.range(..end).next(),
+                }
+                .copied();
+                if let Some(id) = next {
+                    let old = arena.nodes[&id].key;
+                    let split = |c| match arena.view(c) {
+                        View::Choice { choice, low, high } if choice == right => (low, high),
+                        _ => (c, c),
+                    };
+                    let (ll, lh) = split(old.low);
+                    let (hl, hh) = split(old.high);
+                    if ll != lh || hl != hh {
+                        arena.count_edges = self.reclaim;
+                        let low = arena.node(left, ll, hl);
+                        let high = arena.node(left, lh, hh);
+                        arena.count_edges = false;
+                        // Regular handles are false on the all-false assignment,
+                        // independently of order. A swap cannot flip their sign.
+                        assert!(!low.negative && low != high);
+                        let key = NodeKey {
+                            choice: right,
+                            low,
+                            high,
+                        };
+                        let handle = Condition {
+                            owner: arena.owner,
+                            id,
+                            negative: false,
+                        };
+                        debug_assert_eq!(
+                            arena.nodes[&id].max_choice,
+                            right
+                                .max(arena.support_max(low).unwrap_or(right))
+                                .max(arena.support_max(high).unwrap_or(right))
+                        );
+                        assert_eq!(arena.unique.remove(&old), Some(handle));
+                        assert!(
+                            arena.unique.insert(key, handle).is_none(),
+                            "canonical collision during swap"
+                        );
+                        arena.nodes.get_mut(&id).unwrap().key = key;
+                        arena.order.get_mut(&left).unwrap().nodes.remove(&id);
+                        arena.order.get_mut(&right).unwrap().nodes.insert(id);
+                        if self.reclaim {
+                            Self::retain(arena, low);
+                            Self::retain(arena, high);
+                            self.release(arena, old.low);
+                            self.release(arena, old.high);
+                        }
+                    }
+                    self.phase = SiftPhase::Swap {
+                        left,
+                        right,
+                        cursor: Some(id),
+                        end,
+                        direction,
+                    };
+                } else {
+                    let lrank = arena.order[&left].rank;
+                    let rrank = arena.order[&right].rank;
+                    arena.order.get_mut(&left).unwrap().rank = rrank;
+                    arena.order.get_mut(&right).unwrap().rank = lrank;
+                    arena.ranks.insert(lrank, right);
+                    arena.ranks.insert(rrank, left);
+                    self.changed = true;
+                    self.phase = SiftPhase::Drain(direction);
+                }
+            }
+            SiftPhase::Drain(direction) => {
+                if let Some(c) = self.zeros.pop() {
+                    if self.reclaim && arena.nodes.get(&c.id).is_some_and(|n| n.references == 0) {
+                        let key = arena.nodes.remove(&c.id).unwrap().key;
+                        if let Some(ids) = &mut arena.unprotected {
+                            ids.remove(&c.id);
+                        }
+                        arena.unique.remove(&key);
+                        arena
+                            .order
+                            .get_mut(&key.choice)
+                            .unwrap()
+                            .nodes
+                            .remove(&c.id);
+                        self.release(arena, key.low);
+                        self.release(arena, key.high);
+                    }
+                } else {
+                    let size = arena.node_count();
+                    if self.reclaim && size < self.best_size {
+                        self.best_size = size;
+                        self.best_rank = arena.order[&self.moving].rank;
+                    }
+                    let direction = if self.stop {
+                        Direction::Return
+                    } else if size > self.best_size.saturating_mul(2) {
+                        match direction {
+                            Direction::Earlier => Direction::Later,
+                            _ => Direction::Return,
+                        }
+                    } else {
+                        direction
+                    };
+                    self.phase = SiftPhase::Move(direction);
+                }
+            }
+            SiftPhase::Cleanup => {
+                self.zeros = Vec::new();
+                if self.candidates.pop_first().is_none() {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -318,9 +786,22 @@ enum Frame {
     },
 }
 
+// An interrupted finite apply gets a stable order until it completes. Holding
+// or dropping a suspended job cannot cause repeated reordering to starve it.
+struct OrderLease(Arc<AtomicUsize>);
+impl Drop for OrderLease {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 pub struct Job {
     owner: u32,
     negative: bool,
+    input: Option<Pair>,
+    epoch: u64,
+    restarting: bool,
+    order_lease: Option<OrderLease>,
     frames: Vec<Frame>,
     last: Option<Condition>,
     // Completed subproblems are semantic work dependencies, not an evicting cache.
@@ -331,7 +812,7 @@ pub struct Job {
 
 impl Job {
     pub fn result(&self) -> Option<Condition> {
-        if !self.discarding && self.frames.is_empty() && self.memo.is_empty() {
+        if !self.discarding && !self.restarting && self.frames.is_empty() && self.memo.is_empty() {
             self.last.map(|c| if self.negative { c.not() } else { c })
         } else {
             None
@@ -347,9 +828,14 @@ impl Job {
     }
 
     pub fn roots(&self) -> impl Iterator<Item = Condition> + '_ {
-        self.memo
-            .iter()
-            .flat_map(|(&(a, b), &result)| [a, b, result])
+        self.input
+            .into_iter()
+            .flat_map(|(a, b)| [a, b])
+            .chain(
+                self.memo
+                    .iter()
+                    .flat_map(|(&(a, b), &result)| [a, b, result]),
+            )
             .chain(
                 self.last
                     .into_iter()
@@ -383,6 +869,9 @@ impl Job {
     /// B-tree memo entry per call. Roots remain traceable throughout discard.
     pub fn discard_tick(&mut self) -> bool {
         self.discarding = true;
+        self.order_lease = None;
+        self.input = None;
+        self.restarting = false;
         self.frames = Vec::new();
         self.last = None;
         self.memo.pop_first();
@@ -393,13 +882,41 @@ impl Job {
         assert!(!self.discarding, "condition job has been discarded");
         assert_eq!(self.owner, arena.owner, "foreign condition job");
         GcLease::assert_mutable(&arena.frozen);
+        if arena.sift_tick() {
+            return Progress::Pending;
+        }
+        if self.epoch != arena.order_epoch {
+            self.epoch = arena.order_epoch;
+            if !self.frames.is_empty() {
+                self.frames = Vec::new();
+                self.last = None;
+                self.restarting = true;
+                if self.order_lease.is_none() {
+                    arena.order_readers.fetch_add(1, Ordering::Relaxed);
+                    self.order_lease = Some(OrderLease(arena.order_readers.clone()));
+                }
+            }
+        }
+        if self.restarting {
+            if self.memo.pop_first().is_none() {
+                self.frames
+                    .push(Frame::Evaluate(self.input.expect("restarted operation")));
+                self.restarting = false;
+            }
+            return Progress::Pending;
+        }
         if let Some(result) = self.result() {
             return Progress::Complete(result);
         }
         if self.frames.is_empty() {
+            if self.input.take().is_some() {
+                return Progress::Pending;
+            }
             self.memo.pop_first();
             if let Some(result) = self.result() {
                 self.frames = Vec::new();
+                self.input = None;
+                self.order_lease = None;
                 return Progress::Complete(result);
             }
             return Progress::Pending;
@@ -422,7 +939,7 @@ impl Job {
                     let b = arena.view(pair.1);
                     let choice = match (a, b) {
                         (View::Choice { choice: a, .. }, View::Choice { choice: b, .. }) => {
-                            a.min(b)
+                            if arena.precedes(a, b) { a } else { b }
                         }
                         (View::Choice { choice, .. }, _) | (_, View::Choice { choice, .. }) => {
                             choice
@@ -463,6 +980,8 @@ impl Job {
         }
         if let Some(result) = self.result() {
             self.frames = Vec::new();
+            self.input = None;
+            self.order_lease = None;
             Progress::Complete(result)
         } else {
             Progress::Pending
@@ -471,6 +990,9 @@ impl Job {
 }
 
 enum Phase {
+    Reset,
+    Reorder,
+    Sift,
     Cache,
     Mark,
     Sweep,
@@ -482,19 +1004,64 @@ pub struct Collector<I> {
     epoch: u64,
     _lease: GcLease,
     roots: I,
+    archived: std::vec::IntoIter<Condition>,
+    archiving: bool,
+    reset: bool,
+    deactivate: bool,
+    rebuild_unique: bool,
     pending: Vec<Condition>,
     phase: Phase,
+    branching: bool,
     sweep: Option<u64>,
     unique: HashMap<NodeKey, Condition>,
 }
 
 impl<I: Iterator<Item = Condition>> Collector<I> {
-    /// Returns true when finished. Each call removes at most one weak cache
-    /// entry, marks one node/reads one root, or sweeps one allocated node.
+    /// Returns true when finished. Each call clears one cache entry, marks or
+    /// sweeps one node, or performs one bounded reordering action (at most two
+    /// new nodes). An interrupted swap is completed before marking begins.
     pub fn tick(&mut self, arena: &mut Arena) -> bool {
         assert_eq!(self.owner, arena.owner, "foreign condition collector");
         assert_eq!(self.epoch, arena.epoch, "stale condition collector");
         match self.phase {
+            Phase::Reorder => {
+                if let Some(sift) = arena.sift.as_mut() {
+                    sift.stop = true;
+                }
+                if !arena.sift_tick() {
+                    self.phase = if self.reset {
+                        Phase::Reset
+                    } else {
+                        Phase::Cache
+                    };
+                }
+            }
+            Phase::Sift => {
+                if !arena.sift_tick() {
+                    self.phase = Phase::Done;
+                }
+            }
+            Phase::Reset => {
+                if self.deactivate {
+                    if arena.unprotected.as_mut().unwrap().pop_first().is_none() {
+                        arena.unprotected = None;
+                        self.phase = Phase::Cache;
+                    }
+                    return false;
+                }
+                let next = match self.sweep {
+                    Some(id) => arena.nodes.range((Excluded(id), Unbounded)).next(),
+                    None => arena.nodes.first_key_value(),
+                }
+                .map(|(&id, _)| id);
+                if let Some(id) = next {
+                    arena.unprotected.as_mut().unwrap().insert(id);
+                    self.sweep = Some(id);
+                } else {
+                    self.sweep = None;
+                    self.phase = Phase::Cache;
+                }
+            }
             Phase::Cache => {
                 if let Some(pair) = arena.cache_order.pop_front() {
                     arena.cache.remove(&pair);
@@ -503,30 +1070,98 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                 }
             }
             Phase::Mark => {
-                if let Some(root) = self.pending.pop().or_else(|| self.roots.next()) {
+                if let Some(root) = self.pending.pop().or_else(|| {
+                    if self.archiving {
+                        self.archived.next()
+                    } else {
+                        self.roots.next()
+                    }
+                }) {
                     assert!(arena.contains(root), "stale or foreign collection root");
                     if !root.is_terminal() {
                         let node = arena.nodes.get_mut(&root.id).expect("live root");
-                        if node.marked != self.epoch {
-                            node.marked = self.epoch;
-                            self.pending.extend([node.key.low, node.key.high]);
+                        if self.archiving {
+                            if node.archived != arena.archive_epoch {
+                                node.archived = arena.archive_epoch;
+                                node.archive_references = 0;
+                                arena.unprotected.as_mut().unwrap().remove(&root.id);
+                                let branching =
+                                    !node.key.low.is_terminal() && !node.key.high.is_terminal();
+                                arena.archive_branching |= branching;
+                                self.branching |= branching;
+                                self.pending.extend([node.key.low, node.key.high]);
+                                if self.rebuild_unique {
+                                    self.unique.insert(
+                                        node.key,
+                                        Condition {
+                                            negative: false,
+                                            ..root
+                                        },
+                                    );
+                                }
+                            }
+                            node.archive_references = node
+                                .archive_references
+                                .checked_add(1)
+                                .expect("archive reference count exhausted");
+                        } else {
+                            if node.marked != self.epoch {
+                                node.marked = self.epoch;
+                                node.references_epoch = self.epoch;
+                                let protected = node.archived == arena.archive_epoch;
+                                node.references = if protected {
+                                    node.archive_references
+                                } else {
+                                    0
+                                };
+                                if !protected {
+                                    self.branching |=
+                                        !node.key.low.is_terminal() && !node.key.high.is_terminal();
+                                    self.pending.extend([node.key.low, node.key.high]);
+                                }
+                            }
+                            node.references = node
+                                .references
+                                .checked_add(1)
+                                .expect("condition reference count exhausted");
                         }
                     }
+                } else if self.archiving {
+                    self.archiving = false;
                 } else {
                     self.phase = Phase::Sweep;
                 }
             }
             Phase::Sweep => {
-                let next = match self.sweep {
-                    Some(id) => arena.nodes.range((Excluded(id), Unbounded)).next(),
-                    None => arena.nodes.first_key_value(),
+                let next = if let Some(ids) = &arena.unprotected {
+                    match self.sweep {
+                        Some(id) => ids.range((Excluded(id), Unbounded)).next(),
+                        None => ids.first(),
+                    }
+                    .copied()
+                } else {
+                    match self.sweep {
+                        Some(id) => arena.nodes.range((Excluded(id), Unbounded)).next(),
+                        None => arena.nodes.first_key_value(),
+                    }
+                    .map(|(&id, _)| id)
                 };
-                if let Some((&id, node)) = next {
+                if let Some(id) = next {
+                    let node = &arena.nodes[&id];
                     let key = node.key;
                     if node.marked != self.epoch {
                         arena.nodes.remove(&id);
+                        if let Some(ids) = &mut arena.unprotected {
+                            ids.remove(&id);
+                        }
                         arena.unique.remove(&key);
-                    } else {
+                        let order = arena.order.get_mut(&key.choice).expect("allocated choice");
+                        order.nodes.remove(&id);
+                        if order.nodes.is_empty() {
+                            arena.ranks.remove(&order.rank);
+                            arena.order.remove(&key.choice);
+                        }
+                    } else if self.rebuild_unique {
                         self.unique.insert(
                             key,
                             Condition {
@@ -540,8 +1175,25 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                 } else {
                     // Rebuilding incrementally releases peak hash-table storage.
                     // The old table remains valid if a collector is dropped early.
-                    arena.unique = std::mem::take(&mut self.unique);
-                    self.phase = Phase::Done;
+                    if self.rebuild_unique {
+                        arena.unique = std::mem::take(&mut self.unique);
+                    }
+                    // Many retained path prefixes can be dense without a
+                    // branching representation problem. Avoid paying for a
+                    // whole sift merely because observation accumulated paths.
+                    // This is a conservative trigger, not a claim that chains
+                    // can never share better under another order.
+                    if self.branching
+                        && arena.next_node >= arena.reorder_after
+                        && arena.order_readers.load(Ordering::Relaxed) == 0
+                        && arena.node_count() >= 128
+                        && arena.node_count() > 4 * arena.order.len()
+                    {
+                        arena.sift = Some(Sift::new(arena));
+                        self.phase = Phase::Sift;
+                    } else {
+                        self.phase = Phase::Done;
+                    }
                 }
             }
             Phase::Done => return true,
@@ -574,6 +1226,10 @@ impl Trace for Job {
             0 => cursor.pairs(&self.memo),
             1 => cursor.fields(self.last.as_slice()),
             2 => cursor.vector(self.frames.len(), |i, child| self.frames[i].trace(child)),
+            3 => match self.input {
+                Some((a, b)) => cursor.fields(&[a, b]),
+                None => Step::Done,
+            },
             _ => Step::Done,
         }
     }
@@ -606,6 +1262,14 @@ enum TransformFrame {
     High {
         input: Condition,
         image: Condition,
+        low: Condition,
+    },
+    QuantifyLow {
+        input: Condition,
+        high: Condition,
+    },
+    QuantifyHigh {
+        input: Condition,
         low: Condition,
     },
     Product {
@@ -742,6 +1406,9 @@ impl Transform {
         assert!(!self.discarding, "condition transform has been discarded");
         assert_eq!(self.owner, arena.owner, "foreign condition transform");
         GcLease::assert_mutable(&arena.frozen);
+        if arena.sift_tick() {
+            return Progress::Pending;
+        }
         if let Some(result) = self.result() {
             return Progress::Complete(result);
         }
@@ -766,13 +1433,10 @@ impl Transform {
                             View::Terminal(_) => self.last = Some(input),
                             View::Choice { choice, low, high } => {
                                 if self.cutoff.is_some_and(|cutoff| choice >= cutoff) {
-                                    // Ordered descendants are all quantified. Every
-                                    // canonical nonterminal has a satisfying path.
-                                    self.last = Some(Condition::TRUE);
-                                } else if self.images.as_ref().is_some_and(|images| {
-                                    choice > *images.last_key_value().unwrap().0
-                                }) {
-                                    self.last = Some(input);
+                                    self.frames
+                                        .push(TransformFrame::QuantifyLow { input, high });
+                                    self.frames.push(TransformFrame::Evaluate(low));
+                                    self.last = None;
                                 } else {
                                     let image = self
                                         .images
@@ -804,6 +1468,17 @@ impl Transform {
                             }
                         }
                     }
+                }
+                TransformFrame::QuantifyLow { input, high } => {
+                    let low = self.last.take().expect("quantified low cofactor");
+                    self.frames
+                        .push(TransformFrame::QuantifyHigh { input, low });
+                    self.frames.push(TransformFrame::Evaluate(high));
+                }
+                TransformFrame::QuantifyHigh { input, low } => {
+                    let high = self.last.take().expect("quantified high cofactor");
+                    self.frames.push(TransformFrame::Finish(input));
+                    self.job = Some(arena.start(Operation::Or(low, high)));
                 }
                 TransformFrame::Finish(input) => {
                     self.memo
@@ -837,7 +1512,9 @@ impl Transform {
                             } if il.is_terminal() && ih.is_terminal() => {
                                 let later = |c| match arena.view(c) {
                                     View::Terminal(_) => true,
-                                    View::Choice { choice: child, .. } => child > choice,
+                                    View::Choice { choice: child, .. } => {
+                                        arena.precedes(choice, child)
+                                    }
                                 };
                                 (later(low) && later(high))
                                     .then_some((choice, il == Condition::FALSE))
@@ -881,6 +1558,8 @@ impl TransformFrame {
     fn roots(self) -> [Option<Condition>; 3] {
         match self {
             Self::Evaluate(input) | Self::Finish(input) => [Some(input), None, None],
+            Self::QuantifyLow { input, high } => [Some(input), Some(high), None],
+            Self::QuantifyHigh { input, low } => [Some(input), Some(low), None],
             Self::Low { input, image, high } | Self::Product { input, image, high } => {
                 [Some(input), Some(image), Some(high)]
             }
@@ -919,6 +1598,41 @@ impl Trace for Transform {
 #[cfg(test)]
 mod direct_tests {
     use super::*;
+    #[test]
+    fn order_metadata_is_collected_with_its_last_node() {
+        let mut arena = Arena::default();
+        for _ in 0..4 {
+            let vars: Vec<_> = (0..64).map(|_| arena.fresh_choice().1).collect();
+            let mut job = arena.start(Operation::And(vars[0], vars[63]));
+            for tick in 0..100 {
+                if let Progress::Complete(_) = job.tick(&mut arena) {
+                    break;
+                }
+                assert!(tick < 99);
+            }
+            assert_eq!(arena.order.len(), 64);
+            let mut gc = arena.collect([vars[0]].into_iter());
+            for tick in 0..1000 {
+                if gc.tick(&mut arena) {
+                    break;
+                }
+                assert!(tick < 999);
+            }
+            drop(gc);
+            assert_eq!(arena.order.len(), 1);
+            assert_eq!(arena.order.values().next().unwrap().nodes.len(), 1);
+            let mut gc = arena.collect(std::iter::empty());
+            for tick in 0..100 {
+                if gc.tick(&mut arena) {
+                    break;
+                }
+                assert!(tick < 99);
+            }
+            drop(gc);
+            assert!(arena.order.is_empty());
+        }
+    }
+
     #[test]
     fn direct_identities_match_truth_tables_and_leave_mixed_operands_resumable() {
         let mut a = Arena::default();
@@ -1036,5 +1750,464 @@ mod direct_tests {
             assert!(finished);
         }
         assert!(resumed > 0 && discarded > 0);
+    }
+}
+
+#[cfg(test)]
+mod reorder_tests {
+    use super::*;
+    fn finish(a: &mut Arena, operation: Operation) -> Condition {
+        let mut j = a.start(operation);
+        (0..100_000)
+            .find_map(|_| match j.tick(a) {
+                Progress::Complete(c) => Some(c),
+                Progress::Pending => None,
+            })
+            .expect("finite test operation")
+    }
+    struct Fixture {
+        a: Arena,
+        vars: Vec<Condition>,
+        root: Condition,
+        job: Job,
+        transform: Transform,
+        projection: Transform,
+        cached: Job,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            let mut a = Arena::default();
+            let vars: Vec<_> = (0..12).map(|_| a.fresh_choice().1).collect();
+            let mut root = Condition::TRUE;
+            for i in 0..6 {
+                let both = finish(&mut a, Operation::And(vars[i], vars[i + 6]));
+                let neither = finish(&mut a, Operation::And(vars[i].not(), vars[i + 6].not()));
+                let eq = finish(&mut a, Operation::Or(both, neither));
+                root = finish(&mut a, Operation::And(root, eq));
+            }
+            let selected = finish(&mut a, Operation::And(root, vars[0]));
+            let cached = a.start(Operation::And(root, vars[0]));
+            assert_eq!(cached.result(), Some(selected));
+            let mut job = a.start(Operation::Difference(root, vars[3]));
+            for step in 0..1000 {
+                job.tick(&mut a);
+                if job
+                    .frames
+                    .iter()
+                    .any(|f| matches!(f, Frame::AfterHigh { .. }))
+                {
+                    break;
+                }
+                assert!(step < 999);
+            }
+            assert!(!job.frames.is_empty());
+            let mut transform = a.substitute(root, Arc::new(BTreeMap::from([(1, vars[2])])));
+            let mut projection = a.project_before(selected, 6);
+            transform.tick(&mut a);
+            projection.tick(&mut a);
+            Self {
+                a,
+                vars,
+                root,
+                job,
+                transform,
+                projection,
+                cached,
+            }
+        }
+        fn roots(&self) -> Vec<Condition> {
+            self.vars
+                .iter()
+                .copied()
+                .chain([self.root])
+                .chain(self.job.roots())
+                .chain(self.transform.roots())
+                .chain(self.projection.roots())
+                .chain(self.cached.roots())
+                .collect()
+        }
+        fn assert_root(&self) {
+            for bits in (0..64u64).chain((0..64).map(|b| b | (b << 6))) {
+                let value = |i| bits & (1u64 << i) != 0;
+                let expected = (0..6).all(|i| value(i) == value(i + 6));
+                assert_eq!(self.a.evaluate(self.root, value), expected);
+                assert_eq!(self.a.evaluate(self.root.not(), value), !expected);
+                assert_eq!(
+                    self.a.evaluate(self.cached.result().unwrap(), value),
+                    expected && value(0)
+                );
+            }
+        }
+    }
+    #[test]
+    fn archived_closures_keep_exact_sift_references_and_rebuild_after_reordering() {
+        let mut f = Fixture::new();
+        let roots = f.roots();
+        f.a.reorder_after = u64::MAX;
+        let mut gc =
+            f.a.collect_archived(std::iter::empty(), roots.clone(), true);
+        while !gc.tick(&mut f.a) {}
+        drop(gc);
+        f.assert_root();
+        let working = finish(&mut f.a, Operation::And(f.vars[0], f.vars[1].not()));
+        f.a.reorder_after = 0;
+        let before = f.a.order_epoch;
+        let mut gc = f.a.collect_archived([working].into_iter(), vec![], false);
+        let mut checked = false;
+        for _ in 0..200_000 {
+            let done = gc.tick(&mut f.a);
+            if !checked && f.a.sift.is_some() {
+                let mut expected = BTreeMap::<u64, usize>::new();
+                for root in roots.iter().copied().chain([working]).chain(
+                    f.a.nodes
+                        .values()
+                        .flat_map(|node| [node.key.low, node.key.high]),
+                ) {
+                    if !root.is_terminal() {
+                        *expected.entry(root.id).or_default() += 1;
+                    }
+                }
+                for (&id, node) in &f.a.nodes {
+                    let count = if node.references_epoch == f.a.epoch {
+                        node.references
+                    } else if node.archived == f.a.archive_epoch {
+                        node.archive_references
+                    } else {
+                        0
+                    };
+                    assert_eq!(count, expected[&id], "exact incoming references for {id}");
+                }
+                checked = true;
+            }
+            if done {
+                break;
+            }
+        }
+        assert!(checked && matches!(gc.phase, Phase::Done));
+        drop(gc);
+        assert!(f.a.order_epoch > before);
+        f.assert_root();
+        let mut gc = f.a.collect_archived([working].into_iter(), roots, true);
+        while !gc.tick(&mut f.a) {}
+        drop(gc);
+        f.assert_root();
+        for bits in 0..4 {
+            assert_eq!(f.a.evaluate(working, |id| bits & (1 << id) != 0), bits == 1);
+        }
+        let mut gc = f.a.collect(std::iter::empty());
+        while !gc.tick(&mut f.a) {}
+        drop(gc);
+        assert_eq!(f.a.node_count(), 0);
+        assert!(f.a.unprotected.is_none());
+
+        // Public collection may replace an interrupted archival collector. Its
+        // reset must finish the swap before rebuilding reachability and counts.
+        let mut f = Fixture::new();
+        let mut gc = f.a.collect_archived(std::iter::empty(), f.roots(), true);
+        for tick in 0..200_000 {
+            gc.tick(&mut f.a);
+            if f.a.sift.as_ref().is_some_and(|s| {
+                matches!(
+                    s.phase,
+                    SiftPhase::Swap {
+                        cursor: Some(_),
+                        ..
+                    }
+                )
+            }) {
+                break;
+            }
+            assert!(tick < 199_999);
+        }
+        drop(gc);
+        let mut gc = f.a.collect(f.roots().into_iter());
+        for tick in 0..200_000 {
+            if gc.tick(&mut f.a) {
+                break;
+            }
+            assert!(tick < 199_999);
+        }
+        drop(gc);
+        f.assert_root();
+        let mut gc = f.a.collect(std::iter::empty());
+        while !gc.tick(&mut f.a) {}
+        drop(gc);
+        assert_eq!(f.a.node_count(), 0);
+    }
+    #[test]
+    fn collection_reordering_can_be_interrupted_in_every_structural_phase() {
+        let mut discover = Fixture::new();
+        let mut checkpoints = BTreeMap::new();
+        let mut gc = discover.a.collect(discover.roots().into_iter());
+        let mut completion = 0;
+        for tick in 0..200_000 {
+            let phase = match discover.a.sift.as_ref().map(|s| s.phase) {
+                None => 0,
+                Some(SiftPhase::Candidates(_)) => 1,
+                Some(SiftPhase::Choose) => 2,
+                Some(SiftPhase::Move(Direction::Return)) => 3,
+                Some(SiftPhase::Move(_)) => 4,
+                Some(SiftPhase::Swap { cursor: None, .. }) => 5,
+                Some(SiftPhase::Swap { .. }) => 6,
+                Some(SiftPhase::Drain(_)) => 7,
+                Some(SiftPhase::Cleanup) => 8,
+            };
+            checkpoints.entry(phase).or_insert(tick);
+            if discover
+                .a
+                .sift
+                .as_ref()
+                .is_some_and(|s| matches!(s.phase, SiftPhase::Swap { .. }) && !s.zeros.is_empty())
+            {
+                checkpoints.entry(9).or_insert(tick);
+            }
+            let before = discover.a.node_count();
+            if gc.tick(&mut discover.a) {
+                completion = tick + 1;
+                break;
+            }
+            assert!(
+                discover.a.node_count() <= before + 2,
+                "unbounded swap allocation"
+            );
+            assert!(tick < 199_999);
+        }
+        assert_eq!(
+            checkpoints.len(),
+            10,
+            "exercise each maintenance phase, including a partially rewritten level"
+        );
+        checkpoints.insert(10, completion);
+        drop(gc);
+        assert!(discover.a.order_epoch > 0);
+        for (_, checkpoint) in checkpoints {
+            let mut f = Fixture::new();
+            let mut gc = f.a.collect(f.roots().into_iter());
+            for _ in 0..checkpoint {
+                gc.tick(&mut f.a);
+            }
+            f.assert_root();
+            drop(gc);
+            let born = f.a.fresh_choice();
+            assert_eq!(born.0, 12, "birth identity is independent of order");
+            for step in 0..200_000 {
+                if f.a.sift.is_none() {
+                    break;
+                }
+                let before = f.a.node_count();
+                f.job.tick(&mut f.a);
+                assert!(
+                    f.a.node_count() >= before,
+                    "aborted collector cannot reclaim against an unfrozen inventory"
+                );
+                assert!(step < 199_999);
+            }
+            f.assert_root();
+            for tick in 0..20_000 {
+                if tick % 7 == 0 {
+                    let mut gc = f.a.collect(f.roots().into_iter());
+                    for step in 0..200_000 {
+                        if gc.tick(&mut f.a) {
+                            break;
+                        }
+                        assert!(step < 199_999);
+                    }
+                    drop(gc);
+                }
+                f.job.tick(&mut f.a);
+                f.transform.tick(&mut f.a);
+                f.projection.tick(&mut f.a);
+                if f.job.result().is_some()
+                    && f.transform.result().is_some()
+                    && f.projection.result().is_some()
+                {
+                    break;
+                }
+                assert!(tick < 19_999);
+            }
+            let expected = finish(&mut f.a, Operation::Difference(f.root, f.vars[3]));
+            assert_eq!(
+                f.job.result(),
+                Some(expected),
+                "restart stale AfterHigh frames before construction"
+            );
+            assert_eq!(f.projection.result(), Some(f.vars[0]));
+            for bits in 0..4096u64 {
+                let value = |i| bits & (1u64 << i) != 0;
+                assert_eq!(
+                    f.a.evaluate(f.transform.result().unwrap(), value),
+                    (0..6).all(|i| value(if i == 1 { 2 } else { i }) == value(i + 6))
+                );
+            }
+            assert_eq!(f.a.order_readers.load(Ordering::Relaxed), 0);
+            let mut gc = f.a.collect(std::iter::empty());
+            for step in 0..200_000 {
+                if gc.tick(&mut f.a) {
+                    break;
+                }
+                assert!(step < 199_999);
+            }
+            drop(gc);
+            assert_eq!(f.a.node_count(), 0);
+            assert!(f.a.order.is_empty() && f.a.ranks.is_empty());
+        }
+    }
+    #[test]
+    fn path_prefix_collection_stays_linear_without_branching_pressure() {
+        let mut a = Arena::default();
+        let vars: Vec<_> = (0..30).map(|_| a.fresh_choice().1).collect();
+        let mut roots = vars.clone();
+        let mut prefix = Condition::TRUE;
+        for &literal in &vars {
+            roots.push(finish(&mut a, Operation::And(prefix, literal.not())));
+            prefix = finish(&mut a, Operation::And(prefix, literal));
+            roots.push(prefix);
+        }
+        let allocated = a.node_count();
+        assert!(allocated >= 128 && allocated > 4 * vars.len());
+        let budget = 8 * allocated + a.cache.len() + roots.len() + 32;
+        let mut gc = a.collect(roots.iter().copied());
+        let mut finished = false;
+        for _ in 0..budget {
+            if gc.tick(&mut a) {
+                finished = true;
+                break;
+            }
+        }
+        assert!(
+            finished,
+            "path-prefix roots must collect within linear structural work"
+        );
+        drop(gc);
+        assert_eq!(a.node_count(), allocated);
+        assert!(a.evaluate(prefix, |_| true));
+        for false_choice in 0..30 {
+            assert!(!a.evaluate(prefix, |choice| choice != false_choice));
+        }
+    }
+
+    #[test]
+    fn scoped_sifting_respects_causal_bounds_without_retaining_scope_graphs() {
+        let mut a = Arena::default();
+        let parent = a.fresh_choice().1;
+        let vars: Vec<_> = (0..16).map(|_| a.fresh_scoped_choice(parent).1).collect();
+        let scope = finish(&mut a, Operation::And(parent, vars[3]));
+        let nested = a.fresh_scoped_choice(scope).1;
+        assert_eq!(a.support_max(scope), Some(4));
+        let mut root = parent;
+        for i in 0..8 {
+            let p = finish(&mut a, Operation::And(vars[i], vars[i + 8]));
+            let q = finish(&mut a, Operation::And(vars[i].not(), vars[i + 8].not()));
+            let eq = finish(&mut a, Operation::Or(p, q));
+            root = finish(&mut a, Operation::And(root, eq));
+        }
+        let roots = vars.iter().copied().chain([parent, scope, nested, root]);
+        let mut gc = a.collect(roots);
+        for tick in 0..1_000_000 {
+            if gc.tick(&mut a) {
+                break;
+            }
+            assert!(tick < 999_999);
+        }
+        drop(gc);
+        assert!(a.order_epoch > 0 && a.node_count() < 160);
+        for (&choice, order) in &a.order {
+            if let Some(bound) = order.after {
+                for (_, predecessor) in a.order.range(..=bound) {
+                    assert!(
+                        predecessor.rank < order.rank,
+                        "causal prefix of {choice} crossed"
+                    );
+                }
+            }
+        }
+        for bits in 0..256u64 {
+            let assignment = 1 | (bits << 1) | (bits << 9);
+            assert!(a.evaluate(root, |i| assignment & (1 << i) != 0));
+            assert!(!a.evaluate(root, |i| i != 0 && assignment & (1 << i) != 0));
+        }
+        assert_eq!(a.support_max(scope), Some(4));
+        let mut gc = a.collect([nested].into_iter());
+        for tick in 0..100_000 {
+            if gc.tick(&mut a) {
+                break;
+            }
+            assert!(tick < 99_999);
+        }
+        drop(gc);
+        assert_eq!(
+            a.node_count(),
+            1,
+            "predecessor bounds must not own historical scope conditions"
+        );
+        assert!(!a.contains(parent) && !a.contains(scope));
+    }
+
+    #[test]
+    fn restarted_job_has_stable_order_until_completion_or_cancellation() {
+        for cancel in [false, true] {
+            let mut f = Fixture::new();
+            let mut gc = f.a.collect(f.roots().into_iter());
+            for step in 0..200_000 {
+                if gc.tick(&mut f.a) {
+                    break;
+                }
+                assert!(step < 199_999);
+            }
+            drop(gc);
+            f.job.tick(&mut f.a);
+            assert_eq!(f.a.order_readers.load(Ordering::Relaxed), 1);
+            let epoch = f.a.order_epoch;
+            // Independent new dense work must not repeatedly restart this job.
+            let vars: Vec<_> = (0..16).map(|_| f.a.fresh_choice().1).collect();
+            let mut root = Condition::TRUE;
+            for i in 0..8 {
+                let p = finish(&mut f.a, Operation::And(vars[i], vars[i + 8]));
+                let q = finish(&mut f.a, Operation::And(vars[i].not(), vars[i + 8].not()));
+                let eq = finish(&mut f.a, Operation::Or(p, q));
+                root = finish(&mut f.a, Operation::And(root, eq));
+            }
+            for _ in 0..3 {
+                let roots = f.roots().into_iter().chain([root]);
+                let mut gc = f.a.collect(roots);
+                for step in 0..200_000 {
+                    if gc.tick(&mut f.a) {
+                        break;
+                    }
+                    assert!(step < 199_999);
+                }
+                drop(gc);
+                assert!(f.a.node_count() > 128 && f.a.node_count() > 4 * f.a.order.len());
+                assert_eq!(
+                    f.a.order_epoch, epoch,
+                    "growth must not starve an interrupted finite job"
+                );
+                f.job.tick(&mut f.a);
+            }
+            for step in 0..100_000 {
+                let done = if cancel {
+                    f.job.discard_tick()
+                } else {
+                    matches!(f.job.tick(&mut f.a), Progress::Complete(_))
+                };
+                if done {
+                    break;
+                }
+                assert!(step < 99_999);
+            }
+            assert_eq!(f.a.order_readers.load(Ordering::Relaxed), 0);
+            let mut gc = f.a.collect(f.roots().into_iter().chain([root]));
+            for step in 0..200_000 {
+                if gc.tick(&mut f.a) {
+                    break;
+                }
+                assert!(step < 199_999);
+            }
+            drop(gc);
+            assert!(
+                f.a.order_epoch > epoch,
+                "released lease permits growth-triggered adaptation"
+            );
+        }
     }
 }
