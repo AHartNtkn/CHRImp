@@ -15,7 +15,7 @@ const id = value => {
 };
 
 export class InspectionSelection {
-  constructor() { this.choices = []; this.snapshots = []; this.assignments = new Map(); this.snapshot = ''; this.selectedSnapshot = null; this.cursors = {}; this.navigation = {}; this.loading = false; this.lease = null; this.retiring = null; this.operation = null; this.resetting = false; this.pendingCapture = null; this.nextCapture = 1; }
+  constructor() { this.choices = []; this.snapshots = []; this.assignments = new Map(); this.snapshot = ''; this.selectedSnapshot = null; this.cursors = {}; this.navigation = {}; this.loading = false; this.lease = null; this.retiring = null; this.operation = null; this.resetting = false; this.pendingCapture = null; }
   update(choices, snapshots, preserve = false) {
     const descriptors = (items, name) => {
       check(Array.isArray(items), `Inspection response needs ${name} descriptors.`);
@@ -40,8 +40,7 @@ export class InspectionSelection {
   }
   async capture(api, run) {
     if (!this.pendingCapture) {
-      check(Number.isSafeInteger(this.nextCapture), 'Metadata capture sequence exhausted.');
-      this.pendingCapture = {run, capture: this.nextCapture++};
+      this.pendingCapture = {run};
     }
     check(this.pendingCapture.run === run, 'Recover the previous run metadata capture before changing runs.');
     const pending = this.pendingCapture;
@@ -148,25 +147,87 @@ export class InspectionSelection {
   }
 }
 
-let serverBoot = null;
-export async function request(route, payload) {
-  if (!['hello', 'parse', 'format'].includes(route)) {
-    // Pin this controller to its server. A restart must never reinterpret its IDs.
-    serverBoot ??= request('hello', {}).then(response => {
-      check(typeof response.boot === 'string' && /^[0-9a-f]{32}$/.test(response.boot), 'Invalid server identity.');
-      return response.boot;
-    }).catch(error => { serverBoot = null; throw error; });
-    payload = {...payload, boot:await serverBoot};
-  }
+let serverBoot = null, serverOwner = null, attaching = null;
+let command = 0, pendingControl = null, controlTail = Promise.resolve();
+const controlRoutes = new Set(['start', 'inspect', 'step', 'resume', 'snapshot']);
+async function send(route, body) {
   const response = await fetch(`/api/${route}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
   });
   const text = await response.text();
   let data;
   try { data = JSON.parse(text); } catch { throw new Error(`${response.status}: ${text.slice(0, 160) || 'Empty server response'}`); }
-  if (!response.ok) { const error = new Error(typeof data.error === 'string' ? data.error : data.error?.message ?? data.message ?? `Request failed (${response.status})`); error.retry = data.retry === true; throw error; }
+  if (!response.ok) { const error = new Error(typeof data.error === 'string' ? data.error : data.error?.message ?? data.message ?? `Request failed (${response.status})`); error.retry = data.retry === true; error.status = response.status; error.code = data.code; throw error; }
   return data;
 }
+async function owner() {
+  // Keep an accepted attach's identity when its response is lost.
+  serverBoot ??= send('hello', '{}').then(response => {
+    check(typeof response.boot === 'string' && /^[0-9a-f]{32}$/.test(response.boot), 'Invalid server identity.');
+    return response.boot;
+  }).catch(error => { serverBoot = null; throw error; });
+  const boot = await serverBoot;
+  attaching ??= (async () => {
+    if (serverOwner === null) {
+      const reserved = uint((await send('reserve', JSON.stringify({boot}))).owner);
+      check(reserved > 0, 'Invalid notebook owner.'); serverOwner = reserved;
+    }
+    await send('attach', JSON.stringify({boot, owner:serverOwner}));
+  })().catch(error => {
+    attaching = null;
+    // An overtaken reservation has never owned an execution. Its next attempt
+    // may reserve again; commands under an attached owner never change owners.
+    if (error.code === 'unknown_owner') serverOwner = null;
+    throw error;
+  });
+  await attaching;
+  return {boot, owner:serverOwner};
+}
+export async function request(route, payload) {
+  if (['hello', 'parse', 'format'].includes(route)) return send(route, JSON.stringify(payload));
+  const identity = await owner();
+  if (!controlRoutes.has(route)) return send(route, JSON.stringify({...payload, ...identity}));
+  return serializeControl(async () => {
+    const input = JSON.stringify({...payload, ...identity});
+    if (pendingControl) {
+      check(pendingControl.route === route && pendingControl.input === input, 'Recover the interrupted command before submitting another command.');
+    } else {
+      check(Number.isSafeInteger(command + 1), 'Control command sequence exhausted.');
+      pendingControl = {route, input, command:command + 1, body:JSON.stringify({...payload, ...identity, command:command + 1})};
+    }
+    return replayControl();
+  });
+}
+function serializeControl(action) {
+  const operation = controlTail.then(action);
+  controlTail = operation.catch(() => {});
+  return operation;
+}
+async function replayControl() {
+  try {
+    const response = await send(pendingControl.route, pendingControl.body);
+    command = pendingControl.command; pendingControl = null;
+    return response;
+  } catch (error) {
+    // Only a definite rejection permits a replacement. Ambiguous delivery
+    // keeps the exact request for replay, including after a lost response.
+    if (error.status >= 400 && error.status < 500 && !error.retry) pendingControl = null;
+    throw error;
+  }
+}
+request.recover = () => serializeControl(async () => {
+  if (!pendingControl) return null;
+  const route = pendingControl.route;
+  const {boot, owner, ...payload} = JSON.parse(pendingControl.input);
+  for (;;) {
+    try { return {route, payload, response:await replayControl()}; }
+    catch (error) {
+      if (!error.retry) throw error;
+      await send('maintenance', JSON.stringify({boot, owner, run:payload.run, budget:2048}));
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  }
+});
 
 async function liveRequest(route, payload, api = request) {
     for (;;) {
@@ -207,6 +268,7 @@ export class RunSession {
     this.api = api; this.notify = notify; this.store = store; this.archive = null; this.pendingDelivery = null; this.run = null; this.status = 'idle';
     this.running = false; this.inFlight = null; this.timer = null; this.stream = null;
     this.applications = 0; this.error = null; this.starting = false; this.runs = new Map(); this.canceling = false; this.ack = null; this.selection = new InspectionSelection(); this.changingRun = false; this.pendingClose = null;
+    this.recoveredControl = null; this.recovering = null;
   }
   async start(model, recordHistory = false, auto = true) {
     check(!this.starting && !this.changingRun, 'A run is already starting.');
@@ -217,17 +279,64 @@ export class RunSession {
       this.submission = clone(validateNotebook(model));
       this.status = 'starting'; this.error = null; this.notify();
       const response = await this.api('start', { ...clone(this.submission), record_history: recordHistory });
-      this.run = uint(response.run); this.ack = null;
-      this.stream = new OutputAssembler(response);
-      this.archive = null;
+      this.adoptStart({...this.submission, record_history:recordHistory}, response);
       await this.ensureArchive();
-      this.recordHistory = recordHistory; this.applications = 0; this.status = 'paused';
       if (auto) await this.resume();
     } catch (error) { this.fail(error); throw error; }
     finally { this.starting = false; this.notify(); }
   }
   async ensureArchive() {
     if (this.stream && this.archive === null) this.archive = await this.store.create(this.stream.tables, `Run ${this.run}`);
+  }
+  adoptStart(payload, response) {
+    const run = uint(response.run), stream = new OutputAssembler(response);
+    const submission = clone(validateNotebook({program:payload.program, query:payload.query}));
+    this.run = run; this.stream = stream; this.submission = submission;
+    this.ack = null; this.archive = null; this.pendingDelivery = null;
+    this.recordHistory = payload.record_history === true;
+    this.applications = 0; this.exhausted = false; this.status = 'paused';
+  }
+  settleControl() {
+    this.recovering ??= this.recoverControl().finally(() => { this.recovering = null; });
+    return this.recovering;
+  }
+  async recoverControl() {
+    // Let the metadata consumer adopt a successful response before recovering
+    // its interrupted capture. It shares the same single receipt authority.
+    if (this.selection.operation) await this.selection.operation.catch(() => {});
+    for (;;) {
+      this.recoveredControl ??= await this.api.recover?.() ?? null;
+      const recovered = this.recoveredControl;
+      if (!recovered) return;
+      const {route, payload, response} = recovered;
+      if (route === 'start') {
+        if (!recovered.adopted) {
+          this.adoptStart(payload, response);
+          recovered.adopted = true;
+        }
+        await this.ensureArchive();
+      } else if (route === 'snapshot') {
+        if (!recovered.adopted) {
+          await this.selection.releaseRetiring(this.api);
+          recovered.lease = {run:payload.run, snapshot:id(response.snapshot)};
+          this.selection.retiring = recovered.lease;
+          if (this.selection.pendingCapture?.run === payload.run) this.selection.pendingCapture = null;
+          recovered.adopted = true;
+        }
+        await liveRequest('snapshot_release', recovered.lease, this.api);
+        if (this.selection.retiring === recovered.lease) this.selection.retiring = null;
+      } else if (route === 'inspect') {
+        const target = {run:payload.run, inspection:id(response.inspection)};
+        while (!recovered.release) {
+          const canceled = await liveRequest('inspect_cancel', {...target, budget:2048}, this.api);
+          recovered.release = canceled.done === true;
+          if (!recovered.release) await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        await liveRequest('inspect_release', target, this.api);
+      } else check(route === 'step' || route === 'resume', 'Unknown recovered control command.');
+      // The response belongs to this session until adoption/cleanup succeeds.
+      this.recoveredControl = null;
+    }
   }
   async deliverPending(cancel = false) {
     if (!this.stream) return;
@@ -305,7 +414,8 @@ export class RunSession {
     this.changingRun = true; this.notify();
     try {
       await this.finishClose();
-      this.pause(); if (this.inFlight) await this.inFlight; await this.deliverPending(); this.rememberRun();
+      this.pause(); if (this.inFlight) await this.inFlight;
+      await this.settleControl(); await this.deliverPending(); this.rememberRun();
       check(this.runs.has(run), 'Unknown execution.');
       await this.selection.reset(this.api);
       Object.assign(this, this.runs.get(run)); this.running = false; this.error = null;
@@ -340,6 +450,7 @@ export class RunSession {
     try {
       this.pause();
       if (this.inFlight) await this.inFlight.catch(() => {});
+      await this.settleControl();
       if (this.run !== null) {
         const canceled = await this.api('cancel', { run: this.run });
         if (canceled.pending && canceled.pending.sequence !== this.ack) this.pendingDelivery ??= {response: canceled.pending, index: 0};
@@ -501,7 +612,7 @@ function mountNotebook() {
     $('pause').disabled = !session.running;
     $('resume').disabled = session.run === null || session.running || ['done', 'canceled'].includes(session.status) || session.starting;
     $('step').disabled = session.status === 'canceled' || session.starting || !!session.inFlight || busy || launching || inspecting;
-    $('cancel').disabled = session.run === null || session.starting;
+    $('cancel').disabled = (session.run === null && session.status !== 'error') || session.starting;
     $('inspect').disabled = (session.run === null && !inspectionPending) || session.starting || inspecting || launching;
     $('snapshot').disabled = !session.recordHistory || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
     if (session.error) message(session.error.message, true);
@@ -674,6 +785,12 @@ function mountNotebook() {
     await refreshSaved(); message(inspectionCanceled ? 'Inspection stopped; completed graphs are saved.' : 'Inspection saved.');
   }
 
+  async function finishInspection() {
+    check(!inspecting, 'Wait for the active inspection before changing executions.');
+    inspectionCanceled = true;
+    if (inspectionPending) await inspect();
+  }
+
   function renderInspectionControls() {
     const unavailable = session.starting || session.changingRun || inspectionSelection.resetting;
     $('snapshot').disabled = !session.recordHistory || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
@@ -732,7 +849,7 @@ function mountNotebook() {
   $('run').onclick = () => safe(async () => {
     check(!launching, 'A run is already starting.'); launching = true; renderRun();
     try {
-    await syncSource(); inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; resetResultPages();
+    await syncSource(); await finishInspection(); inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; resetResultPages();
     await session.start(model, $('history').checked); renderInspectionControls(); message('Running the submitted notebook.');
     } finally { launching = false; renderInspectionControls(); renderRun(); }
   });
@@ -750,16 +867,18 @@ function mountNotebook() {
   });
   $('execution').onchange = () => safe(async () => {
     if (!$('execution').value) return;
-    await session.switchRun(Number($('execution').value));
+    const run = Number($('execution').value);
+    await finishInspection();
+    await session.switchRun(run);
     inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0;
     answerNumber = null; resetResultPages(); renderResults();
     renderInspectionControls(); await refreshSaved();
   });
   $('release-run').onclick = () => safe(async () => {
-    await session.closeRun(); renderInspectionControls(); message('Execution released. Saved answers remain available.');
+    await finishInspection(); await session.closeRun(); renderInspectionControls(); message('Execution released. Saved answers remain available.');
   });
   $('pause').onclick = () => session.pause(); $('resume').onclick = () => safe(() => session.resume());
-  $('cancel').onclick = () => safe(async () => { inspectionCanceled = true; await session.cancel(); if (inspectionPending && !inspecting) await inspect(); }); $('inspect').onclick = () => safe(inspect);
+  $('cancel').onclick = () => safe(async () => { inspectionCanceled = true; await session.cancel(); if (!inspecting) await finishInspection(); }); $('inspect').onclick = () => safe(inspect);
   $('alternatives').onchange = () => { answerNumber = Number($('alternatives').value); resetResultPages(); renderResults(); };
   $('output-mode').onchange = () => safe(async () => { outputMode = $('output-mode').value; answerNumber = null; answerPage = 0; resetResultPages(); await refreshSaved(); });
   for (const [suffix, direction] of [['prev','prev'], ['next','next']]) $('collections-' + suffix).onclick = () => safe(async () => {

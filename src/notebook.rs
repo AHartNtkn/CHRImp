@@ -19,13 +19,14 @@ use std::time::Duration;
 
 const BODY_LIMIT: usize = 4 * 1024 * 1024;
 const BUDGET_LIMIT: usize = 4096;
+const MAX_SAFE_ID: u64 = 9_007_199_254_740_991;
 static NEXT_BOOT: AtomicU64 = AtomicU64::new(0);
 
 pub struct Runtime {
     boot: String,
     runs: Mutex<Runs>,
     batches: Mutex<BTreeMap<(u64, Option<u64>), Value>>,
-    captures: Mutex<BTreeMap<u64, (u64, ViewId)>>,
+    owners: Mutex<Owners>,
 }
 impl Default for Runtime {
     fn default() -> Self {
@@ -45,9 +46,83 @@ impl Default for Runtime {
             boot,
             runs: Mutex::default(),
             batches: Mutex::default(),
-            captures: Mutex::default(),
+            owners: Mutex::default(),
         }
     }
+}
+#[derive(Default)]
+struct Owners {
+    issued: u64,
+    admitted: u64,
+    entries: BTreeMap<u64, Arc<Mutex<Owner>>>,
+    runs: BTreeMap<u64, u64>,
+}
+#[derive(Default)]
+struct Owner {
+    retired: bool,
+    runs: usize,
+    receipt: Option<Receipt>,
+}
+struct Receipt {
+    command: u64,
+    path: String,
+    request: String,
+    response: Value,
+}
+impl Owner {
+    fn replay(&self, command: u64, path: &str, request: &str) -> Result<Option<Value>, Response> {
+        if let Some(receipt) = &self.receipt
+            && command == receipt.command
+            && path == receipt.path
+            && request == receipt.request
+        {
+            return Ok(Some(receipt.response.clone()));
+        }
+        let expected = self
+            .receipt
+            .as_ref()
+            .map_or(Some(1), |r| r.command.checked_add(1));
+        if expected != Some(command) {
+            return Err(Response {
+                status: 409,
+                body: json!({"code":"command_conflict", "error":"command is not the next command or an exact replay", "retry":false}),
+            });
+        }
+        Ok(None)
+    }
+    fn remember(&mut self, command: u64, path: &str, request: &str, response: &Value) {
+        self.receipt = Some(Receipt {
+            command,
+            path: path.into(),
+            request: request.into(),
+            response: response.clone(),
+        });
+    }
+}
+fn safe_id(value: u64, name: &str) -> Result<u64, Response> {
+    if value == 0 || value > MAX_SAFE_ID {
+        Err(Response::error(400, format!("invalid {name}")))
+    } else {
+        Ok(value)
+    }
+}
+fn control(path: &str) -> bool {
+    matches!(
+        path,
+        "/api/start" | "/api/inspect" | "/api/step" | "/api/resume" | "/api/snapshot"
+    )
+}
+fn unknown_owner() -> Response {
+    Response {
+        status: 409,
+        body: json!({"code":"unknown_owner", "error":"notebook owner is not attached or has retired", "retry":false}),
+    }
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OwnerRequest {
+    boot: String,
+    owner: Option<u64>,
 }
 #[derive(Default)]
 struct Runs {
@@ -84,6 +159,8 @@ struct Source {
 struct Model {
     #[serde(default)]
     boot: Option<String>,
+    owner: Option<u64>,
+    command: Option<u64>,
     program: Program,
     query: Body,
     #[serde(default)]
@@ -121,11 +198,11 @@ impl Id {
 #[serde(deny_unknown_fields)]
 struct RunRequest {
     boot: String,
+    owner: u64,
+    command: Option<u64>,
     run: u64,
     #[serde(default)]
     ack: Option<u64>,
-    #[serde(default)]
-    capture: Option<u64>,
     #[serde(default = "budget")]
     budget: usize,
     #[serde(default)]
@@ -216,6 +293,15 @@ impl Runtime {
         self.dispatch(path, body)
             .unwrap_or_else(|response| response)
     }
+    fn owner(&self, id: u64) -> Result<Arc<Mutex<Owner>>, Response> {
+        self.owners
+            .lock()
+            .unwrap()
+            .entries
+            .get(&id)
+            .cloned()
+            .ok_or_else(unknown_owner)
+    }
     fn validate_boot(&self, boot: &str) -> Result<(), Response> {
         if boot.len() != 32
             || !boot
@@ -244,6 +330,61 @@ impl Runtime {
                 }
                 return Ok(Response::ok(json!({"boot":self.boot})));
             }
+            "/api/reserve" | "/api/attach" | "/api/retire" => {
+                let request: OwnerRequest = decode(body)?;
+                self.validate_boot(&request.boot)?;
+                let mut owners = self.owners.lock().unwrap();
+                if path == "/api/reserve" {
+                    if request.owner.is_some() {
+                        return Err(Response::error(400, "reserve takes no owner"));
+                    }
+                    owners.issued = owners
+                        .issued
+                        .checked_add(1)
+                        .filter(|&n| n <= MAX_SAFE_ID)
+                        .ok_or_else(|| Response::error(503, "owner IDs exhausted"))?;
+                    return Ok(Response::ok(json!({"owner":owners.issued})));
+                }
+                let owner = safe_id(
+                    request
+                        .owner
+                        .ok_or_else(|| Response::error(400, "missing owner"))?,
+                    "owner",
+                )?;
+                if path == "/api/attach" {
+                    if let Some(entry) = owners.entries.get(&owner).cloned() {
+                        drop(owners);
+                        if entry.lock().unwrap().retired {
+                            return Err(unknown_owner());
+                        }
+                        return Ok(Response::ok(json!({})));
+                    }
+                    if owner <= owners.admitted || owner > owners.issued {
+                        return Err(unknown_owner());
+                    }
+                    owners.admitted = owner;
+                    owners
+                        .entries
+                        .insert(owner, Arc::new(Mutex::new(Owner::default())));
+                    return Ok(Response::ok(json!({})));
+                }
+                if let Some(entry) = owners.entries.get(&owner).cloned() {
+                    drop(owners);
+                    let mut entry = entry.lock().unwrap();
+                    if entry.runs != 0 {
+                        return Err(Response {
+                            status: 409,
+                            body: json!({"code":"owner_busy", "error":"close owned executions before retiring the notebook owner", "retry":false}),
+                        });
+                    }
+                    // Fence requests that obtained the Arc before registry removal.
+                    entry.retired = true;
+                    self.owners.lock().unwrap().entries.remove(&owner);
+                } else if owner > owners.admitted {
+                    return Err(unknown_owner());
+                }
+                return Ok(Response::ok(json!({"retired":true})));
+            }
             "/api/parse" => {
                 let input: Source = decode(body)?;
                 let program = parse_program(&input.program).map_err(|e| Response::error(400, e))?;
@@ -260,14 +401,37 @@ impl Runtime {
                             .ok_or_else(|| Response::error(400, "missing boot"))?,
                     )?;
                 }
-                validate_program(&input.program)
-                    .and_then(|()| validate_query(&input.query))
-                    .map_err(|e| Response::error(400, e))?;
                 if path == "/api/format" {
+                    validate_program(&input.program)
+                        .and_then(|()| validate_query(&input.query))
+                        .map_err(|e| Response::error(400, e))?;
                     return Ok(Response::ok(
                         json!({"program":format_program(&input.program), "query":format_query(&input.query)}),
                     ));
                 }
+                let owner = safe_id(
+                    input
+                        .owner
+                        .ok_or_else(|| Response::error(400, "missing owner"))?,
+                    "owner",
+                )?;
+                let command = safe_id(
+                    input
+                        .command
+                        .ok_or_else(|| Response::error(400, "missing command"))?,
+                    "command",
+                )?;
+                let entry = self.owner(owner)?;
+                let mut entry = entry.lock().unwrap();
+                if entry.retired {
+                    return Err(unknown_owner());
+                }
+                if let Some(response) = entry.replay(command, path, body)? {
+                    return Ok(Response::ok(response));
+                }
+                validate_program(&input.program)
+                    .and_then(|()| validate_query(&input.query))
+                    .map_err(|e| Response::error(400, e))?;
                 let code = Arc::new(
                     prepare(&input.program, &input.query).map_err(|e| Response::error(400, e))?,
                 );
@@ -279,9 +443,12 @@ impl Runtime {
                 runs.next += 1;
                 let run = runs.next;
                 runs.entries.insert(run, Arc::new(Mutex::new(engine)));
-                return Ok(Response::ok(
-                    json!({"run":run,"signatures":code.signatures,"variables":code.query_variables}),
-                ));
+                self.owners.lock().unwrap().runs.insert(run, owner);
+                entry.runs += 1;
+                drop(runs);
+                let response = json!({"run":run,"signatures":code.signatures,"variables":code.query_variables});
+                entry.remember(command, path, body, &response);
+                return Ok(Response::ok(response));
             }
             _ => {}
         }
@@ -289,6 +456,49 @@ impl Runtime {
         self.validate_boot(&request.boot)?;
         if request.budget > BUDGET_LIMIT {
             return Err(Response::error(400, "work budget exceeds 4096"));
+        }
+        let owner = safe_id(request.owner, "owner")?;
+        let command = if control(path) {
+            Some(safe_id(
+                request
+                    .command
+                    .ok_or_else(|| Response::error(400, "missing command"))?,
+                "command",
+            )?)
+        } else {
+            if request.command.is_some() {
+                return Err(Response::error(400, "this route takes no command"));
+            }
+            None
+        };
+        // Never hold the registry while waiting on an owner. Only this owner's
+        // commands are serialized across engine effects and receipt publication.
+        let entry = self.owner(owner)?;
+        let mut entry = entry.lock().unwrap();
+        if entry.retired {
+            return Err(unknown_owner());
+        }
+        if let Some(command) = command
+            && let Some(response) = entry.replay(command, path, body)?
+        {
+            return Ok(Response::ok(response));
+        }
+        let mapped = self.owners.lock().unwrap().runs.get(&request.run).copied();
+        match mapped {
+            Some(actual) if actual == owner => {}
+            Some(_) => {
+                return Err(Response {
+                    status: 403,
+                    body: json!({"code":"wrong_owner", "error":"execution belongs to another notebook owner", "retry":false}),
+                });
+            }
+            None => {
+                return if path == "/api/close" {
+                    Ok(Response::ok(json!({"closed":true})))
+                } else {
+                    Err(Response::error(404, "unknown run"))
+                };
+            }
         }
         let run = self.runs.lock().unwrap().entries.get(&request.run).cloned();
         let Some(run) = run else {
@@ -354,6 +564,7 @@ impl Runtime {
                 return Err(Response::error(400, "unknown acknowledgement"));
             }
         }
+        let raw_request = body;
         let mut body = match path {
             "/api/advance" => {
                 let mut events = vec![];
@@ -443,24 +654,7 @@ impl Runtime {
                 json!({})
             }
             "/api/snapshot" => {
-                let capture = request
-                    .capture
-                    .filter(|&id| id > 0 && id <= 9_007_199_254_740_991)
-                    .ok_or_else(|| Response::error(400, "missing or invalid capture request ID"))?;
-                let mut captures = self.captures.lock().unwrap();
-                if let Some(&(previous, snapshot)) = captures.get(&request.run) {
-                    if capture < previous {
-                        return Err(Response::error(
-                            409,
-                            "capture request is outside the retained replay window",
-                        ));
-                    }
-                    if capture == previous {
-                        return Ok(Response::ok(json!({"snapshot":snapshot.0.to_string()})));
-                    }
-                }
                 let snapshot = view_result(e.capture_snapshot())?;
-                captures.insert(request.run, (capture, snapshot));
                 json!({"snapshot":snapshot.0.to_string()})
             }
             "/api/snapshot_release" => {
@@ -569,6 +763,9 @@ impl Runtime {
             body["sequence"] = json!(sequence);
             self.batches.lock().unwrap().insert(key, body.clone());
         }
+        if let Some(command) = command {
+            entry.remember(command, path, raw_request, &body);
+        }
         Ok(Response::ok(body))
     }
     /// One run per maintenance turn, with a frozen admission boundary for fairness.
@@ -595,9 +792,29 @@ impl Runtime {
                 None
             }
         };
-        if let Some((id, run, closing)) = run
+        let Some((id, run, closing)) = run else {
+            return;
+        };
+        let owner = {
+            let owners = self.owners.lock().unwrap();
+            owners
+                .runs
+                .get(&id)
+                .and_then(|owner| owners.entries.get(owner))
+                .cloned()
+        };
+        let Some(owner) = owner else {
+            return;
+        };
+        if let Ok(mut owner) = owner.try_lock()
+            && !owner.retired
             && let Ok(mut e) = run.try_lock()
         {
+            // Another maintenance caller may have reclaimed the selected run
+            // between the registry lookup and this nonblocking owner lock.
+            if !self.owners.lock().unwrap().runs.contains_key(&id) {
+                return;
+            }
             match closing {
                 Some(false) => {
                     e.advance(512);
@@ -651,7 +868,13 @@ impl Runtime {
                             let mut runs = self.runs.lock().unwrap();
                             runs.entries.remove(&id);
                             runs.closing.remove(&id);
-                            self.captures.lock().unwrap().remove(&id);
+                            self.owners
+                                .lock()
+                                .unwrap()
+                                .runs
+                                .remove(&id)
+                                .expect("owned run");
+                            owner.runs -= 1;
                         }
                     }
                 }
@@ -863,4 +1086,211 @@ fn write_response(stream: &mut TcpStream, status: u16, mime: &str, body: &[u8]) 
         body.len()
     )?;
     stream.write_all(body)
+}
+
+#[cfg(test)]
+mod owner_tests {
+    use super::*;
+    fn attach(runtime: &Runtime) -> u64 {
+        let owner = runtime
+            .request("/api/reserve", &json!({"boot":runtime.boot}).to_string())
+            .body["owner"]
+            .as_u64()
+            .unwrap();
+        assert_eq!(
+            runtime
+                .request(
+                    "/api/attach",
+                    &json!({"boot":runtime.boot,"owner":owner}).to_string()
+                )
+                .status,
+            200
+        );
+        owner
+    }
+    fn start_body(runtime: &Runtime, owner: u64) -> String {
+        json!({"boot":runtime.boot,"owner":owner,"command":1,"program":{"rules":[]},"query":{"kind":"true"}}).to_string()
+    }
+    #[test]
+    fn independent_owners_and_reservation_do_not_wait_for_a_busy_owner() {
+        let runtime = Arc::new(Runtime::default());
+        let a = attach(&runtime);
+        let b = attach(&runtime);
+        let entry = runtime.owner(a).unwrap();
+        let guard = entry.lock().unwrap();
+        let (send, receive) = mpsc::channel();
+        let other = runtime.clone();
+        let worker = std::thread::spawn(move || {
+            let started = other.request("/api/start", &start_body(&other, b));
+            let reserved = other.request("/api/reserve", &json!({"boot":other.boot}).to_string());
+            other.tick();
+            send.send((started.status, reserved.status)).unwrap();
+        });
+        let completed = receive.recv_timeout(Duration::from_secs(2));
+        drop(guard);
+        worker.join().unwrap();
+        assert_eq!(completed.unwrap(), (200, 200));
+    }
+    #[test]
+    fn engine_entry_without_published_owner_mapping_is_never_executable() {
+        let runtime = Runtime::default();
+        let a = attach(&runtime);
+        let b = attach(&runtime);
+        let run = runtime.request("/api/start", &start_body(&runtime, b)).body["run"]
+            .as_u64()
+            .unwrap();
+        runtime.owners.lock().unwrap().runs.remove(&run);
+        // The engine entry is visible in the publication window, but not its owner mapping.
+        let request = json!({"boot":runtime.boot,"owner":a,"run":run}).to_string();
+        assert_eq!(runtime.request("/api/cancel", &request).status, 404);
+        assert_eq!(runtime.request("/api/close", &request).body["closed"], true);
+        assert!(
+            !runtime.runs.lock().unwrap().entries[&run]
+                .lock()
+                .unwrap()
+                .canceled()
+        );
+        runtime.owners.lock().unwrap().runs.insert(run, b);
+        assert_eq!(runtime.request("/api/cancel", &request).status, 403);
+    }
+    #[test]
+    fn receipts_and_reservation_storage_stay_bounded_and_do_not_pin_closed_runs() {
+        let runtime = Runtime::default();
+        let owner = attach(&runtime);
+        let run = runtime
+            .request("/api/start", &start_body(&runtime, owner))
+            .body["run"]
+            .clone();
+        for command in 2..=4096 {
+            let body =
+                json!({"boot":runtime.boot,"owner":owner,"run":run,"command":command}).to_string();
+            assert_eq!(runtime.request("/api/resume", &body).status, 200);
+            let entry = runtime.owner(owner).unwrap();
+            let entry = entry.lock().unwrap();
+            let receipt = entry.receipt.as_ref().unwrap();
+            assert_eq!(receipt.command, command);
+            assert_eq!(receipt.request, body);
+            assert_eq!(receipt.response, json!({}));
+        }
+        for _ in 0..4096 {
+            assert_eq!(
+                runtime
+                    .request("/api/reserve", &json!({"boot":runtime.boot}).to_string())
+                    .status,
+                200
+            );
+        }
+        assert_eq!(runtime.owners.lock().unwrap().entries.len(), 1);
+        let request = json!({"boot":runtime.boot,"owner":owner,"run":run}).to_string();
+        runtime.request("/api/close", &request);
+        for _ in 0..10000 {
+            runtime.tick();
+            if runtime.runs.lock().unwrap().entries.is_empty() {
+                break;
+            }
+        }
+        assert!(runtime.runs.lock().unwrap().entries.is_empty());
+        let retained = runtime.owner(owner).unwrap();
+        assert_eq!(retained.lock().unwrap().runs, 0);
+        let retire = json!({"boot":runtime.boot,"owner":owner}).to_string();
+        assert_eq!(runtime.request("/api/retire", &retire).status, 200);
+        assert!(retained.lock().unwrap().retired);
+        assert!(runtime.owners.lock().unwrap().entries.is_empty());
+        assert!(runtime.owners.lock().unwrap().runs.is_empty());
+        assert_eq!(
+            runtime
+                .request("/api/start", &start_body(&runtime, owner))
+                .status,
+            409
+        );
+    }
+    #[test]
+    fn retirement_and_start_are_fenced_under_the_same_owner_lock() {
+        for _ in 0..64 {
+            let runtime = Arc::new(Runtime::default());
+            let owner = attach(&runtime);
+            let gate = Arc::new(std::sync::Barrier::new(3));
+            let jobs: Vec<_> = [false, true]
+                .into_iter()
+                .map(|retire| {
+                    let runtime = runtime.clone();
+                    let gate = gate.clone();
+                    std::thread::spawn(move || {
+                        gate.wait();
+                        if retire {
+                            runtime
+                                .request(
+                                    "/api/retire",
+                                    &json!({"boot":runtime.boot,"owner":owner}).to_string(),
+                                )
+                                .status
+                        } else {
+                            runtime
+                                .request("/api/start", &start_body(&runtime, owner))
+                                .status
+                        }
+                    })
+                })
+                .collect();
+            gate.wait();
+            let results: Vec<_> = jobs.into_iter().map(|j| j.join().unwrap()).collect();
+            assert!(
+                results == [200, 409] || results == [409, 200],
+                "{results:?}"
+            );
+            let owners = runtime.owners.lock().unwrap();
+            assert_eq!(owners.runs.len(), usize::from(results[0] == 200));
+        }
+    }
+    #[test]
+    fn busy_control_does_not_consume_its_command_and_owner_ids_never_wrap() {
+        let runtime = Runtime::default();
+        let owner = attach(&runtime);
+        let run = runtime
+            .request("/api/start", &start_body(&runtime, owner))
+            .body["run"]
+            .as_u64()
+            .unwrap();
+        let engine = runtime.runs.lock().unwrap().entries[&run].clone();
+        {
+            let mut engine = engine.lock().unwrap();
+            engine.request_collection();
+            engine.advance(1);
+            assert!(engine.collecting());
+        }
+        let request = json!({"boot":runtime.boot,"owner":owner,"run":run,"command":2}).to_string();
+        let busy = runtime.request("/api/snapshot", &request);
+        assert_eq!(busy.status, 409);
+        assert_eq!(busy.body["retry"], true);
+        assert_eq!(
+            runtime
+                .owner(owner)
+                .unwrap()
+                .lock()
+                .unwrap()
+                .receipt
+                .as_ref()
+                .unwrap()
+                .command,
+            1
+        );
+        for _ in 0..1000 {
+            runtime.request(
+                "/api/maintenance",
+                &json!({"boot":runtime.boot,"owner":owner,"run":run,"budget":4096}).to_string(),
+            );
+            if !engine.lock().unwrap().collecting() {
+                break;
+            }
+        }
+        assert_eq!(runtime.request("/api/snapshot", &request).status, 200);
+        runtime.owners.lock().unwrap().issued = MAX_SAFE_ID;
+        assert_eq!(
+            runtime
+                .request("/api/reserve", &json!({"boot":runtime.boot}).to_string())
+                .status,
+            503
+        );
+        assert_eq!(runtime.owners.lock().unwrap().issued, MAX_SAFE_ID);
+    }
 }

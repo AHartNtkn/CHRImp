@@ -1,31 +1,86 @@
 use chr::notebook::Runtime;
 use serde_json::{Value, json};
+// Each fixture owns one attached notebook and admits commands only after success.
+struct Client {
+    runtime: Runtime,
+    owner: u64,
+    next: std::sync::atomic::AtomicU64,
+}
+impl Default for Client {
+    fn default() -> Self {
+        let runtime = Runtime::default();
+        let token = boot(&runtime);
+        let reserved = runtime.request("/api/reserve", &json!({"boot":token}).to_string());
+        assert_eq!(reserved.status, 200, "{:?}", reserved.body);
+        let owner = reserved.body["owner"].as_u64().unwrap();
+        assert_eq!(
+            runtime
+                .request(
+                    "/api/attach",
+                    &json!({"boot":token,"owner":owner}).to_string()
+                )
+                .status,
+            200
+        );
+        Self {
+            runtime,
+            owner,
+            next: std::sync::atomic::AtomicU64::new(1),
+        }
+    }
+}
+impl std::ops::Deref for Client {
+    type Target = Runtime;
+    fn deref(&self) -> &Runtime {
+        &self.runtime
+    }
+}
+fn command_body(client: &Client, path: &str, mut body: Value) -> Value {
+    if matches!(
+        path,
+        "/api/start" | "/api/inspect" | "/api/step" | "/api/resume" | "/api/snapshot"
+    ) && body.get("command").is_none()
+    {
+        body["command"] = json!(client.next.load(std::sync::atomic::Ordering::Relaxed));
+    }
+    body
+}
+fn admitted(client: &Client, body: &Value) {
+    if let Some(command) = body["command"].as_u64() {
+        client
+            .next
+            .fetch_max(command + 1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
 fn boot(runtime: &Runtime) -> Value {
     let response = runtime.request("/api/hello", "{}");
     assert_eq!(response.status, 200);
     response.body["boot"].clone()
 }
-fn execution_body(runtime: &Runtime, mut body: Value) -> String {
+fn execution_body(runtime: &Client, mut body: Value) -> String {
     body["boot"] = boot(runtime);
+    body["owner"] = json!(runtime.owner);
     body.to_string()
 }
-fn ok(runtime: &Runtime, path: &str, body: Value) -> Value {
+fn ok(runtime: &Client, path: &str, body: Value) -> Value {
+    let command = command_body(runtime, path, body);
     let body = if matches!(path, "/api/parse" | "/api/format" | "/api/hello") {
-        body.to_string()
+        command.to_string()
     } else {
-        execution_body(runtime, body)
+        execution_body(runtime, command.clone())
     };
     let response = runtime.request(path, &body);
     assert_eq!(response.status, 200, "{path}: {:?}", response.body);
+    admitted(runtime, &command);
     response.body
 }
-fn next(runtime: &Runtime, path: &str, mut body: Value, ack: &mut Option<u64>) -> Value {
+fn next(runtime: &Client, path: &str, mut body: Value, ack: &mut Option<u64>) -> Value {
     body["ack"] = json!(*ack);
     let batch = ok(runtime, path, body);
     *ack = Some(batch["sequence"].as_u64().unwrap());
     batch
 }
-fn start(runtime: &Runtime, program: &str, query: &str, history: bool) -> Value {
+fn start(runtime: &Client, program: &str, query: &str, history: bool) -> Value {
     let mut model = ok(
         runtime,
         "/api/parse",
@@ -36,10 +91,12 @@ fn start(runtime: &Runtime, program: &str, query: &str, history: bool) -> Value 
     model["record_history"] = json!(history);
     ok(runtime, "/api/start", model)
 }
-fn retry(runtime: &Runtime, path: &str, body: Value) -> Value {
+fn retry(runtime: &Client, path: &str, body: Value) -> Value {
+    let body = command_body(runtime, path, body);
     for _ in 0..1000 {
         let response = runtime.request(path, &execution_body(runtime, body.clone()));
         if response.status == 200 {
+            admitted(runtime, &body);
             return response.body;
         }
         assert_eq!(response.body["retry"], true, "{path}: {:?}", response.body);
@@ -53,7 +110,7 @@ fn retry(runtime: &Runtime, path: &str, body: Value) -> Value {
 }
 #[test]
 fn notebook_protocol_executes_and_replays_a_recorded_graph_in_bounded_batches() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     let metadata = start(&runtime, "edge(X,Y) ==> reverse(Y,X).", "edge(A,B)", true);
     assert_eq!(metadata["variables"], json!(["A", "B"]));
     let run = metadata["run"].clone();
@@ -124,7 +181,7 @@ fn notebook_protocol_executes_and_replays_a_recorded_graph_in_bounded_batches() 
 }
 #[test]
 fn step_stops_at_a_logical_application_and_cancel_progresses_without_client_polling() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     let run = start(&runtime, "p(X) <=> q(X). q(X) <=> p(X).", "p(A)", true)["run"].clone();
     retry(&runtime, "/api/step", json!({"run":run}));
     let mut ack = None;
@@ -179,7 +236,7 @@ fn step_stops_at_a_logical_application_and_cancel_progresses_without_client_poll
 }
 #[test]
 fn malformed_requests_are_rejected_before_creating_or_mutating_a_run() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     assert_eq!(runtime.request("/api/start", &execution_body(&runtime, json!({"program":{"rules":[]},"query":{"kind":"atom","atom":{"relation":"p","args":[42]}}}))).status,400);
     let deep = format!(
         r#"{{"boot":{},"program":{{"rules":[]}},"query":{}{{"kind":"true"}}{}}}"#,
@@ -203,7 +260,10 @@ fn malformed_requests_are_rejected_before_creating_or_mutating_a_run() {
         runtime
             .request(
                 "/api/inspect",
-                &execution_body(&runtime, json!({"run":run,"choices":{"-1":true}}))
+                &execution_body(
+                    &runtime,
+                    json!({"run":run,"command":2,"choices":{"-1":true}})
+                )
             )
             .status,
         400
@@ -272,7 +332,7 @@ fn loopback_http_serves_the_notebook_and_enforces_request_boundaries() {
     let hello: Value = serde_json::from_str(hello.split_once("\r\n\r\n").unwrap().1).unwrap();
     assert_ne!(
         hello["boot"],
-        boot(&Runtime::default()),
+        boot(&Client::default()),
         "separate server processes have separate incarnations"
     );
     let boot = hello["boot"].as_str().unwrap();
@@ -297,7 +357,7 @@ fn loopback_http_serves_the_notebook_and_enforces_request_boundaries() {
 
 #[test]
 fn releasing_a_recorded_execution_reclaims_its_run_without_losing_other_runs() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     let closing = start(&runtime, "p(X) <=> p(X).", "p(A)", true)["run"].clone();
     let kept = start(&runtime, "", "kept(X)", false)["run"].clone();
     let mut ack = None;
@@ -320,7 +380,7 @@ fn releasing_a_recorded_execution_reclaims_its_run_without_losing_other_runs() {
         runtime
             .request(
                 "/api/inspect",
-                &execution_body(&runtime, json!({"run":closing}))
+                &execution_body(&runtime, json!({"run":closing,"command":3}))
             )
             .status,
         409
@@ -354,7 +414,7 @@ fn releasing_a_recorded_execution_reclaims_its_run_without_losing_other_runs() {
 
 #[test]
 fn deep_containers_are_rejected_as_ids_without_recursive_buffering() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     for field in [
         "snapshot",
         "inspection",
@@ -376,7 +436,7 @@ fn deep_containers_are_rejected_as_ids_without_recursive_buffering() {
 }
 #[test]
 fn unacknowledged_output_batches_are_replayed_exactly_after_response_loss() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     let run = start(&runtime, "", "(p(A);p(A))", true)["run"].clone();
     let mut ack = None;
     let first = next(
@@ -448,7 +508,7 @@ fn unacknowledged_output_batches_are_replayed_exactly_after_response_loss() {
 
 #[test]
 fn releasing_inspection_zero_preserves_source_recovery() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     let run = start(&runtime, "", "p(A)", false)["run"].clone();
     let batch = ok(&runtime, "/api/advance", json!({"run":run,"budget":4096}));
     let inspection = retry(&runtime, "/api/inspect", json!({"run":run}))["inspection"].clone();
@@ -484,7 +544,7 @@ fn releasing_inspection_zero_preserves_source_recovery() {
 
 #[test]
 fn closing_discards_inspections_created_after_source_cancellation() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     let run = start(&runtime, "", "p(A)", true)["run"].clone();
     ok(&runtime, "/api/advance", json!({"run":run,"budget":4096}));
     let views = ok(&runtime, "/api/views", json!({"run":run}));
@@ -520,7 +580,7 @@ fn closing_discards_inspections_created_after_source_cancellation() {
 
 #[test]
 fn metadata_pages_round_trip_without_replaying_prefixes() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     let query = std::iter::repeat_n("(true;true)", 70)
         .collect::<Vec<_>>()
         .join(",");
@@ -570,7 +630,7 @@ fn metadata_pages_round_trip_without_replaying_prefixes() {
 
 #[test]
 fn logical_step_inspection_streams_the_pending_rhs_with_string_variable_ids() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     let run = start(&runtime, "p(X) <=> q(X). q(X) <=> r(X).", "p(A)", false)["run"].clone();
     retry(&runtime, "/api/step", json!({"run":run}));
     let mut ack = None;
@@ -632,13 +692,13 @@ fn logical_step_inspection_streams_the_pending_rhs_with_string_variable_ids() {
 
 #[test]
 fn snapshot_capture_and_release_replay_after_lost_responses() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     let run = start(&runtime, "", "true", false)["run"].as_u64().unwrap();
-    let first = ok(&runtime, "/api/snapshot", json!({"run":run,"capture":1}));
+    let first = ok(&runtime, "/api/snapshot", json!({"run":run,"command":2}));
     // The caller can discard any response and recover the same allocation.
     for _ in 0..8 {
         assert_eq!(
-            ok(&runtime, "/api/snapshot", json!({"run":run,"capture":1})),
+            ok(&runtime, "/api/snapshot", json!({"run":run,"command":2})),
             first
         );
     }
@@ -659,22 +719,22 @@ fn snapshot_capture_and_release_replay_after_lost_responses() {
     );
     // A released request remains replayable without allocating another view.
     assert_eq!(
-        ok(&runtime, "/api/snapshot", json!({"run":run,"capture":1})),
+        ok(&runtime, "/api/snapshot", json!({"run":run,"command":2})),
         first
     );
-    let second = retry(&runtime, "/api/snapshot", json!({"run":run,"capture":7}));
+    let second = retry(&runtime, "/api/snapshot", json!({"run":run,"command":3}));
     assert_ne!(first, second);
     let stale = runtime.request(
         "/api/snapshot",
-        &execution_body(&runtime, json!({"run":run,"capture":1})),
+        &execution_body(&runtime, json!({"run":run,"command":2})),
     );
     assert_eq!(stale.status, 409);
-    for capture in [json!(null), json!(0), json!(9_007_199_254_740_992_u64)] {
+    for command in [json!(null), json!(0), json!(9_007_199_254_740_992_u64)] {
         assert_eq!(
             runtime
                 .request(
                     "/api/snapshot",
-                    &execution_body(&runtime, json!({"run":run,"capture":capture}))
+                    &execution_body(&runtime, json!({"run":run,"command":command}))
                 )
                 .status,
             400
@@ -688,13 +748,13 @@ fn snapshot_capture_and_release_replay_after_lost_responses() {
 
 #[test]
 fn concurrent_capture_retries_allocate_one_snapshot_per_run() {
-    let runtime = std::sync::Arc::new(Runtime::default());
+    let runtime = std::sync::Arc::new(Client::default());
     let run = start(&runtime, "", "true", false)["run"].as_u64().unwrap();
     let threads: Vec<_> = (0..8)
         .map(|_| {
             let runtime = runtime.clone();
             std::thread::spawn(move || {
-                ok(&runtime, "/api/snapshot", json!({"run":run,"capture":17}))
+                ok(&runtime, "/api/snapshot", json!({"run":run,"command":2}))
             })
         })
         .collect();
@@ -709,7 +769,7 @@ fn concurrent_capture_retries_allocate_one_snapshot_per_run() {
     );
     let other = start(&runtime, "", "true", false)["run"].as_u64().unwrap();
     assert_ne!(
-        ok(&runtime, "/api/snapshot", json!({"run":other,"capture":17})),
+        ok(&runtime, "/api/snapshot", json!({"run":other})),
         responses[0]
     );
     ok(&runtime, "/api/close", json!({"run":run}));
@@ -727,7 +787,7 @@ fn concurrent_capture_retries_allocate_one_snapshot_per_run() {
         runtime
             .request(
                 "/api/snapshot",
-                &execution_body(&runtime, json!({"run":run,"capture":17}))
+                &execution_body(&runtime, json!({"run":run,"command":5}))
             )
             .status,
         404
@@ -740,7 +800,7 @@ fn concurrent_capture_retries_allocate_one_snapshot_per_run() {
 
 #[test]
 fn close_replay_after_reclamation_is_terminal_and_still_validates_requests() {
-    let runtime = Runtime::default();
+    let runtime = Client::default();
     let run = start(&runtime, "", "true", false)["run"].clone();
     ok(&runtime, "/api/close", json!({"run":run})); // The caller loses this accepted response.
     for _ in 0..10000 {
@@ -791,8 +851,8 @@ fn close_replay_after_reclamation_is_terminal_and_still_validates_requests() {
 
 #[test]
 fn server_incarnation_rejects_stale_execution_requests_before_lookup_or_mutation() {
-    let old = Runtime::default();
-    let current = Runtime::default();
+    let old = Client::default();
+    let current = Client::default();
     let old_boot = old.request("/api/hello", "{}").body["boot"].clone();
     let current_boot = current.request("/api/hello", "{}").body["boot"].clone();
     let token = current_boot.as_str().expect("hello returns boot");
@@ -830,7 +890,7 @@ fn server_incarnation_rejects_stale_execution_requests_before_lookup_or_mutation
         for run in [current_run.clone(), json!(999)] {
             let response = current.request(
                 &format!("/api/{route}"),
-                &json!({"boot":old_boot,"run":run}).to_string(),
+                &json!({"boot":old_boot,"owner":old.owner,"run":run}).to_string(),
             );
             assert_eq!(response.status, 409, "{route}: {:?}", response.body);
             assert_eq!(response.body["code"], "stale_boot");
@@ -893,5 +953,280 @@ fn server_incarnation_rejects_stale_execution_requests_before_lookup_or_mutation
     assert_eq!(
         current.request("/api/format", &model.to_string()).status,
         200
+    );
+}
+
+#[test]
+fn owner_reservations_and_control_replay_are_admitted_once() {
+    let runtime = Runtime::default();
+    let boot = boot(&runtime);
+    let reserved = runtime.request("/api/reserve", &json!({"boot":boot}).to_string());
+    assert_eq!(reserved.status, 200, "{:?}", reserved.body);
+    let owner = reserved.body["owner"].clone();
+    assert_eq!(owner, 1);
+    let attach = json!({"boot":boot,"owner":owner}).to_string();
+    assert_eq!(runtime.request("/api/attach", &attach).status, 200);
+    let body = json!({"boot":boot,"owner":owner,"command":1,"program":{"rules":[]},"query":{"kind":"true"}}).to_string();
+    let first = runtime.request("/api/start", &body);
+    assert_eq!(first.status, 200);
+    assert_eq!(runtime.request("/api/start", &body).body, first.body);
+    assert_eq!(
+        runtime.request("/api/start", &(body.clone() + " ")).status,
+        409
+    );
+    assert_eq!(runtime.request("/api/retire", &attach).status, 409);
+}
+
+#[test]
+fn lost_control_responses_replay_without_new_inspections_or_step_controllers() {
+    let runtime = Client::default();
+    let run = start(&runtime, "p() <=> p().", "p()", false)["run"].clone();
+    let inspect = execution_body(&runtime, json!({"run":run,"command":2}));
+    let first = runtime.request("/api/inspect", &inspect);
+    assert_eq!(first.status, 200);
+    for _ in 0..8 {
+        assert_eq!(runtime.request("/api/inspect", &inspect).body, first.body);
+    }
+    assert_eq!(
+        ok(&runtime, "/api/status", json!({"run":run}))["memory"]["inspections"],
+        1
+    );
+    assert_eq!(
+        runtime.request("/api/step", &inspect).status,
+        409,
+        "route is part of request identity"
+    );
+    let step = execution_body(&runtime, json!({"run":run,"command":3}));
+    let first_step = runtime.request("/api/step", &step);
+    assert_eq!(first_step.status, 200);
+    assert_eq!(runtime.request("/api/step", &step).body, first_step.body);
+    let skipped = execution_body(&runtime, json!({"run":run,"command":5}));
+    assert_eq!(runtime.request("/api/resume", &skipped).status, 409);
+    let mut ack = None;
+    let mut done = false;
+    for _ in 0..1000 {
+        let batch = next(
+            &runtime,
+            "/api/advance",
+            json!({"run":run,"budget":4096}),
+            &mut ack,
+        );
+        if batch["step"]["done"] == true {
+            done = true;
+            break;
+        }
+    }
+    assert!(done);
+    let before = ok(&runtime, "/api/status", json!({"run":run}));
+    assert_eq!(runtime.request("/api/step", &step).body, first_step.body);
+    let batch = next(
+        &runtime,
+        "/api/advance",
+        json!({"run":run,"budget":4096}),
+        &mut ack,
+    );
+    assert_eq!(batch["step"]["done"], true);
+    assert_eq!(
+        batch["applications"], before["applications"],
+        "replay did not replace completed step"
+    );
+    let resume = execution_body(&runtime, json!({"run":run,"command":4}));
+    let first_resume = runtime.request("/api/resume", &resume);
+    assert_eq!(first_resume.status, 200);
+    assert_eq!(
+        runtime.request("/api/resume", &resume).body,
+        first_resume.body
+    );
+    assert_eq!(
+        runtime.request("/api/step", &step).status,
+        409,
+        "older receipt no longer replayable"
+    );
+}
+
+#[test]
+fn owner_retirement_fences_reservations_and_cross_owner_execution() {
+    let runtime = Client::default();
+    let run = start(&runtime, "", "true", false)["run"].clone();
+    let token = boot(&runtime);
+    let reserved = |runtime: &Runtime| {
+        runtime
+            .request("/api/reserve", &json!({"boot":token}).to_string())
+            .body["owner"]
+            .clone()
+    };
+    let skipped = reserved(&runtime);
+    let other = reserved(&runtime);
+    let owner_body = |owner: &Value| json!({"boot":token,"owner":owner}).to_string();
+    assert_eq!(
+        runtime.request("/api/attach", &owner_body(&other)).status,
+        200
+    );
+    assert_eq!(
+        runtime.request("/api/attach", &owner_body(&skipped)).status,
+        409
+    );
+    for future in [json!(other.as_u64().unwrap() + 1), json!(999)] {
+        assert_eq!(
+            runtime.request("/api/attach", &owner_body(&future)).status,
+            409
+        );
+        assert_eq!(
+            runtime.request("/api/retire", &owner_body(&future)).status,
+            409
+        );
+    }
+    let before = ok(&runtime, "/api/status", json!({"run":run}));
+    for route in [
+        "cancel",
+        "close",
+        "advance",
+        "inspect",
+        "step",
+        "resume",
+        "snapshot",
+        "status",
+        "maintenance",
+        "views",
+        "snapshot_release",
+        "inspect_release",
+        "inspect_advance",
+        "inspect_cancel",
+    ] {
+        let mut body = json!({"boot":token,"owner":other,"run":run});
+        if matches!(route, "inspect" | "step" | "resume" | "snapshot") {
+            body["command"] = json!(1);
+        }
+        assert_eq!(
+            runtime
+                .request(&format!("/api/{route}"), &body.to_string())
+                .status,
+            403,
+            "{route}"
+        );
+    }
+    assert_eq!(ok(&runtime, "/api/status", json!({"run":run})), before);
+    assert_eq!(
+        runtime
+            .request("/api/retire", &owner_body(&json!(runtime.owner)))
+            .status,
+        409
+    );
+    ok(&runtime, "/api/close", json!({"run":run}));
+    for _ in 0..10000 {
+        runtime.tick();
+        if runtime
+            .request("/api/status", &execution_body(&runtime, json!({"run":run})))
+            .status
+            == 404
+        {
+            break;
+        }
+    }
+    for _ in 0..3 {
+        assert_eq!(
+            runtime
+                .request("/api/retire", &owner_body(&json!(runtime.owner)))
+                .body["retired"],
+            true
+        );
+    }
+    assert_eq!(
+        runtime
+            .request("/api/attach", &owner_body(&json!(runtime.owner)))
+            .status,
+        409
+    );
+    let stale_start = execution_body(
+        &runtime,
+        json!({"command":1,"program":{"rules":[]},"query":{"kind":"true"}}),
+    );
+    assert_eq!(runtime.request("/api/start", &stale_start).status, 409);
+    assert_eq!(
+        runtime.request("/api/attach", &owner_body(&other)).status,
+        200,
+        "empty owners are not automatically retired"
+    );
+    let invalid = runtime.request("/api/start", &json!({"boot":token,"owner":other,"command":1,"program":{"rules":[]},"query":{"kind":"atom","atom":{"relation":"Bad","args":[]}}}).to_string());
+    assert_eq!(invalid.status, 400);
+    let valid = runtime.request("/api/start", &json!({"boot":token,"owner":other,"command":1,"program":{"rules":[]},"query":{"kind":"true"}}).to_string());
+    assert_eq!(
+        valid.status, 200,
+        "failed admission did not consume command"
+    );
+}
+
+#[test]
+fn owner_requests_validate_boot_and_safe_ids_before_admission() {
+    let runtime = Client::default();
+    let stale = boot(&Runtime::default());
+    for route in ["reserve", "attach", "retire"] {
+        let mut body = json!({"boot":stale});
+        if route != "reserve" {
+            body["owner"] = json!(runtime.owner);
+        }
+        let result = runtime.request(&format!("/api/{route}"), &body.to_string());
+        assert_eq!(result.status, 409);
+        assert_eq!(result.body["code"], "stale_boot");
+    }
+    for owner in [
+        json!(0),
+        json!(9_007_199_254_740_992u64),
+        json!("1"),
+        json!(null),
+    ] {
+        for route in ["attach", "retire"] {
+            assert_eq!(
+                runtime
+                    .request(
+                        &format!("/api/{route}"),
+                        &json!({"boot":boot(&runtime),"owner":owner}).to_string()
+                    )
+                    .status,
+                400
+            );
+        }
+    }
+    let run = start(&runtime, "", "true", false)["run"].clone();
+    for command in [
+        json!(0),
+        json!(9_007_199_254_740_992u64),
+        json!("2"),
+        json!(null),
+    ] {
+        assert_eq!(
+            runtime
+                .request(
+                    "/api/resume",
+                    &execution_body(&runtime, json!({"run":run,"command":command}))
+                )
+                .status,
+            400
+        );
+    }
+    assert_eq!(
+        runtime
+            .request(
+                "/api/status",
+                &execution_body(&runtime, json!({"run":run,"command":2}))
+            )
+            .status,
+        400
+    );
+    assert_eq!(
+        runtime
+            .request(
+                "/api/snapshot",
+                &execution_body(&runtime, json!({"run":run,"capture":2}))
+            )
+            .status,
+        400
+    );
+    assert_eq!(
+        runtime
+            .request("/api/reserve", &json!({"boot":boot(&runtime)}).to_string())
+            .body["owner"],
+        2,
+        "stale reservation did not advance issuance"
     );
 }

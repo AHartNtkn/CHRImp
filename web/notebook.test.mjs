@@ -21,6 +21,7 @@ await runTest('transport pins execution requests to one server incarnation', asy
       return {ok:true, status:200, text:async () => '{}'};
     }
     if (body.boot !== boot) return {ok:false, status:409, text:async () => JSON.stringify({error:'Server restarted; execution is unavailable.'})};
+    if (url === '/api/reserve') return {ok:true, status:200, text:async () => JSON.stringify({owner:1})};
     if (url === '/api/start') starts++;
     return {ok:true, status:200, text:async () => JSON.stringify({run:1})};
   };
@@ -38,6 +39,194 @@ await runTest('transport pins execution requests to one server incarnation', asy
     }
     assert.equal(starts, 1);
   } finally { globalThis.fetch = originalFetch; }
+});
+
+await runTest('control retries preserve exact commands and serialize accepted effects', async () => {
+  const api = (await import('./notebook.mjs?control-replay')).request;
+  const originalFetch = globalThis.fetch;
+  const boot = 'd'.repeat(32);
+  let reservations = 0, attachments = 0, loseAttach = true, loseReply = false, receipt = null;
+  const applied = [], bodies = [];
+  globalThis.fetch = async (url, options) => {
+    const route = url.slice('/api/'.length), body = JSON.parse(options.body);
+    const reply = (data, status = 200) => ({ok:status === 200, status, text:async () => JSON.stringify(data)});
+    if (route === 'hello') return reply({boot});
+    assert.equal(body.boot, boot);
+    if (route === 'reserve') return reply({owner:++reservations});
+    assert.equal(body.owner, 1);
+    if (route === 'attach') {
+      attachments++;
+      if (loseAttach) { loseAttach = false; throw new Error('attach response lost'); }
+      return reply({});
+    }
+    if (route === 'maintenance') return reply({});
+    bodies.push(options.body);
+    if (body.invalid) return reply({error:'invalid command'}, 400);
+    if (receipt?.command === body.command) assert.equal(receipt.body, options.body, 'replay bytes are unchanged');
+    else {
+      assert.equal(body.command, (receipt?.command ?? 0) + 1);
+      applied.push(route);
+      receipt = {command:body.command, body:options.body, response:{run:1, inspection:'2'}};
+    }
+    if (loseReply) { loseReply = false; throw new Error('command response lost'); }
+    return reply(receipt.response);
+  };
+  try {
+    await assert.rejects(api('start', {}), /attach response lost/);
+    for (const route of ['start', 'inspect', 'step', 'resume', 'snapshot']) {
+      loseReply = true;
+      await assert.rejects(api(route, {run:1}), /command response lost/);
+      const accepted = applied.length, calls = bodies.length;
+      await assert.rejects(api(route, {run:2}), /Recover the interrupted command/);
+      assert.equal(bodies.length, calls, 'another command cannot overwrite unresolved delivery');
+      await api('maintenance', {run:1});
+      await api(route, {run:1});
+      assert.equal(applied.length, accepted, 'retry cannot apply a second effect');
+    }
+    assert.equal(reservations, 1, 'lost attach keeps its reserved identity');
+    assert.equal(attachments, 2);
+    await assert.rejects(api('step', {invalid:true}), /invalid command/);
+    await Promise.all([api('step', {run:1}), api('resume', {run:1})]);
+    assert.deepEqual(applied, ['start', 'inspect', 'step', 'resume', 'snapshot', 'step', 'resume']);
+    assert.equal(receipt.command, 7);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+// Exercise the production receipt authority with transport failures after effects.
+async function controlSession(name, body) {
+  const api = (await import(`./notebook.mjs?lifecycle-${name}`)).request;
+  const originalFetch = globalThis.fetch, calls = [], runs = new Map(), jobs = new Map(), snapshots = new Map();
+  const losses = new Set(), effects = [], archives = [];
+  let receipt = null, nextRun = 0, nextView = 0, applications = 0, failCreate = false;
+  const model = {program:{rules:[]}, query:{kind:'true'}};
+  globalThis.fetch = async (url, options) => {
+    const route = url.slice('/api/'.length), payload = JSON.parse(options.body);
+    calls.push({route, payload, body:options.body});
+    let response = {};
+    if (route === 'hello') response = {boot:'e'.repeat(32)};
+    else if (route === 'reserve') response = {owner:1};
+    else if (payload.command !== undefined) {
+      if (receipt?.command === payload.command) {
+        assert.equal(receipt.route, route); assert.equal(receipt.body, options.body);
+        response = receipt.response;
+      } else {
+        assert.equal(payload.command, (receipt?.command ?? 0) + 1);
+        effects.push(route);
+        if (route === 'start') { runs.set(++nextRun, {canceled:false}); response = {run:nextRun, signatures:[], variables:[]}; }
+        else if (route === 'inspect') { jobs.set(String(++nextView), payload.run); response = {inspection:String(nextView)}; }
+        else if (route === 'snapshot') { snapshots.set(String(++nextView), payload.run); response = {snapshot:String(nextView)}; }
+        else if (route === 'step') { applications++; response = {step:{done:false}}; }
+        else assert.equal(route, 'resume');
+        receipt = {route, command:payload.command, body:options.body, response};
+      }
+    } else if (route === 'cancel') { runs.get(payload.run).canceled = true; }
+    else if (route === 'close') runs.delete(payload.run);
+    else if (route === 'inspect_cancel') { assert.equal(jobs.get(payload.inspection), payload.run); response = {done:true}; }
+    else if (route === 'inspect_release') jobs.delete(payload.inspection);
+    else if (route === 'snapshot_release') snapshots.delete(payload.snapshot);
+    else if (route === 'views') response = {choices:[], snapshots:[...snapshots.keys()].map(id => ({id,label:id}))};
+    else if (route === 'advance') response = {events:[], applications, step:{done:true}, delivery_done:false};
+    else assert.ok(['attach','maintenance'].includes(route), route);
+    if (losses.delete(route)) throw new Error(`Lost ${route} response`);
+    return {ok:true, status:200, text:async () => JSON.stringify(response)};
+  };
+  const store = {
+    async create(tables, label) { if (failCreate) { failCreate = false; throw new Error('Archive unavailable'); } archives.push({tables, label}); return archives.length; },
+    async flush() {}, async discardPartial() {},
+  };
+  const session = new RunSession(api, () => {}, store);
+  try { await body({api, session, model, calls, runs, jobs, snapshots, effects, archives, lose:route => losses.add(route), failArchive:() => { failCreate = true; }}); }
+  finally { session.pause(); globalThis.fetch = originalFetch; }
+}
+
+await runTest('lost step can close then start while ordinary retry commits once', async () => {
+  await controlSession('step-close', async ({session, model, lose, effects, runs}) => {
+    await session.start(model, false, false);
+    lose('step'); await assert.rejects(session.step(), /Lost step/);
+    await session.closeRun();
+    await session.start(model, false, false);
+    assert.equal(session.run, 2); assert.equal(runs.has(1), false);
+    assert.equal(effects.filter(route => route === 'step').length, 1);
+  });
+  await controlSession('step-retry', async ({session, model, lose, effects}) => {
+    await session.start(model, false, false);
+    lose('step'); await assert.rejects(session.step(), /Lost step/);
+    const result = await session.step();
+    assert.equal(result.applications, 1);
+    assert.equal(effects.filter(route => route === 'step').length, 1);
+  });
+});
+
+await runTest('lost start is adopted through archive failure before cancellation and replacement', async () => {
+  await controlSession('start-cancel', async ({session, model, lose, failArchive, effects, runs, archives}) => {
+    lose('start'); await assert.rejects(session.start(model, true, false), /Lost start/);
+    failArchive(); await assert.rejects(session.cancel(), /Archive unavailable/);
+    assert.equal(session.recoveredControl.route, 'start'); assert.equal(session.run, 1);
+    await session.cancel();
+    assert.equal(runs.get(1).canceled, true); assert.equal(session.recordHistory, true);
+    assert.deepEqual(session.submission, model); assert.equal(archives.length, 1);
+    assert.equal(session.recoveredControl, null);
+    await session.start({program:{rules:[]}, query:{kind:'fail'}}, false, false);
+    assert.equal(session.run, 2); assert.equal(session.runs.get(1).archive, 1);
+    assert.equal(effects.filter(route => route === 'start').length, 2);
+  });
+});
+
+await runTest('switch recovers an interrupted start without losing either execution', async () => {
+  await controlSession('start-switch', async ({session, model, lose, runs, effects, archives}) => {
+    await session.start(model, false, false);
+    lose('start'); await assert.rejects(session.start(model, true, false), /Lost start/);
+    // Recovery itself can lose the replay response; the original receipt stays authoritative.
+    lose('start'); await assert.rejects(session.switchRun(1), /Lost start/);
+    assert.equal(archives.length, 1);
+    await session.switchRun(1);
+    assert.equal(session.run, 1); assert.equal(session.status, 'canceled');
+    assert.equal(session.runs.get(2).recordHistory, true);
+    assert.equal(session.runs.get(2).archive, 2); assert.equal(runs.size, 2);
+    assert.equal(effects.filter(route => route === 'start').length, 2);
+    await session.switchRun(2);
+    lose('resume'); await assert.rejects(session.resume(), /Lost resume/);
+    await session.switchRun(1);
+    await session.closeRun(); await session.start(model, false, false);
+    assert.equal(session.run, 3);
+    assert.equal(effects.filter(route => route === 'resume').length, 1);
+  });
+});
+
+await runTest('lost inspection creation retains cleanup phase across cancel and release losses', async () => {
+  await controlSession('inspect-cleanup', async ({api, session, model, lose, jobs, effects, calls}) => {
+    await session.start(model, false, false);
+    lose('inspect'); await assert.rejects(api('inspect', {run:1,choices:{}}), /Lost inspect/);
+    lose('inspect_cancel'); await assert.rejects(session.cancel(), /Lost inspect_cancel/);
+    assert.equal(session.recoveredControl.route, 'inspect'); assert.equal(jobs.size, 1);
+    lose('inspect_release'); await assert.rejects(session.cancel(), /Lost inspect_release/);
+    assert.equal(jobs.size, 0); assert.equal(session.recoveredControl.route, 'inspect');
+    const cancels = calls.filter(call => call.route === 'inspect_cancel').length;
+    await session.closeRun();
+    assert.equal(calls.filter(call => call.route === 'inspect_cancel').length, cancels);
+    assert.equal(session.recoveredControl, null); assert.equal(session.run, null);
+    await session.start(model, false, false);
+    assert.equal(effects.filter(route => route === 'inspect').length, 1);
+  });
+});
+
+await runTest('lost metadata capture retires only its recovered lease and survives release loss', async () => {
+  await controlSession('snapshot-cleanup', async ({api, session, model, lose, snapshots, effects}) => {
+    await session.start(model, false, false);
+    await session.selection.page(api, 1);
+    const previous = session.selection.lease;
+    lose('snapshot'); await assert.rejects(session.selection.page(api, 1), /Lost snapshot/);
+    assert.equal(snapshots.size, 2);
+    lose('snapshot_release'); await assert.rejects(session.cancel(), /Lost snapshot_release/);
+    assert.equal(session.recoveredControl.route, 'snapshot');
+    assert.deepEqual(session.selection.lease, previous);
+    assert.equal(session.selection.pendingCapture, null);
+    await session.cancel();
+    assert.deepEqual([...snapshots.keys()], [previous.snapshot]);
+    assert.equal(session.selection.retiring, null); assert.equal(session.recoveredControl, null);
+    await session.closeRun(); assert.equal(snapshots.size, 0);
+    assert.equal(effects.filter(route => route === 'snapshot').length, 2);
+  });
 });
 
 await runTest('notebook persistence and production UI', async t => {
@@ -530,35 +719,44 @@ console.log('Metadata snapshot ownership, cofactor-safe selections, page failure
 
 // Capture replay recovers ownership when the server mutates before transport fails.
 const replaySelection = new InspectionSelection();
-const captureCache = new Map(), replayHeld = new Map(), replayCalls = [];
+const replayHeld = new Map(), replayCalls = [];
+let controlReceipt = null;
 let replayId = 20000, loseCapture = false, loseRelease = false;
-const replayApi = async (route, payload) => {
+const replayFetch = globalThis.fetch;
+const replayApi = (await import('./notebook.mjs?capture-replay')).request;
+globalThis.fetch = async (url, options) => {
+  const route = url.slice('/api/'.length), payload = JSON.parse(options.body);
+  const reply = data => ({ok:true, status:200, text:async () => JSON.stringify(data)});
+  if (route === 'hello') return reply({boot:'c'.repeat(32)});
+  if (route === 'reserve') return reply({owner:1});
+  if (route === 'attach') return reply({});
   replayCalls.push([route, {...payload}]);
   if (route === 'snapshot') {
-    assert.ok(Number.isSafeInteger(payload.capture) && payload.capture > 0);
-    let cached = captureCache.get(payload.run);
-    if (!cached || payload.capture > cached.capture) {
-      cached = {capture:payload.capture, snapshot:String(++replayId)};
-      captureCache.set(payload.run, cached);
-      replayHeld.set(cached.snapshot, payload.run);
-    } else assert.equal(payload.capture, cached.capture, 'Older capture rejected');
+    assert.ok(Number.isSafeInteger(payload.command) && payload.command > 0);
+    if (controlReceipt?.command === payload.command) assert.equal(controlReceipt.body, options.body);
+    else {
+      assert.equal(payload.command, (controlReceipt?.command ?? 0) + 1);
+      controlReceipt = {command:payload.command, body:options.body, snapshot:String(++replayId)};
+      replayHeld.set(controlReceipt.snapshot, payload.run);
+    }
     if (loseCapture) { loseCapture = false; throw new Error('Capture response lost'); }
-    return {snapshot:cached.snapshot};
+    return reply({snapshot:controlReceipt.snapshot});
   }
   if (route === 'snapshot_release') {
     if (replayHeld.has(payload.snapshot)) assert.equal(replayHeld.get(payload.snapshot), payload.run);
     replayHeld.delete(payload.snapshot);
     if (loseRelease) { loseRelease = false; throw new Error('Release response lost'); }
-    return {};
+    return reply({});
   }
   assert.equal(route, 'views');
   assert.equal(replayHeld.get(payload.snapshot), payload.run);
-  return {choices:[{id:'8',label:'Choice 8'}], snapshots:[...replayHeld.keys()].map(id => ({id,label:'Owned'}))};
+  return reply({choices:[{id:'8',label:'Choice 8'}], snapshots:[...replayHeld.keys()].map(id => ({id,label:'Owned'}))});
 };
+try {
 loseCapture = true;
 await assert.rejects(replaySelection.page(replayApi, 1), /Capture response lost/);
 assert.equal(replayHeld.size, 1);
-assert.deepEqual(replaySelection.pendingCapture, {run:1,capture:1});
+assert.deepEqual(replaySelection.pendingCapture, {run:1});
 await replaySelection.page(replayApi, 1);
 assert.equal(replayHeld.size, 1);
 assert.equal(replayId, 20001, 'Replay must not allocate another snapshot');
@@ -587,7 +785,7 @@ assert.equal(replayHeld.size, 0);
 assert.equal(replaySelection.retiring, null);
 assert.equal(replaySelection.lease, null);
 await replaySelection.page(replayApi, 2);
-assert.equal(captureCache.get(2).capture, 3, 'Capture sequence spans runs');
+assert.equal(controlReceipt.command, 3, 'Control sequence spans runs');
 const heldSecondRun = replaySelection.lease.snapshot;
 loseRelease = true;
 await assert.rejects(replaySelection.reset(replayApi), /Release response lost/);
@@ -596,11 +794,12 @@ assert.equal(replayHeld.size, 0);
 await replaySelection.reset(replayApi);
 assert.equal(replaySelection.lease, null);
 await replaySelection.page(replayApi, 1);
-assert.equal(captureCache.get(1).capture, 4, 'Returning to a run uses a newer token');
+assert.equal(controlReceipt.command, 4, 'Returning to a run uses a newer token');
 await replaySelection.reset(replayApi);
 assert.equal(replayHeld.size, 0);
-assert.deepEqual(replayCalls.filter(([route]) => route === 'snapshot').map(([,p]) => [p.run,p.capture]), [[1,1],[1,1],[1,2],[1,2],[1,2],[2,3],[1,4]]);
-console.log('Lost capture/release response replay preserves bounded snapshot ownership across pages, resets and runs.');
+assert.deepEqual(replayCalls.filter(([route]) => route === 'snapshot').map(([,p]) => [p.run,p.command]), [[1,1],[1,1],[1,2],[1,2],[1,2],[2,3],[1,4]]);
+} finally { globalThis.fetch = replayFetch; }
+console.log('Control replay preserves snapshot ownership across pages, resets and runs.');
 
 // A single large answer crosses bounded commits; storage failure pauses midway.
 const wideEvents = answer(70).slice(0, 3);
@@ -752,6 +951,24 @@ function productionSection(start, end) {
   assert.ok(first >= 0 && last > first, `Production section ${start} is available`);
   return notebookSource.slice(first, last);
 }
+await test('Cancel remains available to recover a lost first Start response', async () => {
+  await controlSession('cancel-button', async ({session, model, lose, runs}) => {
+    lose('start'); await assert.rejects(session.start(model, false, false), /Lost start/);
+    const elements = new Map();
+    const $ = name => { if (!elements.has(name)) elements.set(name, {replaceChildren() {}}); return elements.get(name); };
+    const context = createContext({$, session, check:assert.ok, el:() => ({}), inspecting:false, launching:false, busy:false,
+      inspectionPending:null, inspectionSelection:session.selection, inspectionCanceled:false,
+      message() {}, renderResults() {}, refreshSaved() {}, safe:action => action(), inspect() {},
+    });
+    runInContext(productionSection('  function renderRun()', '  function refreshSaved()')
+      + productionSection('  async function finishInspection()', '  function renderInspectionControls()')
+      + productionSection("  $('pause').onclick", "  $('alternatives').onchange"), context);
+    context.renderRun();
+    assert.equal($('cancel').disabled, false);
+    await $('cancel').onclick();
+    assert.equal(runs.get(1).canceled, true); assert.equal(session.status, 'canceled');
+  });
+});
 function renderingHarness() {
   const elements = new Map(), reads = [], paints = [], errors = [], tasks = [];
   const element = () => ({disabled:false, value:'', children:[],
@@ -766,7 +983,7 @@ function renderingHarness() {
     store:{scene(collection, number, options) { return new Promise(resolve => reads.push({collection,number,options,resolve})); }},
     renderScene(svg, scene) { paints.push(svg); return scene; },
     session:{stream:null, archive:'first', async switchRun(run) { assert.equal(run, 2); }},
-    renderInspectionControls() {}, async refreshSaved() {},
+    renderInspectionControls() {}, async refreshSaved() {}, async finishInspection() {},
     savedView:{id:'first',total:1,answers:[{number:1,completion:'1',alternative:'0'}]},
     savedSelection:'', inspected:null, outputMode:'answers', answerNumber:1, answerPage:0,
     page:0, portPage:0, resultPage:1, resultPortPage:1, bindingPage:1,
@@ -952,12 +1169,58 @@ for (const active of [false, true]) await test(`Cancel resumes only a quiescent 
   const context = createContext({$:id => {
     if (!controls.has(id)) controls.set(id, {});
     return controls.get(id);
-  }, safe:action => action(), inspectionCanceled:false, inspecting:active, inspectionPending:{},
+  }, safe:action => action(), check:assert.ok, inspectionCanceled:false, inspecting:active, inspectionPending:{},
   session:{async cancel() { calls.push('cancel'); }}, async inspect() { calls.push('inspect'); }});
-  runInContext(productionSection("  $('cancel').onclick", "  $('alternatives').onchange"), context);
+  runInContext(productionSection('  async function finishInspection()', '  function renderInspectionControls()')
+    + productionSection("  $('cancel').onclick", "  $('alternatives').onchange"), context);
   await controls.get('cancel').onclick();
   assert.equal(context.inspectionCanceled, true);
   assert.deepEqual(calls, active ? ['cancel'] : ['cancel', 'inspect']);
+});
+
+for (const action of ['release', 'switch', 'start']) await test(`${action} preserves a pending inspection until persistence and release retry complete`, async () => {
+  const store = memorySink(), stream = new OutputAssembler(tables);
+  const archive = await store.create(tables, 'Unfinished inspection');
+  const pending = {run:1, inspection:'90', stream, archive, response:{sequence:1, events:answer(300)}, index:0, ack:null};
+  let quota = true, released = false, loseRelease = true, changes = 0, cancelCalls = 0;
+  store.beforeCommit = () => { if (quota) throw Error('Inspection quota'); };
+  const controls = new Map(), $ = name => { if (!controls.has(name)) controls.set(name, {}); return controls.get(name); };
+  let context;
+  const change = async target => {
+    assert.equal(context.inspectionPending, null); assert.equal(released, true);
+    assert.equal(store.archives.get(archive).answers.size, 1);
+    if (action === 'switch') assert.equal(target, 2, 'cleanup repaint must not change the requested execution');
+    changes++; context.session.run = action === 'release' ? null : 2;
+  };
+  context = createContext({$, safe:operation => operation(), check:assert.ok, store, deliverCachedOutput,
+    session:{run:1, closeRun:change, switchRun:change, start:change}, inspectionPending:pending, inspecting:false, inspectionCanceled:false,
+    async liveRequest(route) {
+      if (route === 'inspect_cancel') { assert.equal(released, false); cancelCalls++; return {done:true}; }
+      assert.equal(route, 'inspect_release'); released = true;
+      if (loseRelease) { loseRelease = false; throw Error('Lost inspection release'); }
+      return {};
+    },
+    model:untouched, launching:false, inspected:null, outputMode:'inspect', savedSelection:'', savedView:null,
+    answerNumber:1, answerPage:0, resetResultPages() {}, async refreshSaved() {}, message() {},
+    renderRun() { $('execution').value = '1'; }, renderResults() {}, renderInspectionControls() {}, async syncSource() {},
+  });
+  runInContext(productionSection('  async function inspect()', '  function renderInspectionControls()')
+    + productionSection("  $('run').onclick", "  $('pause').onclick"), context);
+  $('execution').value = '2';
+  const invoke = () => {
+    $('execution').value = '2';
+    return action === 'release' ? $('release-run').onclick() : action === 'switch' ? $('execution').onchange() : $('run').onclick();
+  };
+  await assert.rejects(invoke(), /Inspection quota/);
+  assert.equal(changes, 0); assert.equal(context.session.run, 1); assert.equal(context.inspectionPending, pending);
+  quota = false;
+  await assert.rejects(invoke(), /Lost inspection release/);
+  assert.equal(changes, 0); assert.equal(context.session.run, 1); assert.equal(context.inspectionPending, pending);
+  const cancels = cancelCalls;
+  await invoke();
+  assert.equal(cancelCalls, cancels, 'release retry never contacts the released job for cancellation');
+  assert.equal(changes, 1); assert.equal(context.inspectionPending, null);
+  assert.equal(store.archives.get(archive).answers.size, 1);
 });
 
 await test('clearing the last catalog entry resets the cursor only after successful storage', async () => {
