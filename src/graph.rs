@@ -109,6 +109,14 @@ impl Graph {
         })
     }
 
+    pub(crate) fn arguments(&self, id: u64) -> Arc<Vec<u64>> {
+        self.rows
+            .get(&id)
+            .expect("live occurrence payload")
+            .args
+            .clone()
+    }
+
     pub fn post(
         &mut self,
         root: Root,
@@ -187,7 +195,7 @@ impl Graph {
         }
     }
 
-    fn write(&mut self, root: Root, key: Key, support: Condition) -> Root {
+    pub(crate) fn write(&mut self, root: Root, key: Key, support: Condition) -> Root {
         if support == Condition::FALSE {
             self.index.remove(root, &key)
         } else {

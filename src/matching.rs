@@ -1,0 +1,479 @@
+//! Lazy, nonbinding, occurrence-distinct multihead matching.
+//!
+//! This enumerates eligible rule applications, not search alternatives. The
+//! executor commits applications and creates alternatives only for disjunction.
+//! Cursors read a pinned immutable root; commitment must revalidate current
+//! liveness, identity and propagation eligibility before using a candidate.
+
+use crate::condition::{Arena, Condition, Job, Operation, Progress};
+use crate::graph::{Graph, Occurrences};
+use crate::identity::{Equal, ResolveStatus};
+use crate::members::Members;
+use crate::program::Prepared;
+use crate::store::Root;
+use std::sync::Arc;
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Match {
+    pub occurrences: Vec<u64>,
+    pub bindings: Vec<u64>,
+    pub support: Condition,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub enum MatchStatus {
+    Pending,
+    Found(Match),
+    Done,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub enum MatchError {
+    InvalidRoot,
+    InvalidRule,
+    InvalidAnchor,
+}
+impl std::fmt::Display for MatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::InvalidRoot => "stale or foreign matching root",
+            Self::InvalidRule => "unknown rule",
+            Self::InvalidAnchor => "anchor head is outside the rule",
+        })
+    }
+}
+impl std::error::Error for MatchError {}
+
+enum SourceKind {
+    One {
+        occurrence: Option<u64>,
+        relation: usize,
+    },
+    Relation(Occurrences),
+    Port {
+        members: Box<Members>,
+        bucket: Option<Occurrences>,
+        membership: Condition,
+        relation: usize,
+        port: usize,
+    },
+}
+enum SourceStatus {
+    Pending,
+    Found(u64, Condition),
+    Done,
+}
+struct Source {
+    root: Root,
+    scope: Condition,
+    kind: SourceKind,
+    boolean: Option<Job>,
+    occurrence: u64,
+}
+impl Source {
+    fn new(
+        g: &Graph,
+        root: Root,
+        relation: usize,
+        scope: Condition,
+        bound: Option<(usize, u64)>,
+        anchor: Option<u64>,
+    ) -> Self {
+        let kind = if let Some(id) = anchor {
+            SourceKind::One {
+                occurrence: Some(id),
+                relation,
+            }
+        } else if let Some((port, variable)) = bound {
+            SourceKind::Port {
+                members: Box::new(Members::new(g, root, variable, scope)),
+                bucket: None,
+                membership: Condition::FALSE,
+                relation,
+                port,
+            }
+        } else {
+            SourceKind::Relation(g.relation(root, relation).expect("prepared relation"))
+        };
+        Self {
+            root,
+            scope,
+            kind,
+            boolean: None,
+            occurrence: 0,
+        }
+    }
+    fn roots(&self) -> impl Iterator<Item = Condition> + '_ {
+        let (members, c) = match &self.kind {
+            SourceKind::Port {
+                members,
+                membership,
+                ..
+            } => (Some(members), *membership),
+            _ => (None, Condition::FALSE),
+        };
+        [self.scope, c]
+            .into_iter()
+            .chain(self.boolean.iter().flat_map(|j| j.roots()))
+            .chain(members.into_iter().flat_map(|m| m.condition_roots()))
+    }
+    fn tick(&mut self, g: &Graph, a: &mut Arena) -> SourceStatus {
+        if let Some(job) = self.boolean.as_mut() {
+            if let Progress::Complete(c) = job.tick(a) {
+                self.boolean = None;
+                return if c == Condition::FALSE {
+                    SourceStatus::Pending
+                } else {
+                    SourceStatus::Found(self.occurrence, c)
+                };
+            }
+            return SourceStatus::Pending;
+        }
+        let next = match &mut self.kind {
+            SourceKind::One {
+                occurrence,
+                relation,
+            } => {
+                let Some(id) = occurrence.take() else {
+                    return SourceStatus::Done;
+                };
+                let Some(fact) = g.fact(self.root, id).filter(|f| f.relation == *relation) else {
+                    return SourceStatus::Done;
+                };
+                Some((id, self.scope, fact.support))
+            }
+            SourceKind::Relation(cursor) => {
+                let Some((id, support)) = cursor.next(g) else {
+                    return SourceStatus::Done;
+                };
+                Some((id, self.scope, support))
+            }
+            SourceKind::Port {
+                members,
+                bucket,
+                membership,
+                relation,
+                port,
+            } => {
+                if let Some(cursor) = bucket {
+                    if let Some((id, support)) = cursor.next(g) {
+                        Some((id, *membership, support))
+                    } else {
+                        *bucket = None;
+                        None
+                    }
+                } else {
+                    match members.tick(g, a) {
+                        ResolveStatus::Found { variable, support } => {
+                            *membership = support;
+                            *bucket = Some(
+                                g.port(self.root, *relation, *port, variable)
+                                    .expect("prepared port"),
+                            );
+                            None
+                        }
+                        ResolveStatus::Done => return SourceStatus::Done,
+                        ResolveStatus::Pending => None,
+                    }
+                }
+            }
+        };
+        if let Some((id, scope, support)) = next {
+            self.occurrence = id;
+            self.boolean = Some(a.start(Operation::And(scope, support)));
+        }
+        SourceStatus::Pending
+    }
+}
+struct Frame {
+    head: usize,
+    source: Source,
+    before: usize,
+    hit: Condition,
+    verified_port: Option<usize>,
+}
+#[derive(Clone, Copy)]
+enum Phase {
+    Select,
+    Candidate,
+    Distinct,
+    Ports,
+    Equality,
+    Copy,
+    Rollback,
+    Done,
+}
+
+pub struct Matches {
+    root: Root,
+    code: Arc<Prepared>,
+    rule: usize,
+    scope: Condition,
+    anchor: Option<(usize, u64)>,
+    bindings: Vec<Option<u64>>,
+    occurrences: Vec<Option<u64>>,
+    trail: Vec<usize>,
+    frames: Vec<Frame>,
+    select_head: usize,
+    select_port: usize,
+    score: usize,
+    key_port: Option<usize>,
+    best: Option<(usize, usize, Option<usize>)>,
+    candidate: u64,
+    current: Condition,
+    position: usize,
+    arguments: Option<Arc<Vec<u64>>>,
+    equality: Option<Equal>,
+    output: Option<Match>,
+    pop_frame: bool,
+    phase: Phase,
+    candidate_visits: u64,
+}
+impl Matches {
+    pub fn new(
+        g: &Graph,
+        root: Root,
+        code: Arc<Prepared>,
+        rule: usize,
+        scope: Condition,
+        anchor: Option<(usize, u64)>,
+    ) -> Result<Self, MatchError> {
+        if !g.index.contains(root) {
+            return Err(MatchError::InvalidRoot);
+        }
+        let plan = code.rules.get(rule).ok_or(MatchError::InvalidRule)?;
+        if anchor.is_some_and(|(head, _)| head >= plan.heads.len()) {
+            return Err(MatchError::InvalidAnchor);
+        }
+        let bindings = vec![None; plan.head_variables];
+        let occurrences = vec![None; plan.heads.len()];
+        Ok(Self {
+            root,
+            code,
+            rule,
+            scope,
+            anchor,
+            bindings,
+            occurrences,
+            trail: Vec::new(),
+            frames: Vec::new(),
+            select_head: 0,
+            select_port: 0,
+            score: 0,
+            key_port: None,
+            best: None,
+            candidate: 0,
+            current: scope,
+            position: 0,
+            arguments: None,
+            equality: None,
+            output: None,
+            pop_frame: false,
+            phase: if scope == Condition::FALSE {
+                Phase::Done
+            } else {
+                Phase::Select
+            },
+            candidate_visits: 0,
+        })
+    }
+    pub fn root(&self) -> Root {
+        self.root
+    }
+    pub fn candidate_visits(&self) -> u64 {
+        self.candidate_visits
+    }
+    pub fn condition_roots(&self) -> impl Iterator<Item = Condition> + '_ {
+        [self.scope, self.current]
+            .into_iter()
+            .chain(
+                self.frames
+                    .iter()
+                    .flat_map(|f| [f.hit].into_iter().chain(f.source.roots())),
+            )
+            .chain(self.equality.iter().flat_map(|e| e.condition_roots()))
+            .chain(self.output.iter().map(|o| o.support))
+    }
+    fn select(&mut self) {
+        self.select_head = 0;
+        self.select_port = 0;
+        self.score = 0;
+        self.key_port = None;
+        self.best = None;
+        self.phase = Phase::Select;
+    }
+    fn push_frame(&mut self, g: &Graph, head: usize, port: Option<usize>, anchor: Option<u64>) {
+        let atom = &self.code.rules[self.rule].heads[head];
+        let scope = self.frames.last().map_or(self.scope, |f| f.hit);
+        let bound = port.map(|p| {
+            (
+                p,
+                self.bindings[atom.args[p]].expect("bound selection port"),
+            )
+        });
+        let source = Source::new(g, self.root, atom.relation, scope, bound, anchor);
+        self.frames.push(Frame {
+            head,
+            source,
+            before: self.trail.len(),
+            hit: scope,
+            verified_port: port,
+        });
+        self.phase = Phase::Candidate;
+    }
+    fn rollback(&mut self, pop: bool) {
+        self.pop_frame = pop;
+        self.arguments = None;
+        self.equality = None;
+        self.phase = Phase::Rollback;
+    }
+    pub fn tick(&mut self, g: &Graph, a: &mut Arena) -> MatchStatus {
+        match self.phase {
+            Phase::Select => {
+                if self.frames.len() == self.occurrences.len() {
+                    self.output = Some(Match {
+                        occurrences: Vec::new(),
+                        bindings: Vec::new(),
+                        support: self.frames.last().map_or(self.scope, |f| f.hit),
+                    });
+                    self.position = 0;
+                    self.phase = Phase::Copy;
+                } else if let Some((head, id)) = self.anchor.take() {
+                    self.push_frame(g, head, None, Some(id));
+                } else if self.select_head == self.occurrences.len() {
+                    let (_, head, port) = self.best.expect("unmatched head");
+                    self.push_frame(g, head, port, None);
+                } else if self.occurrences[self.select_head].is_some() {
+                    self.select_head += 1;
+                } else {
+                    let atom = &self.code.rules[self.rule].heads[self.select_head];
+                    if self.select_port < atom.args.len() {
+                        if self.bindings[atom.args[self.select_port]].is_some() {
+                            self.score += 1;
+                            self.key_port.get_or_insert(self.select_port);
+                        }
+                        self.select_port += 1;
+                    } else {
+                        if self.best.is_none_or(|(score, _, _)| self.score > score) {
+                            self.best = Some((self.score, self.select_head, self.key_port));
+                        }
+                        self.select_head += 1;
+                        self.select_port = 0;
+                        self.score = 0;
+                        self.key_port = None;
+                    }
+                }
+            }
+            Phase::Candidate => match self
+                .frames
+                .last_mut()
+                .expect("candidate head")
+                .source
+                .tick(g, a)
+            {
+                SourceStatus::Found(id, c) => {
+                    self.candidate_visits += 1;
+                    self.candidate = id;
+                    self.current = c;
+                    self.position = 0;
+                    self.phase = Phase::Distinct;
+                }
+                SourceStatus::Done => self.rollback(true),
+                SourceStatus::Pending => {}
+            },
+            Phase::Distinct => {
+                if self.position == self.occurrences.len() {
+                    self.arguments = Some(g.arguments(self.candidate));
+                    self.position = 0;
+                    self.phase = Phase::Ports;
+                } else if self.occurrences[self.position] == Some(self.candidate) {
+                    self.rollback(false);
+                } else {
+                    self.position += 1;
+                }
+            }
+            Phase::Ports => {
+                let frame = self.frames.last_mut().expect("current head");
+                let atom = &self.code.rules[self.rule].heads[frame.head];
+                if self.position == atom.args.len() {
+                    self.occurrences[frame.head] = Some(self.candidate);
+                    frame.hit = self.current;
+                    self.arguments = None;
+                    self.select();
+                } else {
+                    let slot = atom.args[self.position];
+                    let actual = self.arguments.as_ref().expect("candidate ports")[self.position];
+                    if let Some(expected) = self.bindings[slot] {
+                        // The indexed membership lookup already proved its chosen
+                        // port under this candidate's support. Other ports still
+                        // require their own existing-identity checks.
+                        if expected == actual || frame.verified_port == Some(self.position) {
+                            self.position += 1;
+                            return MatchStatus::Pending;
+                        }
+                        self.equality =
+                            Some(Equal::new(g, self.root, expected, actual, self.current));
+                        self.phase = Phase::Equality;
+                    } else {
+                        self.bindings[slot] = Some(actual);
+                        self.trail.push(slot);
+                        self.position += 1;
+                    }
+                }
+            }
+            Phase::Equality => {
+                if let Some(c) = self.equality.as_mut().expect("identity guard").tick(g, a) {
+                    self.current = c;
+                    self.equality = None;
+                    if c == Condition::FALSE {
+                        self.rollback(false);
+                    } else {
+                        self.position += 1;
+                        self.phase = Phase::Ports;
+                    }
+                }
+            }
+            Phase::Copy => {
+                let output = self.output.as_mut().expect("matched tuple");
+                if self.position < self.occurrences.len() {
+                    output
+                        .occurrences
+                        .push(self.occurrences[self.position].expect("matched head"));
+                    self.position += 1;
+                } else if self.position < self.occurrences.len() + self.bindings.len() {
+                    output.bindings.push(
+                        self.bindings[self.position - self.occurrences.len()]
+                            .expect("matched variable"),
+                    );
+                    self.position += 1;
+                } else {
+                    let output = self.output.take().expect("matched tuple");
+                    self.rollback(false);
+                    return MatchStatus::Found(output);
+                }
+            }
+            Phase::Rollback => {
+                let frame = self.frames.last().expect("backtracking head");
+                if self.trail.len() > frame.before {
+                    let slot = self.trail.pop().expect("binding trail");
+                    self.bindings[slot] = None;
+                } else {
+                    self.occurrences[frame.head] = None;
+                    if self.pop_frame {
+                        self.frames.pop();
+                        self.pop_frame = false;
+                        if self.frames.is_empty() {
+                            self.bindings = Vec::new();
+                            self.occurrences = Vec::new();
+                            self.trail = Vec::new();
+                            self.frames = Vec::new();
+                            self.phase = Phase::Done;
+                        }
+                    } else {
+                        self.phase = Phase::Candidate;
+                    }
+                }
+            }
+            Phase::Done => return MatchStatus::Done,
+        }
+        MatchStatus::Pending
+    }
+}
