@@ -319,3 +319,59 @@ fn noop_nullary_occurrences_and_owned_protocol_checks() {
     assert!(catch_unwind(AssertUnwindSafe(|| empty.tick(&mut foreign_g, &mut a))).is_err());
     assert_eq!(finish(&mut g, &mut a, &mut empty, true, &[]), g.empty());
 }
+
+#[test]
+fn certified_no_identity_prune_work_is_independent_of_occurrence_count() {
+    for count in [1, 128, 4096] {
+        let mut g = graph();
+        let mut a = Arena::default();
+        let mut root = g.empty();
+        for i in 0..count {
+            root = post(&mut g, root, vec![i, i], Condition::TRUE).0;
+        }
+        let before = g.index_node_count();
+        let mut job = g.prune(root, Condition::TRUE);
+        let mut result = None;
+        for _ in 0..4 {
+            if let Some(r) = job.tick(&mut g, &mut a) {
+                result = Some(r);
+                break;
+            }
+        }
+        assert_eq!(
+            result,
+            Some(root),
+            "certified no-op must not scan {count} occurrences"
+        );
+        assert_eq!(g.index_node_count(), before);
+    }
+}
+#[test]
+fn certified_true_keeps_conditional_facts_and_gc_roots() {
+    let mut g = graph();
+    let mut a = Arena::default();
+    let (_, x) = a.fresh_choice();
+    let empty = g.empty();
+    let (root, left) = post(&mut g, empty, vec![0, 1], x);
+    let (root, right) = post(&mut g, root, vec![2, 3], x.not());
+    let mut job = g.prune(root, Condition::TRUE);
+    for i in 0..17 {
+        job.seed(i, x);
+    }
+    let result = finish(&mut g, &mut a, &mut job, true, &[]);
+    assert_eq!(result, root);
+    assert_eq!(job.tick(&mut g, &mut a), Some(root));
+    collect(
+        &mut g,
+        &mut a,
+        job.graph_roots().collect(),
+        job.condition_roots().collect(),
+    );
+    assert_eq!(g.fact(result, left).unwrap().support, x);
+    assert_eq!(g.fact(result, right).unwrap().support, x.not());
+    drop(job);
+    let mut restricted = g.prune(result, x);
+    let new = finish(&mut g, &mut a, &mut restricted, true, &[x]);
+    assert_eq!(g.fact(new, left).unwrap().support, x);
+    assert!(g.fact(new, right).is_none());
+}

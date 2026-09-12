@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, VecDeque};
 
 #[derive(Clone, Copy)]
 enum Phase {
+    Certificate,
+    NoopSeeds,
     Seeds,
     SeedActive,
     Occurrences,
@@ -70,7 +72,7 @@ impl Graph {
             target: 0,
             key: [0; 4],
             fresh: Condition::FALSE,
-            phase: Phase::Seeds,
+            phase: Phase::Certificate,
             after_enqueue: Phase::Seeds,
         }
     }
@@ -159,6 +161,37 @@ impl Prune {
         assert!(graph.index.contains(self.base), "stale prune graph root");
         self.started = true;
         match self.phase {
+            Phase::Certificate => {
+                // An empty namespace interval is certified by the trie bounds,
+                // not by enumerating occurrence leaves. At most two 256-bit
+                // boundary paths (and their rejected siblings) are visited.
+                let noop = self.active == Condition::TRUE
+                    && graph
+                        .index
+                        .range(
+                            self.base,
+                            [PARENT, 0, 0, 0],
+                            [RANK, u64::MAX, u64::MAX, u64::MAX],
+                        )
+                        .next(&graph.index)
+                        .is_none();
+                if noop {
+                    self.filter = None;
+                    self.phase = Phase::NoopSeeds;
+                } else {
+                    self.phase = Phase::Seeds;
+                }
+            }
+            Phase::NoopSeeds => {
+                if let Some(&(_, support)) = self.seeds.front() {
+                    assert!(arena.contains(support), "stale or foreign prune seed");
+                    self.seeds.pop_front();
+                } else {
+                    self.seeds = VecDeque::new();
+                    self.active = Condition::FALSE;
+                    self.phase = Phase::Done;
+                }
+            }
             Phase::Seeds => {
                 if let Some((variable, support)) = self.seeds.front() {
                     let (variable, support) = (*variable, *support);
@@ -313,5 +346,87 @@ impl Prune {
             Phase::Done => return Some(self.staged),
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod certificate_tests {
+    use super::*;
+    #[test]
+    fn certificate_probe_uses_bounded_key_paths() {
+        let mut g = Graph::new(&[]);
+        let mut root = g.empty();
+        for i in 0..4096 {
+            root = g.index.insert(
+                root,
+                [if i % 2 == 0 { 3 } else { 7 }, i, 0, 0],
+                Condition::TRUE,
+            );
+        }
+        let mut probe = g.index.range(
+            root,
+            [PARENT, 0, 0, 0],
+            [RANK, u64::MAX, u64::MAX, u64::MAX],
+        );
+        assert!(probe.next(&g.index).is_none());
+        assert!(probe.visits() <= 1025);
+        let root = g
+            .index
+            .insert(root, [RANK, u64::MAX, u64::MAX, u64::MAX], Condition::TRUE);
+        let mut probe = g.index.range(
+            root,
+            [PARENT, 0, 0, 0],
+            [RANK, u64::MAX, u64::MAX, u64::MAX],
+        );
+        assert!(probe.next(&g.index).is_some());
+        assert!(probe.visits() <= 1025);
+    }
+    #[test]
+    fn every_identity_namespace_defeats_certificate() {
+        for namespace in [PARENT, CHILD, RANK] {
+            let mut g = Graph::new(&[]);
+            let mut a = Arena::default();
+            let root = g
+                .index
+                .insert(g.empty(), [namespace, 17, 29, 0], Condition::TRUE);
+            let mut job = g.prune(root, Condition::TRUE);
+            let mut result = None;
+            for _ in 0..1000 {
+                if let Some(r) = job.tick(&mut g, &mut a) {
+                    result = Some(r);
+                    break;
+                }
+            }
+            assert_eq!(
+                result,
+                Some(g.empty()),
+                "namespace {namespace} needs pruning"
+            );
+        }
+    }
+    #[test]
+    fn certificate_seed_checks_freeze_and_owner_remain_enforced() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        let mut g = Graph::new(&[]);
+        let mut a = Arena::default();
+        let mut foreign = Arena::default();
+        let (_, bad) = foreign.fresh_choice();
+        let mut job = g.prune(g.empty(), Condition::TRUE);
+        job.seed(0, bad);
+        assert_eq!(job.tick(&mut g, &mut a), None);
+        assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut g, &mut a))).is_err());
+        let mut job = g.prune(g.empty(), Condition::TRUE);
+        let gc = g.collect(std::iter::empty());
+        assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut g, &mut a))).is_err());
+        drop(gc);
+        let gc = a.collect(std::iter::empty());
+        assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut g, &mut a))).is_err());
+        drop(gc);
+        let mut other = Graph::new(&[]);
+        assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut other, &mut a))).is_err());
+        for _ in 0..4 {
+            job.tick(&mut g, &mut a);
+        }
+        assert!(catch_unwind(AssertUnwindSafe(|| job.seed(0, Condition::TRUE))).is_err());
     }
 }
