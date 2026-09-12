@@ -3,6 +3,7 @@ mod cancel;
 mod collection;
 mod compact;
 mod coordinates;
+mod discovery;
 mod inspection;
 mod obligations;
 mod step;
@@ -23,6 +24,7 @@ type PendingRoot = crate::store::Root<obligations::Pending>;
 type Cursor = crate::store::Cursor<obligations::Pending>;
 use crate::wake::{Wake, WakeStatus};
 use coordinates::{Coordinates, Epoch, Transport};
+use discovery::Discovery;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
@@ -59,7 +61,9 @@ enum Task {
     Body(Box<Body>),
     Activate {
         identity_only: bool,
-        root: Root,
+        root: Option<Root>,
+        relation: usize,
+        arguments: Arc<Vec<u64>>,
         occurrence: u64,
         reader_scope: Condition,
         next: usize,
@@ -70,7 +74,7 @@ enum Task {
 struct Search {
     transport: Option<Transport>,
     rule: usize,
-    matches: Matches,
+    matches: Discovery,
     candidate: Option<Match>,
     commit: Option<Commit>,
 }
@@ -450,6 +454,33 @@ impl Engine {
             self.ticks = self.ticks.wrapping_add(1);
         }
     }
+    fn activation(
+        &self,
+        root: Root,
+        occurrence: u64,
+        reader_scope: Condition,
+        identity_only: bool,
+    ) -> Task {
+        let fact = self
+            .graph
+            .fact(root.clone(), occurrence)
+            .expect("activation occurrence");
+        let relation = fact.relation;
+        let end = if identity_only {
+            self.code.merge_indexed_end[relation]
+        } else {
+            self.code.indexed_end[relation]
+        };
+        Task::Activate {
+            identity_only,
+            root: (end > 0).then_some(root),
+            relation,
+            arguments: self.graph.arguments(occurrence),
+            occurrence,
+            reader_scope,
+            next: 0,
+        }
+    }
     fn task(&mut self, s: &mut Scheduled) -> bool {
         // A false conservative scope admits no remaining descendants. Keep a
         // lane owner's transaction intact; other readers can drain their roots
@@ -488,32 +519,45 @@ impl Engine {
             Task::Activate {
                 identity_only,
                 root,
+                relation,
+                arguments,
                 occurrence,
                 reader_scope,
                 next,
             } => {
-                let Some(fact) = self.graph.fact(root.clone(), *occurrence) else {
-                    return true;
-                };
                 let triggers = if *identity_only {
-                    &self.code.merge_triggers[fact.relation]
+                    &self.code.merge_triggers[*relation]
                 } else {
-                    &self.code.triggers[fact.relation]
+                    &self.code.triggers[*relation]
                 };
                 if *next == triggers.len() {
                     true
                 } else {
                     let (rule, head) = triggers[*next];
                     *next += 1;
-                    let matches = Matches::new(
-                        &self.graph,
-                        root.clone(),
-                        self.code.clone(),
-                        rule,
-                        *reader_scope,
-                        Some((head, *occurrence)),
-                    )
-                    .expect("prepared trigger");
+                    let matches = if self.code.rules[rule].direct_anchor() {
+                        Discovery::anchor(arguments.clone(), *occurrence, *reader_scope)
+                    } else {
+                        Discovery::Indexed(Box::new(
+                            Matches::new(
+                                &self.graph,
+                                root.as_ref().expect("indexed trigger root").clone(),
+                                self.code.clone(),
+                                rule,
+                                *reader_scope,
+                                Some((head, *occurrence)),
+                            )
+                            .expect("internal trigger"),
+                        ))
+                    };
+                    let end = if *identity_only {
+                        self.code.merge_indexed_end[*relation]
+                    } else {
+                        self.code.indexed_end[*relation]
+                    };
+                    if *next >= end {
+                        *root = None;
+                    }
                     self.spawn_in_epoch(
                         s.scope,
                         Task::Search(Box::new(Search {
@@ -621,13 +665,7 @@ impl Engine {
                     }
                     self.spawn_in_epoch(
                         s.scope,
-                        Task::Activate {
-                            identity_only: true,
-                            root: w.root(),
-                            reader_scope: support,
-                            occurrence,
-                            next: 0,
-                        },
+                        self.activation(w.root(), occurrence, support, true),
                         s.epoch.as_ref().expect("immutable reader epoch").clone(),
                     );
                     false
@@ -725,16 +763,7 @@ impl Engine {
                     let occurrence = update.occurrence();
                     self.finish_body_record(id);
                     self.record(SnapshotKind::Post { occurrence }, self.active);
-                    self.spawn(
-                        b.scope,
-                        Task::Activate {
-                            identity_only: false,
-                            root,
-                            reader_scope: b.scope,
-                            occurrence,
-                            next: 0,
-                        },
-                    );
+                    self.spawn(b.scope, self.activation(root, occurrence, b.scope, false));
                     return true;
                 }
             }

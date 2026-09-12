@@ -37,6 +37,13 @@ pub struct RulePlan {
     pub body: usize,
 }
 
+impl RulePlan {
+    /// One head whose ordered ports impose no existing-identity comparisons.
+    pub(crate) fn direct_anchor(&self) -> bool {
+        self.heads.len() == 1 && self.heads[0].args.len() == self.head_variables
+    }
+}
+
 pub struct Prepared {
     pub signatures: Vec<Signature>,
     pub instructions: Vec<Instruction>,
@@ -45,6 +52,8 @@ pub struct Prepared {
     pub triggers: Vec<Vec<(usize, usize)>>,
     /// Merges can enable only heads participating in repeated-variable tests.
     pub(crate) merge_triggers: Vec<Vec<(usize, usize)>>,
+    pub(crate) indexed_end: Vec<usize>,
+    pub(crate) merge_indexed_end: Vec<usize>,
     pub query: usize,
     pub query_variables: Vec<String>,
 }
@@ -167,12 +176,26 @@ pub fn prepare(program: &Program, query: &Body) -> Result<Prepared, ParseError> 
             }
         }
     }
+    let indexed_end = |targets: &Vec<Vec<(usize, usize)>>| {
+        targets
+            .iter()
+            .map(|ts| {
+                ts.iter()
+                    .rposition(|(r, _)| !rules[*r].direct_anchor())
+                    .map_or(0, |i| i + 1)
+            })
+            .collect()
+    };
+    let normal_end = indexed_end(&triggers);
+    let merge_end = indexed_end(&merge_triggers);
     Ok(Prepared {
         signatures: builder.signatures,
         instructions: builder.instructions,
         rules,
         triggers,
         merge_triggers,
+        indexed_end: normal_end,
+        merge_indexed_end: merge_end,
         query,
         query_variables: variables.names,
     })

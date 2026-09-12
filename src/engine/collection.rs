@@ -296,13 +296,13 @@ impl Engine {
                                 }
                             }
                             Task::Search(s) => {
-                                c.graph_roots.push(s.matches.root());
+                                c.graph_roots.extend(s.matches.root());
                                 if let Some(commit) = &s.commit {
                                     c.graph_roots.extend(commit.graph_roots());
                                     c.history_roots.extend(commit.history_roots());
                                 }
                             }
-                            Task::Activate { root, .. } => c.graph_roots.push(root.clone()),
+                            Task::Activate { root, .. } => c.graph_roots.extend(root.clone()),
                             Task::Wake(w) => c.graph_roots.push(w.root()),
                             Task::Init(_) => {}
                         }

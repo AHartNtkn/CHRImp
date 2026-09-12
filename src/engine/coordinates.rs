@@ -288,7 +288,7 @@ mod engine_tests {
                 Condition::TRUE,
                 Task::Search(Box::new(Search {
                     rule: 0,
-                    matches,
+                    matches: super::Discovery::Indexed(Box::new(matches)),
                     candidate: None,
                     commit: None,
                     transport: None,
@@ -556,7 +556,7 @@ mod rejected_reader_tests {
             x,
             Task::Search(Box::new(Search {
                 rule: 0,
-                matches,
+                matches: super::Discovery::Indexed(Box::new(matches)),
                 candidate: None,
                 commit: None,
                 transport: None,
