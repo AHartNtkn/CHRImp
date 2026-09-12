@@ -226,19 +226,23 @@ impl Runtime {
         if request.budget > BUDGET_LIMIT {
             return Err(Response::error(400, "work budget exceeds 4096"));
         }
-        let run = self
-            .runs
-            .lock()
-            .unwrap()
-            .entries
-            .get(&request.run)
-            .cloned()
-            .ok_or_else(|| Response::error(404, "unknown run"))?;
+        let run = self.runs.lock().unwrap().entries.get(&request.run).cloned();
+        let Some(run) = run else {
+            return if path == "/api/close" {
+                Ok(Response::ok(json!({"closed":true})))
+            } else {
+                Err(Response::error(404, "unknown run"))
+            };
+        };
         let mut e = run.lock().unwrap();
         {
             let runs = self.runs.lock().unwrap();
             if !runs.entries.contains_key(&request.run) {
-                return Err(Response::error(404, "unknown run"));
+                return if path == "/api/close" {
+                    Ok(Response::ok(json!({"closed":true})))
+                } else {
+                    Err(Response::error(404, "unknown run"))
+                };
             }
             if runs.closing.contains_key(&request.run)
                 && !matches!(path, "/api/status" | "/api/close" | "/api/cancel")

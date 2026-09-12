@@ -156,7 +156,8 @@ pub struct Engine {
     births: BTreeMap<u64, Birth>,
     applications: u64,
     ticks: u64,
-    collector: Option<collection::Collection>,
+    // Keep the large collector stationary across take/resume transitions.
+    collector: Option<Box<collection::Collection>>,
     collection_requested: bool,
     collections: u64,
     collection_limit: usize,
@@ -330,7 +331,13 @@ impl Engine {
                 self.cancel_tick();
             } else if !self.inspections.is_empty() && self.ticks % 4 == 3 {
                 self.service_inspection();
-            } else if self.ticks.is_multiple_of(3) {
+            } else if self.ticks % 3 == 1 && self.can_complete() {
+                self.completion();
+            } else if self.ticks % 3 == 2 && self.observer.is_some() && self.output.is_none() {
+                self.observation();
+            } else {
+                // Keep each runnable class's reserved share; otherwise service
+                // one source continuation instead of spending an idle slot.
                 if let Some(mut task) = self.queue.pop_front() {
                     if self.task(&mut task) {
                         self.pending_root = self
@@ -346,10 +353,6 @@ impl Engine {
                         self.queue.push_back(task);
                     }
                 }
-            } else if self.ticks % 3 == 1 {
-                self.completion();
-            } else {
-                self.observation();
             }
             self.ticks = self.ticks.wrapping_add(1);
         }
@@ -717,11 +720,19 @@ impl Engine {
     // enter the complement of this snapshot's union. Failure only shrinks active
     // scope. Checking current active scope in the mutation lane finishes the
     // certificate without invalidation by unrelated ongoing updates.
+    fn can_complete(&self) -> bool {
+        // Without live choices, every surviving current obligation covers TRUE.
+        // It blocks all completion; keep an existing certificate's progress intact.
+        self.observer.is_none()
+            && self.output.is_none()
+            && (self.active != Condition::FALSE || self.ready.is_some())
+            && !(self.ready.is_none()
+                && self.active == Condition::TRUE
+                && self.births.is_empty()
+                && self.pending_root != self.obligations.empty())
+    }
     fn completion(&mut self) {
-        if self.observer.is_some()
-            || self.output.is_some()
-            || (self.active == Condition::FALSE && self.ready.is_none())
-        {
+        if !self.can_complete() {
             return;
         }
         let mut ready = self.ready.take().unwrap_or_else(|| Ready {

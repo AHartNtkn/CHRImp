@@ -681,3 +681,46 @@ fn concurrent_capture_retries_allocate_one_snapshot_per_run() {
         1
     );
 }
+
+#[test]
+fn close_replay_after_reclamation_is_terminal_and_still_validates_requests() {
+    let runtime = Runtime::default();
+    let run = start(&runtime, "", "true", false)["run"].clone();
+    ok(&runtime, "/api/close", json!({"run":run})); // The caller loses this accepted response.
+    for _ in 0..10000 {
+        runtime.tick();
+        if runtime
+            .request("/api/status", &json!({"run":run}).to_string())
+            .status
+            == 404
+        {
+            break;
+        }
+    }
+    assert_eq!(
+        runtime
+            .request("/api/status", &json!({"run":run}).to_string())
+            .status,
+        404
+    );
+    assert_eq!(
+        ok(&runtime, "/api/close", json!({"run":run}))["closed"],
+        true
+    );
+    for body in [
+        json!({}),
+        json!({"run":run,"budget":4097}),
+        json!({"run":run,"extra":true}),
+        json!({"run":"invalid"}),
+    ] {
+        assert_eq!(runtime.request("/api/close", &body.to_string()).status, 400);
+    }
+    let next = start(&runtime, "", "next()", false)["run"].clone();
+    assert_ne!(next, run);
+    assert_eq!(
+        runtime
+            .request("/api/status", &json!({"run":next}).to_string())
+            .status,
+        200
+    );
+}

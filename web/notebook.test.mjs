@@ -973,4 +973,73 @@ await test('changing the selected archive cannot reload stale saved summaries', 
   assert.equal(h.errors.length, 0);
 });
 
+for (const action of ['close', 'start', 'switch', 'cancel', 'resume', 'step']) await test(`lost close response recovers through ${action} without contacting the reclaimed run`, async () => {
+  const calls = [], live = new Set(); let next = 0, lost = false;
+  const session = testSession(async (route, payload) => {
+    calls.push([route, payload?.run]);
+    if (route === 'start') { live.add(++next); return {run:next, ...tables}; }
+    if (route === 'close') {
+      live.delete(payload.run);
+      if (!lost) { lost = true; throw Error('Lost close response'); }
+      return {closed:true};
+    }
+    assert.ok(live.has(payload.run), `${route} must not contact a reclaimed run`);
+    if (route === 'cancel') return {};
+    throw Error(route);
+  });
+  await session.start(untouched, false, false);
+  await session.start(untouched, false, false); // Keep run 1 available for switching.
+  let resets = 0;
+  session.selection.reset = async () => { resets++; };
+  await assert.rejects(session.closeRun(), /Lost close response/);
+  assert.equal(session.run, 2);
+  const before = calls.length;
+  if (action === 'close') await session.closeRun();
+  if (action === 'start') await session.start(untouched, false, false);
+  if (action === 'switch') await session.switchRun(1);
+  if (action === 'cancel') await session.cancel();
+  if (action === 'resume') await assert.rejects(session.resume(), /Start a run first/);
+  if (action === 'step') await assert.rejects(session.step(), /Start a run first/);
+  assert.deepEqual(calls[before], ['close', 2]);
+  assert.equal(calls.slice(before).filter(([route]) => route === 'cancel').length, 0);
+  assert.equal(session.runs.has(2), false);
+  if (action === 'close' || action === 'cancel') assert.equal(resets, 1);
+  assert.equal(session.run, action === 'switch' ? 1 : action === 'start' ? 3 : null);
+  if (action !== 'start') await session.start(untouched, false, false);
+  assert.equal(session.run, 3);
+});
+
+for (const outcome of ['cancel', 'done', 'error']) await test(`inspection ${outcome} retries only release after a lost release response`, async () => {
+  const store = memorySink(), stream = new OutputAssembler(tables);
+  const archive = await store.create(tables, 'Release retry');
+  const response = {sequence:71, events:answer(241), done:true};
+  if (outcome === 'error') response.error = 'Projection failed';
+  const pending = {stream, archive, response, index:0, ack:null, run:71, inspection:9};
+  const calls = []; let released = false;
+  const context = createContext({store, deliverCachedOutput, inspectionPending:pending, inspectionCanceled:outcome === 'cancel',
+    liveRequest:async route => {
+      calls.push(route);
+      if (route === 'inspect_release') {
+        if (!released) { released = true; throw Error('Lost release response'); }
+        return {};
+      }
+      assert.equal(released, false, 'no inspection control after release');
+      assert.equal(route, 'inspect_cancel'); return {done:true, pending:response};
+    },
+    inspected:null, outputMode:'answers', answerNumber:1, answerPage:0,
+    resetResultPages() {}, async refreshSaved() {}, message() {},
+  });
+  runInContext(productionSection('  async function inspectOnce()', '  function renderInspectionControls()'), context);
+  await assert.rejects(context.inspectOnce(), /Lost release response/);
+  assert.equal(store.archives.get(archive).answers.size, 1);
+  const before = calls.length;
+  // A release retry must not require further storage writes either.
+  store.discardPartial = async () => { throw Error('Unexpected repeated persistence'); };
+  if (outcome === 'error') await assert.rejects(context.inspectOnce(), /Inspection failed: Projection failed/);
+  else await context.inspectOnce();
+  assert.deepEqual(calls.slice(before), ['inspect_release']);
+  assert.equal(context.inspectionPending, null);
+  assert.equal(stream.total, 1);
+});
+
 });

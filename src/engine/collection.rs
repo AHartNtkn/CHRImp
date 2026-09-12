@@ -156,7 +156,7 @@ impl Engine {
             if let Some(root) = self.rule_step.as_ref().and_then(|s| s.pending_root()) {
                 pending_roots.push(root);
             }
-            self.collector = Some(Collection {
+            self.collector = Some(Box::new(Collection {
                 phase: if owns_lane {
                     Phase::Compact
                 } else {
@@ -194,7 +194,7 @@ impl Engine {
                 history: None,
                 pending: None,
                 arena: None,
-            });
+            }));
             return true;
         }
         let mut c = self.collector.take().unwrap();
