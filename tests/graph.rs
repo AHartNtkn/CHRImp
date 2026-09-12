@@ -229,14 +229,14 @@ fn owned_collection_freezes_metadata_and_pending_updates_until_drop() {
     use chr::store::Root;
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    fn begin(graph: &mut Graph, roots: [Root; 2]) -> Collector<std::array::IntoIter<Root, 2>> {
+    fn begin(graph: &mut Graph, roots: [Root; 1]) -> Collector<std::array::IntoIter<Root, 1>> {
         graph.collect(roots.into_iter())
     }
     for cutoff in 0..48 {
         let mut g = graph();
         let mut update = g.post(g.empty(), 0, vec![3, 8], Condition::TRUE).unwrap();
         let id = update.occurrence();
-        let staged = update.roots()[1].clone();
+        let staged = update.roots()[0].clone();
         let mut gc = begin(&mut g, update.roots());
         let mut foreign = graph();
         assert!(catch_unwind(AssertUnwindSafe(|| gc.tick(&mut foreign))).is_err());

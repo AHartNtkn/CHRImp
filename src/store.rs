@@ -287,6 +287,9 @@ impl<V: Value> Store<V> {
             true
         }
     }
+    pub(crate) fn owner(&self) -> u32 {
+        self.owner
+    }
     pub fn mutation_counts(&self) -> (usize, usize) {
         (
             self.stats.unique.load(Relaxed),

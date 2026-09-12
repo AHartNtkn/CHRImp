@@ -309,7 +309,7 @@ impl Commit {
                         .support;
                     if let Some(c) = self.boolean(a, Operation::Difference(old, self.scope)) {
                         self.update = Some(
-                            g.set_liveness(self.staged.graph.clone(), id, c)
+                            g.set_liveness(std::mem::take(&mut self.staged.graph), id, c)
                                 .expect("verified head"),
                         );
                     }
@@ -348,5 +348,118 @@ impl Trace for Commit {
             2 => cursor.optional(self.equal.as_ref()),
             _ => Step::Done,
         }
+    }
+}
+
+#[cfg(test)]
+mod private_update_tests {
+    use super::*;
+    #[test]
+    fn multi_consume_gc_and_discard_preserve_coherent_base_and_sibling_support() {
+        let code = Arc::new(
+            crate::program::prepare(
+                &crate::syntax::parse_program("p(X,X),q(X,X),r(X,X),s(X,X) <=> done(X).").unwrap(),
+                &crate::syntax::parse_query("true").unwrap(),
+            )
+            .unwrap(),
+        );
+        let mut applied = 0;
+        let mut discarded = 0;
+        for cutoff in 0..80 {
+            let mut g = Graph::new(&code.signatures);
+            let mut a = Arena::default();
+            let c = a.fresh_choice().1;
+            let mut h = History::default();
+            let mut ids = FreshIds::default();
+            let x = ids.variable();
+            let mut root = g.empty();
+            let mut heads = vec![];
+            for relation in 0..4 {
+                let mut u = g.post(root, relation, vec![x, x], Condition::TRUE).unwrap();
+                heads.push(u.occurrence());
+                root = loop {
+                    if let UpdateStatus::Complete(r) = u.tick(&mut g) {
+                        break r;
+                    }
+                };
+            }
+            let mut j = Commit::new(
+                &g,
+                &h,
+                StateRoot {
+                    graph: root.clone(),
+                    history: h.empty(),
+                },
+                code.clone(),
+                0,
+                crate::matching::Match {
+                    occurrences: heads.clone(),
+                    bindings: vec![x],
+                    support: c,
+                },
+                Condition::TRUE,
+            )
+            .unwrap();
+            let mut finished = false;
+            for tick in 0..500 {
+                let mut conditions: Vec<_> = j.condition_roots().collect();
+                let mut gc = g.collect(j.graph_roots().chain([root.clone()]));
+                while !gc.done() {
+                    if let Some(c) = gc.tick(&mut g) {
+                        conditions.push(c)
+                    }
+                }
+                drop(gc);
+                let mut gc = a.collect(conditions.into_iter());
+                while !gc.tick(&mut a) {}
+                drop(gc);
+                for &id in &heads {
+                    assert_eq!(g.fact(root.clone(), id).unwrap().support, Condition::TRUE);
+                }
+                if tick >= cutoff {
+                    if j.discard_tick() {
+                        discarded += 1;
+                        finished = true;
+                        break;
+                    }
+                } else {
+                    match j.tick(&mut g, &mut a, &mut h, &mut ids) {
+                        CommitStatus::Applied(result) => {
+                            applied += 1;
+                            assert_eq!(result.application.support, c);
+                            for (relation, &id) in heads.iter().enumerate() {
+                                assert_eq!(
+                                    g.fact(result.state.graph.clone(), id).unwrap().support,
+                                    c.not()
+                                );
+                                assert_eq!(
+                                    g.relation(result.state.graph.clone(), relation)
+                                        .unwrap()
+                                        .next(&g),
+                                    Some((id, c.not()))
+                                );
+                                for port in 0..2 {
+                                    assert_eq!(
+                                        g.port(result.state.graph.clone(), relation, port, x)
+                                            .unwrap()
+                                            .next(&g),
+                                        Some((id, c.not()))
+                                    );
+                                }
+                            }
+                            finished = true;
+                            break;
+                        }
+                        CommitStatus::Pending => {}
+                        _ => panic!("valid multi-consume rejected"),
+                    }
+                }
+            }
+            assert!(finished);
+        }
+        assert!(
+            applied > 0 && discarded > 0,
+            "applied={applied}, discarded={discarded}"
+        );
     }
 }

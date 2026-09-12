@@ -172,7 +172,14 @@ impl Graph {
                 marked: 0,
             },
         );
-        Ok(self.update(root, id, relation, args, support))
+        Ok(self.update(
+            root,
+            id,
+            relation,
+            args,
+            support,
+            support != Condition::FALSE,
+        ))
     }
 
     /// Low-level staged liveness replacement. CHR commitment computes and
@@ -185,13 +192,14 @@ impl Graph {
     ) -> Result<Update, GraphError> {
         self.index.assert_mutable();
         self.valid_root(root.clone())?;
-        if self.index.get(&root, &[FACT, id, 0, 0]).is_none() {
-            return Err(GraphError::MissingOccurrence);
-        }
+        let old = self
+            .index
+            .get(&root, &[FACT, id, 0, 0])
+            .ok_or(GraphError::MissingOccurrence)?;
         let row = self.rows.get(&id).expect("live occurrence");
         let relation = row.relation;
         let args = row.args.clone();
-        Ok(self.update(root, id, relation, args, support))
+        Ok(self.update(root, id, relation, args, support, old != support))
     }
 
     fn update(
@@ -201,17 +209,14 @@ impl Graph {
         relation: usize,
         args: Arc<Vec<u64>>,
         support: Condition,
+        changed: bool,
     ) -> Update {
         // Staging the fact root immediately makes a pending new occurrence
         // traceable. All remaining port/index updates yield separately.
-        let staged = self.write(base.clone(), [FACT, id, 0, 0], support);
-        let position = if staged == base {
-            2 + 2 * args.len()
-        } else {
-            1
-        };
+        let staged = self.write(base, [FACT, id, 0, 0], support);
+        let position = if !changed { 2 + 2 * args.len() } else { 1 };
         Update {
-            base,
+            owner: self.index.owner(),
             staged,
             id,
             relation,
@@ -337,9 +342,9 @@ pub enum UpdateStatus {
 }
 
 /// A mutation's private index root. Only `Complete` may be published as a
-/// coherent query state. The base and staged roots are collection dependencies.
+/// coherent query state. Trace the staged root; callers own earlier snapshots.
 pub struct Update {
-    base: Root,
+    owner: u32,
     staged: Root,
     id: u64,
     relation: usize,
@@ -352,11 +357,12 @@ impl Update {
     pub fn occurrence(&self) -> u64 {
         self.id
     }
-    pub fn roots(&self) -> [Root; 2] {
-        [self.base.clone(), self.staged.clone()]
+    pub fn roots(&self) -> [Root; 1] {
+        [self.staged.clone()]
     }
     pub fn tick(&mut self, graph: &mut Graph) -> UpdateStatus {
         graph.index.assert_mutable();
+        assert_eq!(self.owner, graph.index.owner(), "foreign graph update");
         if self.position >= 2 + 2 * self.args.len() {
             return UpdateStatus::Complete(self.staged.clone());
         }
@@ -498,5 +504,116 @@ mod pressure_checks {
         drop(frozen);
         a.semantic_collected();
         assert_eq!(a.semantic_debt(), 0);
+    }
+}
+
+#[cfg(test)]
+mod update_ownership_tests {
+    use super::*;
+    use crate::condition::Arena;
+    fn graph(arity: usize) -> Graph {
+        Graph::new(&[Signature {
+            name: "p".into(),
+            arity,
+        }])
+    }
+    fn finish(g: &mut Graph, mut u: Update) -> Root {
+        loop {
+            if let UpdateStatus::Complete(r) = u.tick(g) {
+                return r;
+            }
+        }
+    }
+    #[test]
+    fn unique_changed_support_updates_all_indexes_without_copying() {
+        let mut g = graph(2);
+        let mut a = Arena::default();
+        let c = a.fresh_choice().1;
+        let u = g.post(g.empty(), 0, vec![7, 7], Condition::TRUE).unwrap();
+        let id = u.occurrence();
+        let root = finish(&mut g, u);
+        let before = g.index.mutation_counts();
+        let u = g.set_liveness(root, id, c).unwrap();
+        let root = finish(&mut g, u);
+        assert_eq!(g.fact(root.clone(), id).unwrap().support, c);
+        assert_eq!(g.relation(root.clone(), 0).unwrap().next(&g), Some((id, c)));
+        for port in 0..2 {
+            assert_eq!(
+                g.port(root.clone(), 0, port, 7).unwrap().next(&g),
+                Some((id, c))
+            );
+        }
+        assert_eq!(g.incidence(root, 7).next(&g), Some((id, c)));
+        assert_eq!(
+            g.index.mutation_counts().1,
+            before.1,
+            "sole owner copied index paths"
+        );
+    }
+    #[test]
+    fn staged_fact_or_owned_arguments_suffice_through_collection_each_tick() {
+        for arity in [0, 1, 3] {
+            for remove in [false, true] {
+                for false_post in [false, true] {
+                    let mut g = graph(arity);
+                    let mut a = Arena::default();
+                    let c = a.fresh_choice().1;
+                    let args = vec![7; arity];
+                    let support = if false_post { Condition::FALSE } else { c };
+                    let mut u = g.post(g.empty(), 0, args.clone(), support).unwrap();
+                    let id = u.occurrence();
+                    if remove && !false_post {
+                        let root = finish(&mut g, u);
+                        u = g.set_liveness(root, id, Condition::FALSE).unwrap();
+                    }
+                    let live = !remove && !false_post;
+                    loop {
+                        let staged = u.roots().last().unwrap().clone();
+                        let mut gc = g.collect([staged].into_iter());
+                        let mut conditions = vec![];
+                        while !gc.done() {
+                            if let Some(c) = gc.tick(&mut g) {
+                                conditions.push(c)
+                            }
+                        }
+                        drop(gc);
+                        assert_eq!(g.rows.contains_key(&id), live);
+                        let mut gc = a.collect(conditions.into_iter());
+                        while !gc.tick(&mut a) {}
+                        drop(gc);
+                        if let UpdateStatus::Complete(root) = u.tick(&mut g) {
+                            assert_eq!(g.fact(root.clone(), id).is_some(), live);
+                            assert_eq!(
+                                g.relation(root.clone(), 0).unwrap().next(&g).is_some(),
+                                live
+                            );
+                            for port in 0..arity {
+                                assert_eq!(
+                                    g.port(root.clone(), 0, port, 7).unwrap().next(&g).is_some(),
+                                    live
+                                );
+                            }
+                            if live {
+                                assert_eq!(g.fact(root, id).unwrap().args, args);
+                                assert!(a.contains(c));
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn empty_update_preserves_owner_and_collector_authority() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        let mut g = graph(0);
+        let mut other = graph(0);
+        let mut u = g.post(g.empty(), 0, vec![], Condition::FALSE).unwrap();
+        assert!(catch_unwind(AssertUnwindSafe(|| u.tick(&mut other))).is_err());
+        let gc = g.collect(u.roots().into_iter());
+        assert!(catch_unwind(AssertUnwindSafe(|| u.tick(&mut g))).is_err());
+        drop(gc);
+        assert!(matches!(u.tick(&mut g), UpdateStatus::Complete(_)));
     }
 }
