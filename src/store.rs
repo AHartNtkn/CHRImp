@@ -20,42 +20,97 @@ struct Stats {
     copied: AtomicUsize,
     released: AtomicUsize,
 }
-struct Batch<V: Value> {
-    left: Option<Arc<Record<V>>>,
-    right: Option<Arc<Record<V>>>,
-    next: Option<Box<Batch<V>>>,
+const RELEASE_CAPACITY: usize = 16;
+type Pair<V> = (Option<Arc<Record<V>>>, Option<Arc<Record<V>>>);
+struct Block<V: Value> {
+    pairs: [Option<Pair<V>>; RELEASE_CAPACITY],
+    len: usize,
+    next: Option<Box<Block<V>>>,
+}
+impl<V: Value> Block<V> {
+    fn new() -> Self {
+        Self {
+            pairs: std::array::from_fn(|_| None),
+            len: 0,
+            next: None,
+        }
+    }
+    fn push(&mut self, pair: Pair<V>) {
+        self.pairs[self.len] = Some(pair);
+        self.len += 1;
+    }
+    fn pop(&mut self) -> Pair<V> {
+        self.len -= 1;
+        self.pairs[self.len].take().unwrap()
+    }
+}
+struct QueueState<V: Value> {
+    inline: Block<V>,
+    overflow: Option<Box<Block<V>>>,
+}
+impl<V: Value> QueueState<V> {
+    fn push(&mut self, pair: Pair<V>) {
+        if let Some(block) = self.overflow.as_mut() {
+            if block.len < RELEASE_CAPACITY {
+                block.push(pair);
+                return;
+            }
+        } else if self.inline.len < RELEASE_CAPACITY {
+            self.inline.push(pair);
+            return;
+        }
+        let mut block = Box::new(Block::new());
+        block.push(pair);
+        block.next = self.overflow.take();
+        self.overflow = Some(block);
+    }
+    fn pop(&mut self) -> Option<Pair<V>> {
+        if let Some(block) = self.overflow.as_mut() {
+            let pair = block.pop();
+            if block.len == 0 {
+                let mut empty = self.overflow.take().unwrap();
+                self.overflow = empty.next.take();
+                // The empty block owns neither child references nor a chain.
+            }
+            Some(pair)
+        } else if self.inline.len != 0 {
+            Some(self.inline.pop())
+        } else {
+            None
+        }
+    }
 }
 struct Queue<V: Value> {
-    head: Mutex<Option<Box<Batch<V>>>>,
+    state: Mutex<QueueState<V>>,
     count: AtomicUsize,
 }
 impl<V: Value> Queue<V> {
     fn new() -> Self {
         Self {
-            head: Mutex::new(None),
+            state: Mutex::new(QueueState {
+                inline: Block::new(),
+                overflow: None,
+            }),
             count: AtomicUsize::new(0),
         }
     }
     fn push(&self, left: Option<Arc<Record<V>>>, right: Option<Arc<Record<V>>>) {
-        let mut head = self.head.lock().unwrap();
-        let next = head.take();
-        *head = Some(Box::new(Batch { left, right, next }));
+        let mut state = self.state.lock().unwrap();
+        state.push((left, right));
         self.count.fetch_add(1, Relaxed);
     }
-    fn pop(&self) -> Option<Box<Batch<V>>> {
-        let mut head = self.head.lock().unwrap();
-        let mut batch = head.take()?;
-        *head = batch.next.take();
+    fn pop(&self) -> Option<Pair<V>> {
+        let mut state = self.state.lock().unwrap();
+        let pair = state.pop()?;
         self.count.fetch_sub(1, Relaxed);
-        Some(batch)
+        Some(pair)
     }
 }
 impl<V: Value> Drop for Queue<V> {
     fn drop(&mut self) {
-        let head = self.head.get_mut().unwrap();
-        while let Some(mut batch) = head.take() {
-            *head = batch.next.take();
-            drop(batch);
+        let state = self.state.get_mut().unwrap();
+        while let Some(pair) = state.pop() {
+            drop(pair);
         }
     }
 }
@@ -224,9 +279,9 @@ impl<V: Value> Store<V> {
         self.queue.count.load(Relaxed) != 0
     }
     pub fn release_tick(&mut self) -> bool {
-        if let Some(mut batch) = self.queue.pop() {
-            drop(batch.left.take());
-            drop(batch.right.take());
+        if let Some((left, right)) = self.queue.pop() {
+            drop(left);
+            drop(right);
             false
         } else {
             true
@@ -716,5 +771,89 @@ mod filter_tests {
         assert_eq!(filter.frames.capacity(), 0);
         assert!(filter.frame.is_none());
         assert!(filter.leaf.is_none());
+    }
+}
+
+#[cfg(test)]
+mod release_block_tests {
+    use super::*;
+    #[test]
+    fn queue_preserves_lifo_and_frees_every_empty_overflow_block() {
+        let mut store = Store::<u64>::default();
+        let mut state = QueueState {
+            inline: Block::new(),
+            overflow: None,
+        };
+        for i in 0..4097 {
+            let mut root = store.insert(store.empty(), [i, 0, 0, 0], i);
+            state.push((root.node.take(), None));
+            if i < RELEASE_CAPACITY as u64 {
+                assert!(state.overflow.is_none());
+            }
+        }
+        for expected in (0..4097).rev() {
+            let (left, right) = state.pop().unwrap();
+            assert!(right.is_none());
+            assert!(matches!(&left.unwrap().node, Node::Leaf { value, .. } if *value == expected));
+            let mut block = state.overflow.as_deref();
+            let mut pairs = state.inline.len;
+            while let Some(b) = block {
+                assert!(b.len > 0 && b.len <= RELEASE_CAPACITY);
+                pairs += b.len;
+                block = b.next.as_deref();
+            }
+            assert_eq!(pairs, expected as usize);
+        }
+        assert!(state.pop().is_none() && state.overflow.is_none());
+        assert!(state.inline.pairs.iter().all(Option::is_none));
+        assert_eq!(store.node_count(), 0);
+        for _ in 0..10000 {
+            state.push((None, None));
+            state.pop().unwrap();
+            assert!(state.overflow.is_none());
+        }
+    }
+    #[test]
+    fn concurrent_root_drops_and_collection_keep_pinned_authority() {
+        fn send_sync<T: Send + Sync>() {}
+        send_sync::<Root<u64>>();
+        let mut store = Store::<u64>::default();
+        let mut root = store.empty();
+        for i in 0..1024 {
+            root = store.insert(root, [i, 0, 0, 0], i);
+        }
+        let pin = root.clone();
+        let mut versions = Vec::new();
+        for i in 0..512 {
+            root = store.insert(root, [i, 0, 0, 0], i + 10000);
+            versions.push(root.clone());
+        }
+        std::thread::scope(|scope| {
+            for chunk in versions.chunks(64) {
+                let owned = chunk.to_vec();
+                scope.spawn(move || drop(owned));
+            }
+            drop(versions);
+            for _ in 0..1024 {
+                store.release_tick();
+            }
+        });
+        assert_eq!(store.get(&pin, &[0, 0, 0, 0]), Some(0));
+        assert_eq!(store.get(&root, &[0, 0, 0, 0]), Some(10000));
+        let mut collector = store.collect([pin.clone(), root.clone()].into_iter());
+        while !collector.done() {
+            collector.tick(&mut store);
+        }
+        drop(collector);
+        assert!(store.contains(&pin) && store.contains(&root));
+        drop(pin);
+        drop(root);
+        while store.release_pending() {
+            let before = store.node_count();
+            store.release_tick();
+            assert!(before - store.node_count() <= 2);
+        }
+        assert_eq!(store.node_count(), 0);
+        assert!(store.queue.state.lock().unwrap().overflow.is_none());
     }
 }
