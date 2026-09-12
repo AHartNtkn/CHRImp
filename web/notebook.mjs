@@ -148,7 +148,16 @@ export class InspectionSelection {
   }
 }
 
+let serverBoot = null;
 export async function request(route, payload) {
+  if (!['hello', 'parse', 'format'].includes(route)) {
+    // Pin this controller to its server. A restart must never reinterpret its IDs.
+    serverBoot ??= request('hello', {}).then(response => {
+      check(typeof response.boot === 'string' && /^[0-9a-f]{32}$/.test(response.boot), 'Invalid server identity.');
+      return response.boot;
+    }).catch(error => { serverBoot = null; throw error; });
+    payload = {...payload, boot:await serverBoot};
+  }
   const response = await fetch(`/api/${route}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });

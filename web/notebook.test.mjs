@@ -1,8 +1,44 @@
 import assert from 'node:assert/strict';
 import {test as runTest} from 'node:test';
 import { applyEdit, at, sceneEntries, validateNotebook } from './graph.mjs';
-import { RunSession, InspectionSelection, deliverCachedOutput } from './notebook.mjs';
+import { RunSession, InspectionSelection, deliverCachedOutput, request } from './notebook.mjs';
 import { OutputAssembler } from './answers.mjs';
+
+await runTest('transport pins execution requests to one server incarnation', async () => {
+  const originalFetch = globalThis.fetch;
+  const first = 'a'.repeat(32), second = 'b'.repeat(32);
+  let boot = first, helloFails = true, starts = 0;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push({url, body});
+    if (url === '/api/hello') {
+      if (helloFails) { helloFails = false; throw new Error('connection lost'); }
+      return {ok:true, status:200, text:async () => JSON.stringify({boot})};
+    }
+    if (url === '/api/parse') {
+      assert.equal(body.boot, undefined);
+      return {ok:true, status:200, text:async () => '{}'};
+    }
+    if (body.boot !== boot) return {ok:false, status:409, text:async () => JSON.stringify({error:'Server restarted; execution is unavailable.'})};
+    if (url === '/api/start') starts++;
+    return {ok:true, status:200, text:async () => JSON.stringify({run:1})};
+  };
+  try {
+    await request('parse', {program:'', query:'true'});
+    await assert.rejects(request('start', {}), /connection lost/);
+    assert.equal(starts, 0, 'no execution before handshake succeeds');
+    await Promise.all([request('start', {}), request('status', {run:1})]);
+    assert.equal(calls.filter(call => call.url === '/api/hello').length, 2, 'concurrent calls share the successful handshake');
+    assert.equal(starts, 1);
+    boot = second;
+    for (const route of ['cancel', 'close', 'start', 'inspect', 'step']) {
+      await assert.rejects(request(route, {run:1}), /Server restarted/);
+      assert.equal(calls.at(-1).body.boot, first, 'never rebind stale handles to a new server');
+    }
+    assert.equal(starts, 1);
+  } finally { globalThis.fetch = originalFetch; }
+});
 
 await runTest('notebook persistence and production UI', async t => {
 const test = t.test.bind(t);

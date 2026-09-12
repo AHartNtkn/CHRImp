@@ -8,20 +8,46 @@ use crate::syntax::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, hash_map::RandomState};
+use std::hash::BuildHasher;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::ops::Bound::{Excluded, Included, Unbounded};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 const BODY_LIMIT: usize = 4 * 1024 * 1024;
 const BUDGET_LIMIT: usize = 4096;
-#[derive(Default)]
+static NEXT_BOOT: AtomicU64 = AtomicU64::new(0);
+
 pub struct Runtime {
+    boot: String,
     runs: Mutex<Runs>,
     batches: Mutex<BTreeMap<(u64, Option<u64>), Value>>,
     captures: Mutex<BTreeMap<u64, (u64, ViewId)>>,
+}
+impl Default for Runtime {
+    fn default() -> Self {
+        // RandomState uses OS-seeded keys in std. Domain-separated hashes and
+        // an ordinal distinguish incarnations without clocks or persistent files.
+        // This is an opaque identity, not an authentication credential.
+        let ordinal = NEXT_BOOT
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .expect("runtime incarnation counter exhausted");
+        let random = RandomState::new();
+        let boot = format!(
+            "{:016x}{:016x}",
+            random.hash_one((ordinal, 0u8)),
+            random.hash_one((ordinal, 1u8))
+        );
+        Self {
+            boot,
+            runs: Mutex::default(),
+            batches: Mutex::default(),
+            captures: Mutex::default(),
+        }
+    }
 }
 #[derive(Default)]
 struct Runs {
@@ -56,6 +82,8 @@ struct Source {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Model {
+    #[serde(default)]
+    boot: Option<String>,
     program: Program,
     query: Body,
     #[serde(default)]
@@ -92,6 +120,7 @@ impl Id {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RunRequest {
+    boot: String,
     run: u64,
     #[serde(default)]
     ack: Option<u64>,
@@ -187,8 +216,34 @@ impl Runtime {
         self.dispatch(path, body)
             .unwrap_or_else(|response| response)
     }
+    fn validate_boot(&self, boot: &str) -> Result<(), Response> {
+        if boot.len() != 32
+            || !boot
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(Response::error(
+                400,
+                "boot must be 32 lowercase hexadecimal characters",
+            ));
+        }
+        if boot != self.boot {
+            return Err(Response {
+                status: 409,
+                body: json!({"code":"stale_boot", "error":"The notebook server restarted. This execution is no longer available.", "retry":false}),
+            });
+        }
+        Ok(())
+    }
     fn dispatch(&self, path: &str, body: &str) -> Result<Response, Response> {
         match path {
+            "/api/hello" => {
+                let input: BTreeMap<String, String> = decode(body)?;
+                if !input.is_empty() {
+                    return Err(Response::error(400, "hello expects an empty object"));
+                }
+                return Ok(Response::ok(json!({"boot":self.boot})));
+            }
             "/api/parse" => {
                 let input: Source = decode(body)?;
                 let program = parse_program(&input.program).map_err(|e| Response::error(400, e))?;
@@ -197,6 +252,14 @@ impl Runtime {
             }
             "/api/format" | "/api/start" => {
                 let input: Model = decode(body)?;
+                if path == "/api/start" {
+                    self.validate_boot(
+                        input
+                            .boot
+                            .as_deref()
+                            .ok_or_else(|| Response::error(400, "missing boot"))?,
+                    )?;
+                }
                 validate_program(&input.program)
                     .and_then(|()| validate_query(&input.query))
                     .map_err(|e| Response::error(400, e))?;
@@ -223,6 +286,7 @@ impl Runtime {
             _ => {}
         }
         let request: RunRequest = decode(body)?;
+        self.validate_boot(&request.boot)?;
         if request.budget > BUDGET_LIMIT {
             return Err(Response::error(400, "work budget exceeds 4096"));
         }
