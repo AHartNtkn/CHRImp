@@ -327,6 +327,7 @@ const testSession = (api, notify = () => {}, store = memorySink()) => {
       phase:'paused',ack:null,index:0,sequence:null,applications:0,stepPending:false}});
     return {...response,archive};
   };
+  registered.checkpoint = action => action();
   return new RunSession(registered,notify,store);
 };
 
@@ -1013,7 +1014,7 @@ function createContext(values) {
     runNotice:null, displayWriting:null,displayDirty:false,displayStamp:null,message(){},async saveDisplay(){},
     inspected:null,outputMode:'answers',savedSelection:'',answerNumber:null,answerPage:0,
     resultPage:0,resultPortPage:0,bindingPage:0,pendingNumber:0,pendingPage:0,pendingPortPage:0,pendingPath:[], session:values.session ?? {run:null},
-    request:values.request ?? api ?? (()=>{}), async saveEditor() {}, async restoreInspection() {}, async finishInspection() {}, ...values,
+    request:values.request ?? Object.assign(api ?? (()=>{}), {checkpoint:action => action()}), async saveEditor() {}, async restoreInspection() {}, async finishInspection() {}, ...values,
     ...(api ? {liveRequest:api} : {})});
   runInContext(productionSection('function attachBatch(', '// A cached response'),context);
   return context;

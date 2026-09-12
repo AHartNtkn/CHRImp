@@ -13,6 +13,16 @@ use std::ops::Bound::{Excluded, Unbounded};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
+pub(crate) fn poll(job: &mut Option<Job>, arena: &mut Arena) -> Option<Condition> {
+    match job.as_mut().expect("pending Boolean operation").tick(arena) {
+        Progress::Pending => None,
+        Progress::Complete(result) => {
+            *job = None;
+            Some(result)
+        }
+    }
+}
+
 static NEXT_ARENA: AtomicU32 = AtomicU32::new(1);
 const CACHE_LIMIT: usize = 1024;
 

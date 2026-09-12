@@ -12,7 +12,7 @@ pub use inspection::{InspectionError, InspectionStatus, SnapshotInfo, SnapshotKi
 pub use step::StepStatus;
 
 use crate::commit::{Commit, CommitStatus, FreshIds, StateRoot};
-use crate::condition::{Arena, Condition, Job, Operation, Progress};
+use crate::condition::{Arena, Condition, Job, Operation, Progress, poll};
 use crate::graph::{Graph, Update, UpdateStatus};
 use crate::history::History;
 use crate::identity::Merge;
@@ -992,15 +992,6 @@ impl Engine {
             }
         }
         self.ready = Some(ready);
-    }
-}
-fn poll(job: &mut Option<Job>, a: &mut Arena) -> Option<Condition> {
-    match job.as_mut().expect("pending Boolean operation").tick(a) {
-        Progress::Pending => None,
-        Progress::Complete(c) => {
-            *job = None;
-            Some(c)
-        }
     }
 }
 

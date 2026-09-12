@@ -5,7 +5,7 @@
 //! alternatives are permitted. Every condition operation can yield. Reading
 //! identity never alters the graph or identifies variables to satisfy a head.
 
-use crate::condition::{Arena, Condition, Job, Operation, Progress};
+use crate::condition::{Arena, Condition, Job, Operation, poll};
 use crate::graph::Graph;
 use crate::store::{Cursor, Key, Root};
 use crate::trace::{Cursor as TraceCursor, Step, Trace};
@@ -16,14 +16,6 @@ pub(crate) const PARENT: u64 = 4;
 pub(crate) const CHILD: u64 = 5;
 pub(crate) const RANK: u64 = 6;
 
-fn poll(job: &mut Option<Job>, a: &mut Arena) -> Option<Condition> {
-    if let Progress::Complete(c) = job.as_mut().expect("condition continuation").tick(a) {
-        *job = None;
-        Some(c)
-    } else {
-        None
-    }
-}
 #[derive(Clone, Copy)]
 enum PartPhase {
     Scan,

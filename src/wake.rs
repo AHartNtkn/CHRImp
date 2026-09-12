@@ -3,7 +3,7 @@
 //! Members supply supported aliases; incidence prefixes supply occurrences.
 //! Each occurrence is emitted only on support not already returned by this walk.
 
-use crate::condition::{Arena, Condition, Job, Operation, Progress};
+use crate::condition::{Arena, Condition, Job, Operation, poll};
 use crate::graph::{Graph, Occurrences};
 use crate::identity::{MergeDelta, ResolveStatus};
 use crate::members::Members;
@@ -91,19 +91,6 @@ impl Wake {
             .chain(self.seeds.iter().map(|(_, c)| *c))
             .chain(self.boolean.iter().flat_map(Job::roots))
     }
-    fn poll(&mut self, a: &mut Arena) -> Option<Condition> {
-        if let Progress::Complete(c) = self
-            .boolean
-            .as_mut()
-            .expect("condition continuation")
-            .tick(a)
-        {
-            self.boolean = None;
-            Some(c)
-        } else {
-            None
-        }
-    }
     pub fn discard_tick(&mut self) -> bool {
         if self.discard == 0 {
             self.discard = 1;
@@ -176,7 +163,7 @@ impl Wake {
                 }
             }
             Phase::Intersect => {
-                if let Some(c) = self.poll(a) {
+                if let Some(c) = poll(&mut self.boolean, a) {
                     if c == Condition::FALSE {
                         self.phase = Phase::Scan;
                     } else {
@@ -191,7 +178,7 @@ impl Wake {
                 }
             }
             Phase::Novel => {
-                if let Some(c) = self.poll(a) {
+                if let Some(c) = poll(&mut self.boolean, a) {
                     self.fresh = c;
                     if c == Condition::FALSE {
                         self.phase = Phase::Scan;
@@ -207,7 +194,7 @@ impl Wake {
                 }
             }
             Phase::Remember => {
-                if let Some(c) = self.poll(a) {
+                if let Some(c) = poll(&mut self.boolean, a) {
                     self.seen.insert(self.occurrence, c);
                     self.phase = Phase::Scan;
                     return WakeStatus::Found {

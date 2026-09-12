@@ -15,10 +15,8 @@ pub use substitute::Substitution;
 struct Stats {
     allocated: AtomicUsize,
     live: AtomicUsize,
-    peak: AtomicUsize,
     unique: AtomicUsize,
     copied: AtomicUsize,
-    released: AtomicUsize,
 }
 const RELEASE_CAPACITY: usize = 16;
 type Pair<V> = (Option<Arc<Record<V>>>, Option<Arc<Record<V>>>);
@@ -145,7 +143,6 @@ impl<V: Value> Record<V> {
 impl<V: Value> Drop for Record<V> {
     fn drop(&mut self) {
         self.stats.live.fetch_sub(1, Relaxed);
-        self.stats.released.fetch_add(1, Relaxed);
         let (left, right) = self.children();
         if left.is_none() && right.is_none() {
             return;
@@ -309,8 +306,7 @@ impl<V: Value> Store<V> {
     fn allocate(&mut self, node: Node<V>) -> Root<V> {
         let leaves = Self::leaf_count(&node);
         self.stats.allocated.fetch_add(1, Relaxed);
-        let live = self.stats.live.fetch_add(1, Relaxed) + 1;
-        self.stats.peak.fetch_max(live, Relaxed);
+        self.stats.live.fetch_add(1, Relaxed);
         Root {
             owner: self.owner,
             node: Some(Arc::new(Record {

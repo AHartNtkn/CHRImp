@@ -1,7 +1,7 @@
 //! Semantic liveness of occurrences and the upward identity paths they use.
 
 use super::{Graph, INCIDENCE};
-use crate::condition::{Arena, Condition, Job, Operation, Progress};
+use crate::condition::{Arena, Condition, Job, Operation, poll};
 use crate::identity::{CHILD, PARENT, RANK};
 use crate::store::{Cursor, Filter, FilterStatus, Key, Root};
 use std::collections::{BTreeMap, VecDeque};
@@ -104,21 +104,6 @@ impl Prune {
             .chain(self.arena_guard.iter().flat_map(Job::roots))
     }
 
-    fn poll(&mut self, arena: &mut Arena) -> Option<Condition> {
-        match self
-            .boolean
-            .as_mut()
-            .expect("prune condition job")
-            .tick(arena)
-        {
-            Progress::Pending => None,
-            Progress::Complete(c) => {
-                self.boolean = None;
-                Some(c)
-            }
-        }
-    }
-
     fn enqueue(&mut self, arena: &Arena, variable: u64, support: Condition, after: Phase) {
         self.target = variable;
         self.after_enqueue = after;
@@ -205,7 +190,7 @@ impl Prune {
                 }
             }
             Phase::SeedActive => {
-                if let Some(c) = self.poll(arena) {
+                if let Some(c) = poll(&mut self.boolean, arena) {
                     self.enqueue(arena, self.variable, c, Phase::Seeds);
                 }
             }
@@ -227,7 +212,7 @@ impl Prune {
                 }
             },
             Phase::OccurrenceHit => {
-                if let Some(c) = self.poll(arena) {
+                if let Some(c) = poll(&mut self.boolean, arena) {
                     self.replace(c);
                     if self.key[0] == INCIDENCE {
                         self.enqueue(arena, self.key[1], c, Phase::Occurrences);
@@ -237,7 +222,7 @@ impl Prune {
                 }
             }
             Phase::Enqueue => {
-                if let Some(c) = self.poll(arena) {
+                if let Some(c) = poll(&mut self.boolean, arena) {
                     self.pending.insert(self.target, c);
                     self.phase = self.after_enqueue;
                 }
@@ -259,7 +244,7 @@ impl Prune {
                 }
             }
             Phase::Novel => {
-                if let Some(c) = self.poll(arena) {
+                if let Some(c) = poll(&mut self.boolean, arena) {
                     self.fresh = c;
                     if c == Condition::FALSE {
                         self.phase = Phase::Next;
@@ -275,7 +260,7 @@ impl Prune {
                 }
             }
             Phase::Remember => {
-                if let Some(c) = self.poll(arena) {
+                if let Some(c) = poll(&mut self.boolean, arena) {
                     self.marked.insert(self.variable, c);
                     self.cursor = Some(graph.index.range(
                         self.staged.clone(),
@@ -296,7 +281,7 @@ impl Prune {
                 }
             }
             Phase::Hit => {
-                if let Some(c) = self.poll(arena) {
+                if let Some(c) = poll(&mut self.boolean, arena) {
                     self.enqueue(arena, self.target, c, Phase::Scan);
                 }
             }
@@ -324,13 +309,13 @@ impl Prune {
                 }
             },
             Phase::IdentityMark => {
-                if let Some(c) = self.poll(arena) {
+                if let Some(c) = poll(&mut self.boolean, arena) {
                     self.boolean = Some(arena.start(Operation::And(c, self.active)));
                     self.phase = Phase::IdentityActive;
                 }
             }
             Phase::IdentityActive => {
-                if let Some(c) = self.poll(arena) {
+                if let Some(c) = poll(&mut self.boolean, arena) {
                     self.replace(c);
                     self.phase = Phase::Identity;
                 }

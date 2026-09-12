@@ -3,7 +3,7 @@
 //! DFS retains only pending scopes, never a Cartesian answer list. Inactive
 //! births advance once; active decisions preserve duplicate successful histories.
 
-use crate::condition::{Arena, Condition, Job, Operation, Progress};
+use crate::condition::{Arena, Condition, Job, Operation, poll};
 use crate::engine::{Birth, Completion};
 use crate::graph::{Graph, Occurrences};
 use crate::identity::{Resolve, ResolveStatus};
@@ -166,19 +166,6 @@ impl Observe {
         .chain(self.boolean.iter().flat_map(Job::roots))
         .chain(self.resolve.iter().flat_map(Resolve::condition_roots))
     }
-    fn poll(&mut self, a: &mut Arena) -> Option<Condition> {
-        if let Progress::Complete(c) = self
-            .boolean
-            .as_mut()
-            .expect("condition continuation")
-            .tick(a)
-        {
-            self.boolean = None;
-            Some(c)
-        } else {
-            None
-        }
-    }
     fn push(&mut self, scope: Condition) {
         if scope != Condition::FALSE {
             self.stack.push(Frame {
@@ -268,7 +255,7 @@ impl Observe {
                 }
             }
             Phase::Inactive => {
-                if let Some(c) = self.poll(a) {
+                if let Some(c) = poll(&mut self.boolean, a) {
                     self.inactive = c;
                     self.boolean =
                         Some(a.start(Operation::And(self.current.scope, self.birth_support)));
@@ -276,21 +263,21 @@ impl Observe {
                 }
             }
             Phase::Active => {
-                if let Some(c) = self.poll(a) {
+                if let Some(c) = poll(&mut self.boolean, a) {
                     self.active = c;
                     self.boolean = Some(a.start(Operation::And(c, self.decision)));
                     self.phase = Phase::Left;
                 }
             }
             Phase::Left => {
-                if let Some(c) = self.poll(a) {
+                if let Some(c) = poll(&mut self.boolean, a) {
                     self.left = c;
                     self.boolean = Some(a.start(Operation::And(self.active, self.decision.not())));
                     self.phase = Phase::Right;
                 }
             }
             Phase::Right => {
-                if let Some(right) = self.poll(a) {
+                if let Some(right) = poll(&mut self.boolean, a) {
                     self.push(right);
                     self.push(self.left);
                     self.push(self.inactive);
@@ -369,7 +356,7 @@ impl Observe {
                 }
             }
             Phase::Live => {
-                if let Some(c) = self.poll(a) {
+                if let Some(c) = poll(&mut self.boolean, a) {
                     if c == Condition::FALSE {
                         self.phase = Phase::Rows;
                     } else {

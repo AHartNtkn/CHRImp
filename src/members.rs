@@ -4,7 +4,7 @@
 //! Children may coexist on overlapping support. Only previously visited support
 //! for the same variable is subtracted; emitted fragments never overlap.
 
-use crate::condition::{Arena, Condition, Job, Operation, Progress};
+use crate::condition::{Arena, Condition, Job, Operation, poll};
 use crate::graph::Graph;
 use crate::identity::{CHILD, Resolve, ResolveStatus};
 use crate::store::{Cursor, Root};
@@ -95,19 +95,6 @@ impl Members {
         self.boolean = Some(a.start(Operation::Or(old, support)));
         self.phase = Phase::Enqueue;
     }
-    fn poll(&mut self, a: &mut Arena) -> Option<Condition> {
-        if let Progress::Complete(c) = self
-            .boolean
-            .as_mut()
-            .expect("condition continuation")
-            .tick(a)
-        {
-            self.boolean = None;
-            Some(c)
-        } else {
-            None
-        }
-    }
     pub fn discard_tick(&mut self) -> bool {
         if self.discard == 0 {
             self.discard = 1;
@@ -167,7 +154,7 @@ impl Members {
                 }
             }
             Phase::Enqueue => {
-                if let Some(c) = self.poll(a) {
+                if let Some(c) = poll(&mut self.boolean, a) {
                     if self.pending.insert(self.target, c).is_none() {
                         self.queue.push_back(self.target);
                     }
@@ -190,7 +177,7 @@ impl Members {
                 }
             }
             Phase::Novel => {
-                if let Some(c) = self.poll(a) {
+                if let Some(c) = poll(&mut self.boolean, a) {
                     self.fresh = c;
                     if c == Condition::FALSE {
                         self.phase = Phase::Next;
@@ -206,7 +193,7 @@ impl Members {
                 }
             }
             Phase::Remember => {
-                if let Some(c) = self.poll(a) {
+                if let Some(c) = poll(&mut self.boolean, a) {
                     self.visited.insert(self.variable, c);
                     self.visits += 1;
                     self.cursor = Some(g.index.range(
@@ -237,7 +224,7 @@ impl Members {
                 }
             }
             Phase::Hit => {
-                if let Some(c) = self.poll(a) {
+                if let Some(c) = poll(&mut self.boolean, a) {
                     if c == Condition::FALSE {
                         self.phase = Phase::Scan;
                     } else {

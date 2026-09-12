@@ -268,7 +268,6 @@ export class RunSession {
     this.recordHistory = payload.record_history === true;
     this.applications = 0; this.exhausted = false; this.status = 'paused'; this.stepPending = false; this.stepOperation = null;
   }
-  checkpoint(action) { return this.api.checkpoint ? this.api.checkpoint(action) : action(); }
   async restore(preferred = null) {
     let recoveryError;
     try { await this.api.recover?.(); } catch (error) { recoveryError = error; }
@@ -371,7 +370,7 @@ export class RunSession {
     }
     cancel ||= pending?.response.canceled === true;
     await deliverCachedOutput(this.store, this.archive, this.stream, pending, cancel, {
-      id:`live:run:${this.run}`, serialize:action => this.checkpoint(action),
+      id:`live:run:${this.run}`, serialize:action => this.api.checkpoint(action),
       value:complete => ({run:this.run, archive:this.archive,
         ...(cancel || pending ? {phase:cancel ? (complete ? 'canceled' : 'canceling') : pending.response.delivery_done && complete ? 'done' : 'paused'} : {}),
         applications:pending?.response.applications ?? this.applications, exhausted:pending?.response.exhausted ?? this.exhausted}),
@@ -450,7 +449,7 @@ export class RunSession {
         if (!this.running || this.canceling || this.run !== operation.run) return;
         if (!this.stepPending) {
           // Persist the admitted selection before sending its exact control.
-          await this.checkpoint(async () => {
+          await this.api.checkpoint(async () => {
             const key = `live:run:${operation.run}`, saved = await this.store.recovery(key);
             check(saved, 'Step recovery ownership is missing.');
             await this.store.saveRecovery(key, {...saved,stepChoices:operation.choices});
@@ -924,7 +923,7 @@ function mountNotebook() {
     const pending = inspectionPending;
     const key = `live:inspection:${pending.run}:${pending.inspection}`;
     check(typeof pending.archive === 'string', 'Inspection archive ownership is missing.');
-    const checkpoint = {id:key, serialize:action => request.checkpoint ? request.checkpoint(action) : action(),
+    const checkpoint = {id:key, serialize:action => request.checkpoint(action),
       value:() => ({run:pending.run,inspection:pending.inspection,archive:pending.archive,
         ...(inspectionCanceled ? {phase:'canceling'} : {}),failure:pending.failure ?? null})};
     while (!pending.cleanup) {
