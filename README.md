@@ -1,5 +1,13 @@
 # CHR
 
+Start the local browser notebook:
+
+```sh
+cargo run --offline -- --notebook
+```
+
+Open the printed URL. Edit programs and queries as text or graphs, then run or step through execution. History recording is optional and off by default. Saved answers remain in this browser; execution handles and recorded states last until released or the server stops. Use `--port PORT` to choose a port.
+
 Run a program with a relational query:
 
 ```sh

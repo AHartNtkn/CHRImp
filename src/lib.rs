@@ -8,6 +8,7 @@ pub mod history;
 pub mod identity;
 pub mod matching;
 pub mod members;
+pub mod notebook;
 pub mod observe;
 pub mod program;
 pub mod store;

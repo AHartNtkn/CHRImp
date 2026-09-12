@@ -71,6 +71,18 @@ impl Partition {
             .into_iter()
             .chain(self.boolean.iter().flat_map(|j| j.roots()))
     }
+    fn discard_tick(&mut self) -> bool {
+        self.remaining = Condition::FALSE;
+        self.edge = Condition::FALSE;
+        self.hit = Condition::FALSE;
+        if let Some(job) = &mut self.boolean {
+            if job.discard_tick() {
+                self.boolean = None;
+            }
+            return false;
+        }
+        true
+    }
     fn tick(&mut self, g: &Graph, a: &mut Arena) -> ResolveStatus {
         match self.phase {
             PartPhase::Scan => {
@@ -340,6 +352,19 @@ impl Resolved {
             .chain([self.carry])
             .chain(self.boolean.iter().flat_map(|j| j.roots()))
     }
+    fn discard_tick(&mut self) -> bool {
+        self.carry = Condition::FALSE;
+        if let Some(job) = &mut self.boolean {
+            if job.discard_tick() {
+                self.boolean = None;
+            }
+            return false;
+        }
+        if !self.resolve.discard_tick() {
+            return false;
+        }
+        self.map.pop_first().is_none()
+    }
     fn tick(&mut self, g: &Graph, a: &mut Arena) -> bool {
         if self.done {
             return true;
@@ -384,10 +409,12 @@ pub struct Equal {
     carry: Condition,
     result: Condition,
     phase: EqualPhase,
+    discard: u8,
 }
 impl Equal {
     pub fn new(g: &Graph, root: Root, x: u64, y: u64, scope: Condition) -> Self {
         Self {
+            discard: 0,
             root,
             left: Resolved::new(g, root, x, scope),
             right: Resolved::new(g, root, y, scope),
@@ -412,7 +439,39 @@ impl Equal {
             .chain([self.carry, self.result])
             .chain(self.boolean.iter().flat_map(|j| j.roots()))
     }
+    pub fn discard_tick(&mut self) -> bool {
+        if self.discard == 0 {
+            self.discard = 1;
+            self.carry = Condition::FALSE;
+            self.result = Condition::FALSE;
+        }
+        match self.discard {
+            1 => {
+                if let Some(j) = &mut self.boolean {
+                    if j.discard_tick() {
+                        self.boolean = None;
+                    }
+                } else {
+                    self.discard = 2;
+                }
+            }
+            2 => {
+                if self.left.discard_tick() {
+                    self.discard = 3;
+                }
+            }
+            3 => {
+                if self.right.discard_tick() {
+                    self.discard = 4;
+                }
+            }
+            _ => return true,
+        }
+        false
+    }
+
     pub fn tick(&mut self, g: &Graph, a: &mut Arena) -> Option<Condition> {
+        assert_eq!(self.discard, 0, "discarded continuation cannot resume");
         match self.phase {
             EqualPhase::Left => {
                 if self.left.tick(g, a) {
@@ -499,10 +558,12 @@ pub struct Merge {
     edits: VecDeque<Edit>,
     boolean: Option<Job>,
     phase: MergePhase,
+    discard: u8,
 }
 impl Merge {
     pub fn new(g: &Graph, root: Root, x: u64, y: u64, scope: Condition) -> Self {
         Self {
+            discard: 0,
             base: root,
             staged: root,
             left: Resolved::new(g, root, x, scope),
@@ -609,7 +670,64 @@ impl Merge {
         });
         self.phase = MergePhase::Edits;
     }
+    pub fn discard_tick(&mut self) -> bool {
+        if self.discard == 0 {
+            self.discard = 1;
+            self.scope = Condition::FALSE;
+            self.pair = Condition::FALSE;
+            self.changed = Condition::FALSE;
+        }
+        match self.discard {
+            1 => {
+                if let Some(j) = &mut self.boolean {
+                    if j.discard_tick() {
+                        self.boolean = None;
+                    }
+                } else {
+                    self.discard = 2;
+                }
+            }
+            2 => {
+                if self.left.discard_tick() {
+                    self.discard = 3;
+                }
+            }
+            3 => {
+                if self.right.discard_tick() {
+                    self.discard = 4;
+                }
+            }
+            4 => {
+                if let Some(p) = &mut self.left_rank {
+                    if p.discard_tick() {
+                        self.left_rank = None;
+                    }
+                } else {
+                    self.discard = 5;
+                }
+            }
+            5 => {
+                if let Some(p) = &mut self.right_rank {
+                    if p.discard_tick() {
+                        self.right_rank = None;
+                    }
+                } else {
+                    self.discard = 6;
+                }
+            }
+            6 => {
+                if self.edits.pop_front().is_none() {
+                    self.edits = VecDeque::new();
+                    self.discard = 7;
+                }
+            }
+            _ => return true,
+        }
+        false
+    }
+
     pub fn tick(&mut self, g: &mut Graph, a: &mut Arena) -> Option<Root> {
+        assert_eq!(self.discard, 0, "discarded continuation cannot resume");
         match self.phase {
             MergePhase::Left => {
                 if self.left.tick(g, a) {

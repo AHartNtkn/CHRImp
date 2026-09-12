@@ -40,10 +40,12 @@ pub struct Wake {
     seen: BTreeMap<u64, Condition>,
     boolean: Option<Job>,
     phase: Phase,
+    discard: u8,
 }
 impl Wake {
     pub fn new(g: &Graph, root: Root, variable: u64, scope: Condition) -> Self {
         Self {
+            discard: 0,
             members: Members::new(g, root, variable, scope),
             cursor: None,
             member_support: Condition::FALSE,
@@ -77,7 +79,40 @@ impl Wake {
             None
         }
     }
+    pub fn discard_tick(&mut self) -> bool {
+        if self.discard == 0 {
+            self.discard = 1;
+            self.fresh = Condition::FALSE;
+            self.member_support = Condition::FALSE;
+            self.cursor = None;
+        }
+        match self.discard {
+            1 => {
+                if let Some(j) = &mut self.boolean {
+                    if j.discard_tick() {
+                        self.boolean = None;
+                    }
+                } else {
+                    self.discard = 2;
+                }
+            }
+            2 => {
+                if self.members.discard_tick() {
+                    self.discard = 3;
+                }
+            }
+            3 => {
+                if self.seen.pop_first().is_none() {
+                    self.discard = 4;
+                }
+            }
+            _ => return true,
+        }
+        false
+    }
+
     pub fn tick(&mut self, g: &Graph, a: &mut Arena) -> WakeStatus {
+        assert_eq!(self.discard, 0, "discarded continuation cannot resume");
         match self.phase {
             Phase::Members => match self.members.tick(g, a) {
                 ResolveStatus::Found { variable, support } => {

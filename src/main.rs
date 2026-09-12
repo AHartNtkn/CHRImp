@@ -10,9 +10,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let Some(path) = args.next() else {
         return Err("usage: chr PROGRAM.chr --query 'RELATIONS'".into());
     };
+    if path == "--notebook" {
+        let port = match args.next().as_deref() {
+            None => 0,
+            Some("--port") => args.next().ok_or("expected port")?.parse::<u16>()?,
+            _ => return Err("expected --port PORT".into()),
+        };
+        if args.next().is_some() {
+            return Err("unexpected notebook argument".into());
+        }
+        let listener = std::net::TcpListener::bind(("127.0.0.1", port))?;
+        println!("Notebook: http://{}", listener.local_addr()?);
+        io::stdout().flush()?;
+        chr::notebook::serve(listener)?;
+        return Ok(());
+    }
     if path == "--help" {
         println!(
-            "Usage: chr PROGRAM.chr --query 'RELATIONS'\n\nRun a relational program and stream each answer as JSON graph events."
+            "Usage: chr PROGRAM.chr --query 'RELATIONS'\n\nRun a relational program and stream each answer as JSON graph events.\nUse --notebook [--port PORT] to open the browser notebook."
         );
         return Ok(());
     }

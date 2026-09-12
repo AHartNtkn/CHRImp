@@ -40,11 +40,13 @@ pub struct Members {
     cursor: Option<Cursor>,
     phase: Phase,
     visits: u64,
+    discard: u8,
 }
 
 impl Members {
     pub fn new(g: &Graph, root: Root, variable: u64, scope: Condition) -> Self {
         Self {
+            discard: 0,
             root,
             resolver: Some(Resolve::new(g, root, variable, scope)),
             pending: BTreeMap::new(),
@@ -97,7 +99,49 @@ impl Members {
             None
         }
     }
+    pub fn discard_tick(&mut self) -> bool {
+        if self.discard == 0 {
+            self.discard = 1;
+            self.fresh = Condition::FALSE;
+            self.queue = VecDeque::new();
+            self.cursor = None;
+        }
+        match self.discard {
+            1 => {
+                if let Some(j) = &mut self.boolean {
+                    if j.discard_tick() {
+                        self.boolean = None;
+                    }
+                } else {
+                    self.discard = 2;
+                }
+            }
+            2 => {
+                if let Some(r) = &mut self.resolver {
+                    if r.discard_tick() {
+                        self.resolver = None;
+                    }
+                } else {
+                    self.discard = 3;
+                }
+            }
+            3 => {
+                if self.pending.pop_first().is_none() {
+                    self.discard = 4;
+                }
+            }
+            4 => {
+                if self.visited.pop_first().is_none() {
+                    self.discard = 5;
+                }
+            }
+            _ => return true,
+        }
+        false
+    }
+
     pub fn tick(&mut self, g: &Graph, a: &mut Arena) -> ResolveStatus {
+        assert_eq!(self.discard, 0, "discarded continuation cannot resume");
         match self.phase {
             Phase::Resolve => {
                 let resolver = self.resolver.as_mut().expect("representative resolver");

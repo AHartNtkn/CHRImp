@@ -1,8 +1,11 @@
 //! Cooperative execution of supported bodies, indexed discovery and CHR commits.
+mod cancel;
 mod collection;
 mod inspection;
+mod step;
 pub use collection::Memory;
 pub use inspection::{InspectionError, InspectionStatus, SnapshotInfo, SnapshotKind, ViewId};
+pub use step::StepStatus;
 
 use crate::commit::{Commit, CommitStatus, FreshIds, StateRoot};
 use crate::condition::{Arena, Condition, Job, Operation, Progress};
@@ -155,6 +158,9 @@ pub struct Engine {
     inspections: BTreeMap<u64, inspection::Inspection>,
     last_inspection: Option<u64>,
     inspection_round: Option<u64>,
+    latest_inspection: Option<u64>,
+    cancellation: cancel::Cancellation,
+    rule_step: Option<step::RuleStep>,
 }
 impl Engine {
     pub fn new(code: Arc<Prepared>) -> Self {
@@ -202,6 +208,9 @@ impl Engine {
             inspections: BTreeMap::new(),
             last_inspection: None,
             inspection_round: None,
+            latest_inspection: None,
+            cancellation: cancel::Cancellation::default(),
+            rule_step: None,
         };
         e.spawn(Condition::TRUE, Task::Init(vec![]));
         e
@@ -290,7 +299,16 @@ impl Engine {
             if self.collect_heap() {
                 continue;
             }
-            if !self.inspections.is_empty() && self.ticks % 4 == 3 {
+            if !self.canceled() {
+                match self.step_gate() {
+                    step::Gate::Run => {}
+                    step::Gate::Yield => continue,
+                    step::Gate::Stop => break,
+                }
+            }
+            if self.cancellation.requested {
+                self.cancel_tick();
+            } else if !self.inspections.is_empty() && self.ticks % 4 == 3 {
                 self.service_inspection();
             } else if self.ticks.is_multiple_of(3) {
                 if let Some(mut task) = self.queue.pop_front() {
@@ -376,6 +394,7 @@ impl Engine {
                             self.state = c.state;
                             self.applications += 1;
                             let app = c.application;
+                            self.step_application(app.id, search.rule, app.support);
                             self.record(
                                 SnapshotKind::Application {
                                     rule: search.rule,

@@ -15,6 +15,7 @@
   </header>
   <nav class="runbar" aria-label="Execution controls">
     <div class="button-group"><button id="run" class="primary">▶ Run</button><button id="step">Step</button><button id="pause" disabled>Pause</button><button id="resume" disabled>Resume</button><button id="cancel" disabled>Cancel</button></div>
+    <label for="execution">Execution</label><select id="execution"><option value="">Current notebook</option></select><button id="release-run" disabled>Release execution</button>
     <label class="check"><input id="history" type="checkbox"> Record history <span>next run</span></label>
   </nav>
   <p id="message" class="message" role="status" aria-live="polite">Write a query or add a relation to begin.</p>

@@ -204,7 +204,7 @@ export function renderGraph(svg, model, path, options = {}) {
   });
   for (const [name, { x, y }] of positions) {
     const junction = svgNode('g', { class: 'junction' });
-    junction.append(svgNode('circle', { cx: x, cy: y, r: 5 }), svgNode('text', { x, y: y + 23, 'text-anchor': 'middle' }, name));
+    junction.append(svgNode('rect', { x: x - 22, y: y - 12, width: 44, height: 44, fill: 'transparent' }), svgNode('circle', { cx: x, cy: y, r: 5 }), svgNode('text', { x, y: y + 23, 'text-anchor': 'middle' }, name));
     if (!options.readonly) interactive(junction, `Connect selected port to ${name}`, () => options.onConnect?.(name));
     nodes.append(junction);
   }

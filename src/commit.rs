@@ -90,6 +90,7 @@ pub struct Commit {
     job: Option<Job>,
     equal: Option<Equal>,
     update: Option<Update>,
+    discard: u8,
 }
 impl Commit {
     pub fn new(
@@ -111,6 +112,7 @@ impl Commit {
             return Err(CommitError::Shape);
         }
         Ok(Self {
+            discard: 0,
             base: state,
             staged: state,
             code,
@@ -161,6 +163,40 @@ impl Commit {
     }
     /// The caller must retain the mutation lane until this transaction finishes.
     /// Other readers may inspect its base root; no staged root is publishable.
+    pub fn discard_tick(&mut self) -> bool {
+        if self.discard == 0 {
+            self.discard = 1;
+            self.scope = Condition::FALSE;
+            self.active = Condition::FALSE;
+            self.variables = Vec::new();
+            self.heads = Arc::new(Vec::new());
+            self.seen = HashSet::new();
+            self.update = None;
+        }
+        match self.discard {
+            1 => {
+                if let Some(j) = &mut self.job {
+                    if j.discard_tick() {
+                        self.job = None;
+                    }
+                } else {
+                    self.discard = 2;
+                }
+            }
+            2 => {
+                if let Some(e) = &mut self.equal {
+                    if e.discard_tick() {
+                        self.equal = None;
+                    }
+                } else {
+                    self.discard = 3;
+                }
+            }
+            _ => return true,
+        }
+        false
+    }
+
     pub fn tick(
         &mut self,
         g: &mut Graph,
@@ -168,6 +204,7 @@ impl Commit {
         h: &mut History,
         ids: &mut FreshIds,
     ) -> CommitStatus {
+        assert_eq!(self.discard, 0, "discarded continuation cannot resume");
         if matches!(self.phase, Phase::Done) {
             return CommitStatus::Done;
         }

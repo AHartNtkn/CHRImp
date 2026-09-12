@@ -45,6 +45,7 @@ pub(super) struct Snapshot {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InspectionError {
+    Canceled,
     Busy,
     Initializing,
     UnknownSnapshot,
@@ -55,6 +56,7 @@ pub enum InspectionError {
 impl std::fmt::Display for InspectionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
+            Self::Canceled => "source execution has been canceled",
             Self::Busy => "collection is in progress; retry after advancing the engine",
             Self::Initializing => "query variables are still being initialized",
             Self::UnknownSnapshot => "snapshot does not belong to this run or has been released",
@@ -119,6 +121,35 @@ impl Inspection {
         self.decision = Condition::FALSE;
         self.selections = VecDeque::new();
         self.phase = Phase::Done;
+    }
+    fn request_cancel(&mut self) {
+        self.canceled = true;
+        self.output = None;
+        if !matches!(self.phase, Phase::Done) {
+            self.phase = Phase::Discard;
+        }
+    }
+    fn drain_tick(&mut self) -> bool {
+        if matches!(self.phase, Phase::Done) {
+            return true;
+        }
+        if let Some(job) = &mut self.job {
+            if job.discard_tick() {
+                self.job = None;
+            }
+        } else if let Some(observer) = &mut self.observer {
+            if observer.discard_tick() {
+                self.observer = None;
+            }
+        } else if self.selections.pop_front().is_none() {
+            self.finish();
+            return true;
+        }
+        false
+    }
+    pub(super) fn discard_tick(&mut self) -> bool {
+        self.request_cancel();
+        self.drain_tick()
     }
     fn tick(
         &mut self,
@@ -190,17 +221,7 @@ impl Inspection {
                 }
             },
             Phase::Discard => {
-                if let Some(job) = &mut self.job {
-                    if job.discard_tick() {
-                        self.job = None;
-                    }
-                } else if let Some(observer) = &mut self.observer {
-                    if observer.discard_tick() {
-                        self.observer = None;
-                    }
-                } else if self.selections.pop_front().is_none() {
-                    self.finish();
-                }
+                self.drain_tick();
             }
             Phase::Done => {}
         }
@@ -232,7 +253,7 @@ impl Engine {
         if self.collector.is_some() {
             return Err(InspectionError::Busy);
         }
-        if self.variables.len() != self.code.query_variables.len() {
+        if !self.canceled() && self.variables.len() != self.code.query_variables.len() {
             return Err(InspectionError::Initializing);
         }
         Ok(())
@@ -267,14 +288,44 @@ impl Engine {
     pub fn snapshots(&self) -> impl Iterator<Item = SnapshotInfo> + '_ {
         self.snapshots.values().map(|s| s.info)
     }
+    pub fn snapshot_info(&self, id: ViewId) -> Result<SnapshotInfo, InspectionError> {
+        self.snapshots
+            .get(&id.0)
+            .map(|s| s.info)
+            .ok_or(InspectionError::UnknownSnapshot)
+    }
+    pub fn snapshots_after(
+        &self,
+        after: Option<ViewId>,
+    ) -> impl Iterator<Item = SnapshotInfo> + '_ {
+        use std::ops::Bound::{Excluded, Unbounded};
+        self.snapshots
+            .range((after.map_or(Unbounded, |id| Excluded(id.0)), Unbounded))
+            .map(|(_, s)| s.info)
+    }
+    pub fn choices_after(
+        &self,
+        after: Option<u64>,
+        through: Option<u64>,
+    ) -> impl Iterator<Item = (&u64, &Birth)> {
+        use std::ops::Bound::{Excluded, Included, Unbounded};
+        let bounds = match through {
+            Some(last) if after.is_none_or(|id| id < last) => {
+                (after.map_or(Unbounded, Excluded), Included(last))
+            }
+            _ => (Included(0), Excluded(0)),
+        };
+        self.births.range(bounds)
+    }
     pub fn release_snapshot(&mut self, id: ViewId) -> Result<(), InspectionError> {
         if self.collector.is_some() {
             return Err(InspectionError::Busy);
         }
         self.snapshots
             .remove(&id.0)
-            .map(|_| ())
-            .ok_or(InspectionError::UnknownSnapshot)
+            .ok_or(InspectionError::UnknownSnapshot)?;
+        self.request_collection();
+        Ok(())
     }
     /// None captures the current view only for this projection, without recording history.
     /// Selection constrains both a choice's birth region and its requested arm.
@@ -295,6 +346,7 @@ impl Engine {
         let id = next_id();
         self.inspections
             .insert(id.0, Inspection::new(id, snapshot, choices));
+        self.latest_inspection = Some(id.0);
         Ok(id)
     }
     /// Metadata refers to the captured view, including after its graph is released.
@@ -304,6 +356,9 @@ impl Engine {
             .get(&id.0)
             .map(|i| i.info)
             .ok_or(InspectionError::UnknownInspection)
+    }
+    pub fn inspections(&self) -> impl Iterator<Item = ViewId> + '_ {
+        self.inspections.keys().map(|&id| ViewId(id))
     }
     pub fn inspection_status(&self, id: ViewId) -> Result<InspectionStatus, InspectionError> {
         self.inspections
@@ -328,12 +383,28 @@ impl Engine {
             .inspections
             .get_mut(&id.0)
             .ok_or(InspectionError::UnknownInspection)?;
-        inspection.canceled = true;
-        inspection.output = None;
-        if !matches!(inspection.phase, Phase::Done) {
-            inspection.phase = Phase::Discard;
-        }
+        inspection.request_cancel();
         Ok(())
+    }
+    /// Discard a view without starting a collection between batched root releases.
+    pub fn discard_inspection(
+        &mut self,
+        id: ViewId,
+        budget: usize,
+    ) -> Result<bool, InspectionError> {
+        if self.collector.is_some() {
+            return Err(InspectionError::Busy);
+        }
+        let view = self
+            .inspections
+            .get_mut(&id.0)
+            .ok_or(InspectionError::UnknownInspection)?;
+        for _ in 0..budget {
+            if view.discard_tick() {
+                return Ok(true);
+            }
+        }
+        Ok(view.status().done)
     }
     pub fn release_inspection(&mut self, id: ViewId) -> Result<(), InspectionError> {
         if self.collector.is_some() {
@@ -343,6 +414,7 @@ impl Engine {
             return Err(InspectionError::InProgress);
         }
         self.inspections.remove(&id.0);
+        self.request_collection();
         Ok(())
     }
     /// Inspection can advance while source execution is paused. Each call is budgeted,
@@ -352,17 +424,37 @@ impl Engine {
             return Err(InspectionError::UnknownInspection);
         }
         for _ in 0..budget {
+            if self.canceled()
+                && self
+                    .cancellation
+                    .inspection_limit
+                    .is_some_and(|last| id.0 <= last)
+            {
+                self.inspections.get_mut(&id.0).unwrap().request_cancel();
+            }
             let inspection = self.inspections.get(&id.0).unwrap();
             if inspection.output.is_some() || matches!(inspection.phase, Phase::Done) {
                 break;
             }
-            if !self.collect_heap() {
-                self.inspection_tick(id.0);
+            if !self.collect_heap_mode(false) {
+                if self.canceled() && !self.cancellation.finished {
+                    self.cancel_tick();
+                } else {
+                    self.inspection_tick(id.0);
+                }
             }
         }
         Ok(())
     }
     fn inspection_tick(&mut self, id: u64) {
+        if self.canceled()
+            && self
+                .cancellation
+                .inspection_limit
+                .is_some_and(|last| id <= last)
+        {
+            self.inspections.get_mut(&id).unwrap().request_cancel();
+        }
         self.inspections.get_mut(&id).unwrap().tick(
             &self.graph,
             &mut self.arena,

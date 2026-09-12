@@ -15,6 +15,8 @@ enum Phase {
     Observe,
     Snapshots,
     Inspections,
+    RuleStep,
+    TrimBirths,
     SeedVariables,
     PruneGraph,
     Graph,
@@ -25,6 +27,7 @@ enum Phase {
 pub(super) struct Collection {
     phase: Phase,
     owns_lane: bool,
+    retain_choice: Option<u64>,
     prune: Option<history::Prune>,
     prune_graph: Option<graph::Prune>,
     variable_groups: BTreeMap<usize, (Arc<Vec<u64>>, Condition)>,
@@ -96,10 +99,13 @@ impl Engine {
             || self.requested.contains(&Owner::Collection)
     }
     pub(super) fn collect_heap(&mut self) -> bool {
+        self.collect_heap_mode(true)
+    }
+    pub(super) fn collect_heap_mode(&mut self, semantic: bool) -> bool {
         if self.collector.is_none() {
             if !self.collection_requested
                 && self.memory().total() <= self.collection_limit
-                && self.lane != Some(Owner::Collection)
+                && (self.lane != Some(Owner::Collection) || self.canceled() || !semantic)
             {
                 return false;
             }
@@ -107,9 +113,11 @@ impl Engine {
             // Semantic pruning reserves the same FIFO lane as rule updates.
             // A held update can first receive physical GC, then finish and hand
             // the lane to pruning; its staged history cannot restore old records.
-            let owns_lane = (self.state.graph != self.graph.empty()
-                || self.state.history != self.history.empty()
-                || self.lane == Some(Owner::Collection))
+            let owns_lane = semantic
+                && !self.canceled()
+                && (self.state.graph != self.graph.empty()
+                    || self.state.history != self.history.empty()
+                    || self.lane == Some(Owner::Collection))
                 && self.acquire(Owner::Collection);
             let prune = owns_lane.then(|| {
                 self.history.prune(
@@ -123,6 +131,9 @@ impl Engine {
             if let Some(ready) = &self.ready {
                 pending_roots.push(ready.cursor.root());
             }
+            if let Some(root) = self.rule_step.as_ref().and_then(|s| s.pending_root()) {
+                pending_roots.push(root);
+            }
             self.collector = Some(Collection {
                 phase: if owns_lane {
                     Phase::Prune
@@ -130,6 +141,7 @@ impl Engine {
                     Phase::Tasks
                 },
                 owns_lane,
+                retain_choice: None,
                 prune,
                 prune_graph: owns_lane.then(|| self.graph.prune(self.state.graph, self.active)),
                 variable_groups: if owns_lane {
@@ -258,6 +270,13 @@ impl Engine {
                 }
             }
             Phase::Births => {
+                if self.cancellation.roots_released {
+                    c.phase = Phase::Ready;
+                    c.after = None;
+                    c.slot = 0;
+                    self.collector = Some(c);
+                    return true;
+                }
                 let next = match c.after {
                     Some(id) => self.births.range((Excluded(id), Unbounded)).next(),
                     None => self.births.first_key_value(),
@@ -316,6 +335,7 @@ impl Engine {
                 };
                 if let Some((&id, snapshot)) = next {
                     c.graph_roots.push(snapshot.graph);
+                    c.retain_choice = c.retain_choice.max(snapshot.info.last_choice);
                     c.conditions.push(snapshot.scope);
                     c.after = Some(id);
                 } else {
@@ -332,6 +352,7 @@ impl Engine {
                     if c.slot == 0 {
                         if let Some(snapshot) = &inspection.snapshot {
                             c.graph_roots.push(snapshot.graph);
+                            c.retain_choice = c.retain_choice.max(snapshot.info.last_choice);
                         }
                         c.slot = 1;
                     } else {
@@ -344,6 +365,48 @@ impl Engine {
                                 c.trace = TraceCursor::default();
                             }
                         }
+                    }
+                } else {
+                    c.phase = Phase::RuleStep;
+                }
+            }
+            Phase::RuleStep => {
+                match c.trace.optional(self.rule_step.as_ref()) {
+                    Step::Root(root) => c.conditions.push(root),
+                    Step::Pending => {}
+                    Step::Done => unreachable!(),
+                }
+                if c.trace.phase == 1 {
+                    c.trace = TraceCursor::default();
+                    c.phase = if self.cancellation.roots_released {
+                        Phase::TrimBirths
+                    } else {
+                        Phase::SeedVariables
+                    };
+                    c.after = None;
+                    c.slot = 0;
+                }
+            }
+            Phase::TrimBirths => {
+                let next = match c.after {
+                    Some(id) => self.births.range((Excluded(id), Unbounded)).next(),
+                    None => self.births.first_key_value(),
+                };
+                if let Some((&id, birth)) = next {
+                    if c.retain_choice.is_some_and(|last| id <= last) {
+                        c.conditions.push(if c.slot == 0 {
+                            birth.support
+                        } else {
+                            birth.decision
+                        });
+                        c.slot += 1;
+                        if c.slot == 2 {
+                            c.slot = 0;
+                            c.after = Some(id);
+                        }
+                    } else {
+                        self.births.remove(&id);
+                        c.after = Some(id);
                     }
                 } else {
                     c.phase = Phase::SeedVariables;

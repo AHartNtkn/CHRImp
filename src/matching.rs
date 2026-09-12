@@ -116,6 +116,19 @@ impl Source {
             .chain(self.boolean.iter().flat_map(|j| j.roots()))
             .chain(members.into_iter().flat_map(|m| m.condition_roots()))
     }
+    fn discard_tick(&mut self) -> bool {
+        self.scope = Condition::FALSE;
+        if let Some(j) = &mut self.boolean {
+            if j.discard_tick() {
+                self.boolean = None;
+            }
+            return false;
+        }
+        if let SourceKind::Port { members, .. } = &mut self.kind {
+            return members.discard_tick();
+        }
+        true
+    }
     fn tick(&mut self, g: &Graph, a: &mut Arena) -> SourceStatus {
         if let Some(job) = self.boolean.as_mut() {
             if let Progress::Complete(c) = job.tick(a) {
@@ -227,6 +240,7 @@ pub struct Matches {
     pop_frame: bool,
     phase: Phase,
     candidate_visits: u64,
+    discard: u8,
 }
 impl Matches {
     pub fn new(
@@ -247,6 +261,7 @@ impl Matches {
         let bindings = vec![None; plan.head_variables];
         let occurrences = vec![None; plan.heads.len()];
         Ok(Self {
+            discard: 0,
             root,
             code,
             rule,
@@ -326,7 +341,44 @@ impl Matches {
         self.equality = None;
         self.phase = Phase::Rollback;
     }
+    pub fn discard_tick(&mut self) -> bool {
+        if self.discard == 0 {
+            self.discard = 1;
+            self.scope = Condition::FALSE;
+            self.current = Condition::FALSE;
+            self.bindings = Vec::new();
+            self.occurrences = Vec::new();
+            self.trail = Vec::new();
+            self.arguments = None;
+            self.output = None;
+        }
+        match self.discard {
+            1 => {
+                if let Some(e) = &mut self.equality {
+                    if e.discard_tick() {
+                        self.equality = None;
+                    }
+                } else {
+                    self.discard = 2;
+                }
+            }
+            2 => {
+                if let Some(frame) = self.frames.last_mut() {
+                    if frame.source.discard_tick() {
+                        self.frames.pop();
+                    }
+                } else {
+                    self.frames = Vec::new();
+                    self.discard = 3;
+                }
+            }
+            _ => return true,
+        }
+        false
+    }
+
     pub fn tick(&mut self, g: &Graph, a: &mut Arena) -> MatchStatus {
+        assert_eq!(self.discard, 0, "discarded continuation cannot resume");
         match self.phase {
             Phase::Select => {
                 if self.frames.len() == self.occurrences.len() {
