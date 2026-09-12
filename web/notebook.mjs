@@ -733,7 +733,7 @@ function mountNotebook() {
       });
       if (atom.args.length > 8) panel.append(button('Previous ports', () => select({path:target,port:start-8}),start===0),button('Next ports', () => select({path:target,port:start+8}),start+8>=atom.args.length));
       panel.append(button('Add port', () => edit({ type: 'insert-port', path: target, variable: 'X' })));
-      panel.append(el('p', selected.port === undefined ? 'Select a port, then a variable junction to connect them.' : `Port ${selected.port + 1} selected. Choose a variable junction.`));
+      panel.append(el('p', selected.port === undefined ? 'Select a port, then a wire or junction to connect it.' : `Port ${selected.port + 1} selected. Choose a variable junction.`));
     } else if (node.kind === 'equal') {
       panel.append(field('Left variable', node.left, left => edit({ type: 'equal', path: target, left, right: node.right })), field('Right variable', node.right, right => edit({ type: 'equal', path: target, left: node.left, right })));
     } else if (node.items) {

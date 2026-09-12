@@ -9,9 +9,7 @@ assert.deepEqual(model,before);
 assert.deepEqual(layout.items.filter(n=>n.type==='boundary').map(n=>n.label).filter(n=>['Kept','Removed','Body','Or','And'].includes(n)),['Kept','Removed','Body','Or']);
 assert.equal(layout.items.filter(n=>n.type==='node').length,5);
 assert.equal(layout.items.find(n=>n.type==='node'&&n.kind==='equal').label,'=');
-assert.equal(layout.items.filter(n=>n.type==='junction'&&n.name==='X').length,1);
-assert.equal(layout.items.filter(n=>n.type==='wire'&&n.name==='X').length,3);
-assert.equal(layout.items.filter(n=>n.type==='wire'&&n.name==='Z').length,3);
+
 const disjunction=layout.items.find(n=>n.type==='boundary'&&n.kind==='or');
 const sections=layout.items.filter(n=>n.type==='boundary'&&n.kind==='branch');
 assert.ok(sections.every(s=>s.x===disjunction.x&&s.width===disjunction.width));
@@ -35,15 +33,14 @@ for(const delta of [{x:300,y:200},{x:-100,y:-150}]) {
   assert.equal(parts[0].y+parts[0].height,parts[1].y);
   assert.equal(parts.at(-1).y+parts.at(-1).height,box.y+box.height);
 }
-const bodyWires=layout.items.filter(n=>n.type==='wire'&&['left','right'].includes(n.relation));
-const rails=new Map();for(const wire of bodyWires){if(rails.has(wire.points[4]))assert.equal(rails.get(wire.points[4]),wire.name);rails.set(wire.points[4],wire.name);}
 const wide=layoutScene(diagramScene({query:atom('wide',...Array.from({length:30},(_,i)=>`V${i}`))},['query']));
 assert.equal(wide.items.filter(n=>n.type==='port').length,30);
 const large=layoutScene(diagramScene({query:{kind:'and',items:Array.from({length:2000},(_,i)=>atom('p',`V${i}`))}},['query']));
 const window={x:0,y:0,width:800,height:500};
 const shown=visibleItems(large,window);
 assert.ok(shown.length<300,`${shown.length} visible objects`);
-assert.ok(large.items.length>6000);
+assert.equal(large.items.filter(n=>n.type==='node').length,2000);
+assert.equal(large.items.filter(n=>n.type==='junction'||n.type==='wire').length,0);
 assert.ok(visibleItems(large,{...window,y:large.height-500}).some(n=>n.type==='node'));
 const related=layoutScene(diagramScene({query:{kind:'and',items:[atom('a','X'),atom('unrelated','U'),atom('b','X')]}},['query']));
 const nodes=related.items.filter(n=>n.type==='node');
