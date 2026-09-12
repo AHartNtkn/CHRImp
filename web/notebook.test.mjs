@@ -1013,7 +1013,7 @@ function createContext(values) {
     runNotice:null, displayWriting:null,displayDirty:false,displayStamp:null,message(){},async saveDisplay(){},
     inspected:null,outputMode:'answers',savedSelection:'',answerNumber:null,answerPage:0,
     resultPage:0,resultPortPage:0,bindingPage:0,pendingNumber:0,pendingPage:0,pendingPortPage:0,pendingPath:[], session:values.session ?? {run:null},
-    request:values.request ?? api ?? (()=>{}), async saveEditor() {}, async restoreInspection() {}, ...values,
+    request:values.request ?? api ?? (()=>{}), async saveEditor() {}, async restoreInspection() {}, async finishInspection() {}, ...values,
     ...(api ? {liveRequest:api} : {})});
   runInContext(productionSection('function attachBatch(', '// A cached response'),context);
   return context;
@@ -1985,10 +1985,146 @@ await test('Step follows the current graph while preserving the selected alterna
       throw Error(route);
     },renderRun(){},renderInspectionControls(){},message(){},safe:action=>action(),
     async inspect(){const payload=selection.payload(1);assert.equal(payload.snapshot,undefined);assert.equal(payload.choices['4'],false);calls.push('inspect');}});
-  runInContext(productionSection("  $('step').onclick", "  $('execution').onchange"),c);
+  runInContext(productionSection("  async function runStep(", "  $('execution').onchange"),c);
   await $('step').onclick();
   assert.equal(calls.at(-1),'inspect');
   assert.equal(selection.snapshot,'');
+});
+
+await test('Pause stops unfinished Step polling and Resume completes the same application', async () => {
+  const calls=[], waiting=[];
+  const session=testSession(async(route,payload)=>{
+    calls.push([route,payload]);
+    if(route==='start')return {run:1,...tables};
+    if(route==='step'||route==='resume')return {};
+    if(route==='advance')return new Promise(resolve=>waiting.push(resolve));
+    throw Error(route);
+  });
+  await session.start(untouched,false,false);
+  const pending=session.step({'41':true});
+  while(!waiting.length)await new Promise(setImmediate);
+  session.pause();
+  waiting[0]({events:[],applications:0,delivery_done:false,exhausted:false,step:{done:false,event:null}});
+  const settled=await Promise.race([pending.then(value=>({value})),new Promise(resolve=>setTimeout(()=>resolve(null),40))]);
+  // Settle the old implementation's extra request before asserting the RED.
+  if(!settled){waiting[1]({events:[],applications:1,delivery_done:false,exhausted:false,step:{done:true,event:1,rule:0}});await pending;}
+  assert.ok(settled,'Pause must settle the driver without another source request');
+  assert.equal(settled.value,undefined);assert.equal(waiting.length,1);assert.equal(session.stepPending,true);
+  const resumed=session.resume();
+  while(waiting.length<2)await new Promise(setImmediate);
+  waiting[1]({events:[],applications:1,delivery_done:false,exhausted:false,step:{done:true,event:1,rule:0,shared:false}});
+  const result=await resumed;
+  assert.equal(result.step.event,1);assert.equal(session.running,false);assert.equal(session.status,'paused');
+  assert.equal(calls.filter(([route])=>route==='step').length,1);
+  assert.equal(calls.filter(([route])=>route==='resume').length,0);
+  await session.resume();session.pause();assert.equal(calls.filter(([route])=>route==='resume').length,1);
+});
+await test('Resume during Step polling cannot release its logical boundary', async () => {
+  const calls=[],waiting=[];
+  const session=testSession(async(route)=>{calls.push(route);if(route==='start')return {run:1,...tables};
+    if(route==='step'||route==='resume')return {};if(route==='advance')return new Promise(r=>waiting.push(r));throw Error(route);});
+  await session.start(untouched,false,false);const stepping=session.step({});
+  while(!waiting.length)await new Promise(setImmediate);
+  const resuming=session.resume();
+  waiting[0]({events:[],applications:1,delivery_done:false,exhausted:false,step:{done:true,event:1,rule:0}});
+  await stepping;await resuming;session.pause();
+  assert.equal(calls.includes('resume'),false,'Resume joins an active Step rather than removing its engine gate');
+});
+await test('Step admission rejects an in-flight metadata selection', async () => {
+  const session=testSession(async route=>{if(route==='start')return {run:1,...tables};throw Error('Unexpected '+route);});
+  await session.start(untouched,false,false);session.selection.loading=true;
+  await assert.rejects(session.step({'41':true}),/metadata/i);
+});
+
+await test('lost Step admission reloads its exact choices and Resume never admits a second Step', async () => {
+  await controlSession('step-owner-reload', async ({session,api,model,lose,effects,calls}) => {
+    await session.start(model,false,false);
+    lose('step');await assert.rejects(session.step({'41':false}),/Lost step/);
+    const saved=await session.store.recovery('live:run:1');assert.deepEqual(saved.stepChoices,{'41':false});
+    const restored=new RunSession(api,()=>{},session.store);await restored.restore(1);
+    assert.equal(restored.stepPending,true);assert.deepEqual(restored.stepOperation.choices,{'41':false});
+    const result=await restored.resume();
+    assert.deepEqual(result.stepChoices,{'41':false});assert.equal(restored.status,'paused');assert.equal(restored.running,false);
+    assert.equal(effects.filter(route=>route==='step').length,1);assert.equal(effects.includes('resume'),false);
+    const commands=calls.filter(call=>call.route==='step');assert.equal(commands.length,2);assert.equal(commands[0].body,commands[1].body);
+    assert.equal((await session.store.recovery('live:run:1')).stepChoices,null);
+    restored.pause();
+  });
+});
+await test('cancel retires a polling Step without further advances or automatic completion', async () => {
+  const calls=[];let release;
+  const session=testSession(async route=>{calls.push(route);if(route==='start')return {run:1,...tables};
+    if(route==='step'||route==='cancel')return {};if(route==='advance')return new Promise(r=>release=r);throw Error(route);});
+  await session.start(untouched,false,false);const stepping=session.step({'41':true});
+  while(!release)await new Promise(setImmediate);
+  const canceled=session.cancel();
+  release({events:[],applications:0,delivery_done:false,exhausted:false,step:{done:false,event:null}});
+  assert.equal(await stepping,undefined);await canceled;
+  assert.equal(session.status,'canceled');assert.equal(session.stepOperation,null);assert.equal(session.stepPending,false);
+  assert.equal(calls.filter(route=>route==='advance').length,1);
+  assert.equal((await session.store.recovery('live:run:1')).stepChoices,null);
+});
+await test('unfinished Step owns selection across Pause and UI Resume inspection uses admitted choices', async () => {
+  const session=testSession(async route=>{if(route==='start')return {run:1,...tables};throw Error(route);});
+  await session.start(untouched,false,false);
+  session.selection.update([{id:'41',label:'Choice'}],[{id:'7',label:'State'}]);
+  session.stepOperation={run:1,choices:{'41':true}};session.stepPending=true;
+  assert.throws(()=>session.selection.choose('41','second'),/step/);
+  assert.throws(()=>session.selection.selectSnapshot(session.api,1,'7'),/step/);
+  assert.throws(()=>session.selection.page(session.api,1),/step/);
+  const controls=new Map(),$=name=>{if(!controls.has(name))controls.set(name,{replaceChildren(){},append(){}});return controls.get(name);};
+  const c=createContext({$,session,inspectionSelection:session.selection,launching:false,inspecting:false,busy:false,
+    inspectionPending:null,el:()=>({append(){}}),safe:action=>action(),renderResults(){},refreshSaved(){},message(){}});
+  runInContext(productionSection('  function renderRun()', '  function refreshSaved()')
+    +productionSection('  function renderInspectionControls()', "  for (const name of ['program', 'query'])"),c);
+  c.renderRun();c.renderInspectionControls();
+  assert.equal($('resume').textContent,'Resume step');assert.equal($('resume').disabled,false);
+  assert.equal($('snapshot').disabled,true);assert.equal($('inspect').disabled,true);
+  runInContext(productionSection('  async function inspect()', '  async function inspectOnce()'),c);
+  await assert.rejects(c.inspect(),/step/);
+  await assert.rejects(c.metadataPage('choice','next'),/step/);
+  await assert.rejects($('snapshot').onchange(),/step/);
+  session.selection.checkEditable=()=>{};session.stepOperation=null;
+  let inspections=0;session.resume=async()=>({step:{done:true,event:1,rule:0},stepChoices:{'41':true}});
+  session.submission={program:{rules:[{name:'rewrite'}]}};
+  c.inspect=async()=>{inspections++;assert.deepEqual(session.selection.payload(1).choices,{'41':true});};
+  runInContext(productionSection('  async function runStep(', "  $('execution').onchange"),c);
+  await c.runStep(true);assert.equal(inspections,1);
+  session.step=async()=>undefined;
+  await c.runStep();assert.equal(inspections,1,'Pause does not trigger inspection or claim step completion');
+});
+
+await test('Pause during Step checkpoint sends no control until Resume', async () => {
+  const calls=[];
+  const session=testSession(async route=>{calls.push(route);if(route==='start')return {run:1,...tables};
+    if(route==='step')return {};if(route==='advance')return {events:[],applications:1,delivery_done:false,exhausted:false,step:{done:true,event:1,rule:0}};throw Error(route);});
+  await session.start(untouched,false,false);
+  const save=session.store.saveRecovery.bind(session.store);let release;
+  session.store.saveRecovery=async(key,value)=>{
+    if(value?.stepChoices){await new Promise(r=>release=r);}await save(key,value);
+  };
+  const pending=session.step({'41':false});while(!release)await new Promise(setImmediate);
+  session.pause();release();assert.equal(await pending,undefined);
+  assert.equal(calls.includes('step'),false);assert.equal(session.stepPending,false);
+  assert.deepEqual((await session.store.recovery('live:run:1')).stepChoices,{'41':false});
+  session.store.saveRecovery=save;
+  const response=await session.resume();assert.equal(response.step.event,1);
+  assert.equal(calls.filter(route=>route==='step').length,1);assert.equal(calls.includes('resume'),false);
+});
+await test('switch waits for the Step driver before loading another run', async () => {
+  const calls=[];let next=0,release;
+  const session=testSession(async(route,payload)=>{calls.push([route,payload.run]);
+    if(route==='start')return {run:++next,...tables};if(route==='cancel'||route==='step')return {};
+    if(route==='advance')return new Promise(r=>release=r);throw Error(route);});
+  await session.start(untouched,false,false);await session.start(untouched,false,false);
+  const pending=session.step({'41':true});while(!release)await new Promise(setImmediate);
+  const switching=session.switchRun(1);await new Promise(setImmediate);
+  assert.equal(session.run,2,'foreground run remains owned until its driver settles');
+  release({events:[],applications:0,delivery_done:false,exhausted:false,step:{done:false,event:null}});
+  assert.equal(await pending,undefined);await switching;
+  assert.equal(session.run,1);assert.equal(session.stepDriving,null);
+  assert.equal(calls.filter(([route])=>route==='advance').length,1);
+  assert.deepEqual((await session.store.recovery('live:run:2')).stepChoices,{'41':true});
 });
 
 });

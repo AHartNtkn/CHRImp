@@ -59,6 +59,7 @@ export class InspectionSelection {
     }
   }
   selectSnapshot(api, run, key, preserveChoices = false) {
+    this.checkEditable?.();
     const descriptor = this.snapshots.find(item => item.id === key) ?? this.selectedSnapshot;
     check(key === '' || descriptor?.id === key, 'This snapshot is no longer available.');
     return this.page(api, run, null, 'refresh', {key, descriptor:key === '' ? null : descriptor, preserveChoices});
@@ -101,6 +102,7 @@ export class InspectionSelection {
     } finally { this.resetting = false; }
   }
   page(api, run, kind = null, direction = 'refresh', selection = null) {
+    this.checkEditable?.();
     if (this.loading || this.resetting) return Promise.reject(new Error('A metadata page is already loading.'));
     const operation = this.loadPage(api, run, kind, direction, selection);
     this.operation = operation;
@@ -159,6 +161,7 @@ export class InspectionSelection {
     } finally { this.loading = false; }
   }
   choose(key, value) {
+    this.checkEditable?.();
     check(this.choices.some(item => item.id === key), 'This choice is no longer available.');
     check(['either', 'first', 'second'].includes(value), 'Choose Either, First or Second.');
     if (value === 'either') this.assignments.delete(key); else this.assignments.set(key, value);
@@ -209,7 +212,7 @@ export async function deliverCachedOutput(store, archive, stream, pending, cance
         index:complete ? 0 : pending?.index ?? 0};
       if (previous.phase === 'closing' || (previous.phase === 'canceling' && !cancel)) value.phase = previous.phase;
       if (cancel) value.status = {...value.status,canceled:true};
-      if (complete && (cancel || response?.step?.done)) value.stepPending = false;
+      if (complete && (cancel || response?.step?.done)) { value.stepPending = false; value.stepChoices = null; }
       await store.flush(archive, stream, {discard, recovery:{id:checkpoint.id,value}});
     });
   };
@@ -239,7 +242,8 @@ export class RunSession {
     this.running = false; this.inFlight = null; this.timer = null; this.stream = null;
     this.applications = 0; this.error = null; this.starting = false; this.runs = new Map(); this.canceling = false; this.ack = null; this.selection = new InspectionSelection(); this.changingRun = false; this.pendingClose = null;
     this.recoveredControl = null; this.recovering = null;
-    this.stepPending = false;
+    this.stepPending = false; this.stepOperation = null; this.stepDriving = null;
+    this.selection.checkEditable = () => check(!this.stepOperation, 'Finish or cancel the selected step before changing metadata.');
   }
   async start(model, recordHistory = false, auto = true) {
     check(!this.starting && !this.changingRun, 'A run is already starting.');
@@ -262,7 +266,7 @@ export class RunSession {
     this.run = run; this.stream = stream; this.submission = submission;
     this.ack = null; this.archive = response.archive; this.pendingDelivery = null;
     this.recordHistory = payload.record_history === true;
-    this.applications = 0; this.exhausted = false; this.status = 'paused'; this.stepPending = false;
+    this.applications = 0; this.exhausted = false; this.status = 'paused'; this.stepPending = false; this.stepOperation = null;
   }
   checkpoint(action) { return this.api.checkpoint ? this.api.checkpoint(action) : action(); }
   async restore(preferred = null) {
@@ -298,6 +302,7 @@ export class RunSession {
     this.ack = saved.ack ?? null; this.applications = saved.applications ?? 0; this.exhausted = saved.exhausted ?? false;
     this.pendingDelivery = saved.sequence != null ? {response:null,sequence:saved.sequence,index:saved.index ?? 0} : null;
     this.stepPending = saved.stepPending === true;
+    this.stepOperation = saved.stepChoices ? {run, choices:clone(saved.stepChoices)} : null;
     this.pendingClose = null;
     this.status = ['done','canceled'].includes(saved.phase) ? saved.phase : 'paused';
     this.running = false; this.error = null;
@@ -305,7 +310,7 @@ export class RunSession {
       const live = await this.api('status', {run});
       check(typeof live.canceled === 'boolean', 'Execution status needs cancellation state.');
       if (live.canceled || saved.phase === 'canceling') {
-        this.status = 'canceled'; this.stepPending = false;
+        this.status = 'canceled'; this.stepPending = false; this.stepOperation = null;
         await this.cancel();
       }
     }
@@ -371,7 +376,7 @@ export class RunSession {
         ...(cancel || pending ? {phase:cancel ? (complete ? 'canceled' : 'canceling') : pending.response.delivery_done && complete ? 'done' : 'paused'} : {}),
         applications:pending?.response.applications ?? this.applications, exhausted:pending?.response.exhausted ?? this.exhausted}),
     });
-    if (cancel) { this.running = false; this.status = 'canceled'; this.stepPending = false; }
+    if (cancel) { this.running = false; this.status = 'canceled'; this.stepPending = false; this.stepOperation = null; }
     if (!pending) return;
     const response = pending.response;
     if (response.delivery_done) this.stream.finish();
@@ -387,6 +392,8 @@ export class RunSession {
     this.notify();
   }
   async resume() {
+    if (this.stepDriving) return this.stepDriving;
+    if (this.stepOperation || this.stepPending) return this.step();
     await this.finishClose();
     check(this.run !== null && this.stream, 'Start a run first.');
     if (['done', 'canceled'].includes(this.status)) return;
@@ -400,7 +407,7 @@ export class RunSession {
   }
 
   schedule() {
-    if (!this.running || this.inFlight || this.timer !== null) return;
+    if (!this.running || this.stepDriving || this.stepOperation || this.inFlight || this.timer !== null) return;
     this.timer = setTimeout(() => { this.timer = null; this.advance().catch(() => {}); }, 16);
   }
   advance() {
@@ -419,7 +426,7 @@ export class RunSession {
         this.exhausted = response.exhausted;
         if (response.canceled) { this.running = false; this.status = 'canceled'; }
         else if (response.delivery_done) { this.stream.finish(); this.running = false; this.status = 'done'; }
-        else this.status = this.running ? 'running' : 'paused';
+        else this.status = this.running ? (this.stepOperation ? 'stepping' : 'running') : 'paused';
         this.notify(); return response;
       } catch (error) { this.fail(error); throw error; }
       finally { this.inFlight = null; this.schedule(); this.notify(); }
@@ -427,20 +434,45 @@ export class RunSession {
     return this.inFlight;
   }
   async step(choices = {}) {
-    await this.finishClose();
+    if (this.pendingClose !== null) await this.finishClose();
+    if (this.stepDriving) return this.stepDriving;
+    check(!this.selection.loading && !this.selection.resetting, 'Wait for metadata selection before stepping.');
     check(this.run !== null, 'Start a run first.');
-    this.pause(); if (this.inFlight) await this.inFlight;
     if (['done', 'canceled'].includes(this.status)) return;
-    if (!this.stepPending) {
-      await liveRequest('step', { run: this.run, choices }, this.api);
-      this.stepPending = true;
-    }
-    let response;
-    do {
-      response = await this.advance();
-      await new Promise(resolve => setTimeout(resolve, 0));
-    } while (!response.step?.done && !response.delivery_done && this.run !== null && this.status !== 'canceled' && !this.canceling);
-    return response;
+    this.pause();
+    const operation = this.stepOperation ??= {run:this.run, choices:clone(choices)};
+    this.running = true; this.status = 'stepping'; this.error = null;
+    this.stepDriving = Promise.resolve().then(async () => {
+      try {
+        await this.finishClose();
+        if (this.inFlight) await this.inFlight;
+        if (this.status === 'done') { this.stepOperation = null; return; }
+        if (!this.running || this.canceling || this.run !== operation.run) return;
+        if (!this.stepPending) {
+          // Persist the admitted selection before sending its exact control.
+          await this.checkpoint(async () => {
+            const key = `live:run:${operation.run}`, saved = await this.store.recovery(key);
+            check(saved, 'Step recovery ownership is missing.');
+            await this.store.saveRecovery(key, {...saved,stepChoices:operation.choices});
+          });
+          if (!this.running || this.canceling) return;
+          await liveRequest('step', {run:operation.run, choices:operation.choices}, this.api);
+          this.stepPending = true;
+        }
+        while (this.running && !this.canceling && this.run === operation.run) {
+          const response = await this.advance();
+          if (this.canceling || this.status === 'canceled' || this.run !== operation.run) return;
+          if (response.step?.done || response.delivery_done) {
+            this.stepOperation = null; this.pause();
+            return {...response, stepChoices:operation.choices};
+          }
+          if (this.running) await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      } catch (error) { this.fail(error); throw error; }
+      finally { this.stepDriving = null; this.notify(); }
+    });
+    this.notify();
+    return this.stepDriving;
   }
   rememberRun() {
     if (this.run !== null) this.runs.set(this.run, { run: this.run, archive: this.archive, recordHistory: this.recordHistory, applications: this.applications, status: this.status });
@@ -450,7 +482,7 @@ export class RunSession {
     this.changingRun = true; this.notify();
     try {
       await this.finishClose();
-      this.pause(); if (this.inFlight) await this.inFlight;
+      this.pause(); if (this.stepDriving) await this.stepDriving; if (this.inFlight) await this.inFlight;
       await this.settleControl(); await this.deliverPending(); this.rememberRun();
       check(this.runs.has(run), 'Unknown execution.');
       await this.selection.reset(this.api);
@@ -485,6 +517,7 @@ export class RunSession {
     this.canceling = true;
     try {
       this.pause();
+      if (this.stepDriving) await this.stepDriving.catch(() => {});
       if (this.inFlight) await this.inFlight.catch(() => {});
       await this.settleControl({cancel:true});
       if (this.run !== null) {
@@ -732,11 +765,12 @@ function mountNotebook() {
 
     $('run').disabled = session.starting || busy || launching || inspecting;
     $('pause').disabled = !session.running;
-    $('resume').disabled = session.run === null || session.running || ['done', 'canceled'].includes(session.status) || session.starting;
-    $('step').disabled = session.status === 'canceled' || session.starting || !!session.inFlight || busy || launching || inspecting;
+    $('resume').disabled = session.run === null || session.running || !!session.stepDriving || ['done', 'canceled'].includes(session.status) || session.starting || launching || inspecting;
+    $('resume').textContent = session.stepOperation || session.stepPending ? 'Resume step' : 'Resume';
+    $('step').disabled = session.status === 'canceled' || session.starting || !!session.inFlight || busy || launching || inspecting || inspectionSelection.loading;
     $('cancel').disabled = (session.run === null && session.status !== 'error' && !connection.state?.pending) || session.starting;
-    $('inspect').disabled = (session.run === null && !inspectionPending) || session.starting || inspecting || launching;
-    $('snapshot').disabled = !connected || restoring || !session.recordHistory || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
+    $('inspect').disabled = (session.run === null && !inspectionPending) || session.starting || inspecting || launching || !!session.stepOperation;
+    $('snapshot').disabled = !connected || restoring || !session.recordHistory || launching || !!session.stepOperation || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
     if (session.error) message(session.error.message, true);
     else if (connected && !restoring && runNotice !== `${session.run}:${session.status}`) {
       runNotice = `${session.run}:${session.status}`;
@@ -868,6 +902,7 @@ function mountNotebook() {
   }
   function resetResultPages() { resultPage = resultPortPage = bindingPage = pendingNumber = pendingPage = pendingPortPage = 0; pendingPath = []; desiredScene = null; loadedSceneKey = null; }
   async function inspect() {
+    check(!session.stepOperation, 'Finish or cancel the selected step before inspecting.');
     check(!inspecting, 'An inspection is already in progress.');
     inspecting = true; renderRun();
     try { await inspectOnce(); } finally { inspecting = false; renderRun(); }
@@ -970,8 +1005,8 @@ function mountNotebook() {
   }
 
   function renderInspectionControls() {
-    const unavailable = !connected || restoring || session.starting || session.changingRun || inspectionSelection.resetting;
-    $('snapshot').disabled = !connected || restoring || !session.recordHistory || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
+    const unavailable = !connected || restoring || launching || !!session.stepOperation || inspecting || session.starting || session.changingRun || inspectionSelection.resetting;
+    $('snapshot').disabled = !connected || restoring || !session.recordHistory || launching || !!session.stepOperation || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
     $('choices').replaceChildren();
     if (!inspectionSelection.choices.length) $('choices').append(el('p', session.run === null ? 'Start a run to inspect its choices.' : inspectionSelection.navigation.next_choice === undefined ? 'Inspect the graph to load available choices.' : 'No choices in this state.'));
     inspectionSelection.choices.forEach(item => {
@@ -979,7 +1014,7 @@ function mountNotebook() {
       select.append(el('option', 'Either', { value: 'either' }), el('option', 'First', { value: 'first' }), el('option', 'Second', { value: 'second' }));
       select.disabled = unavailable;
       select.value = inspectionSelection.assignments.get(item.id) ?? 'either';
-      select.onchange = () => safe(async () => { inspectionSelection.choose(item.id, select.value); await saveEditor(); });
+      select.onchange = () => safe(async () => { check(!launching && !session.stepOperation && !inspecting, 'Finish or cancel the selected step before changing metadata.'); inspectionSelection.choose(item.id, select.value); await saveEditor(); });
       label.append(select); $('choices').append(label);
     });
     $('choice-page').textContent = `${inspectionSelection.choices.length} choices on this page`;
@@ -993,6 +1028,7 @@ function mountNotebook() {
     $('snapshot').value = inspectionSelection.snapshot;
   }
   async function metadataPage(kind, direction) {
+    check(!launching && !session.stepOperation && !inspecting, 'Finish or cancel the selected step before changing metadata.');
     check(!session.starting && !session.changingRun, 'Wait for the execution change.');
     const pending = inspectionSelection.page(request, session.run, kind, direction);
     renderInspectionControls();
@@ -1002,6 +1038,7 @@ function mountNotebook() {
     $(`${kind}-${direction}`).onclick = () => safe(() => metadataPage(kind, direction));
   }
   $('snapshot').onchange = () => safe(async () => {
+    check(!launching && !session.stepOperation && !inspecting, 'Finish or cancel the selected step before changing metadata.');
     check(!session.starting && !session.changingRun, 'Wait for the execution change.');
     const pending = inspectionSelection.selectSnapshot(request, session.run, $('snapshot').value);
     renderInspectionControls();
@@ -1031,20 +1068,26 @@ function mountNotebook() {
     await session.start(model, $('history').checked); renderInspectionControls(); message('Running the submitted notebook.');
     } finally { launching = false; renderInspectionControls(); renderRun(); await saveEditor(); }
   });
-  $('step').onclick = () => safe(async () => {
-    check(!launching, 'A step is already in progress.'); launching = true; renderRun();
+  async function runStep(resume = false) {
+    check(!launching && !inspectionSelection.loading, 'Wait for the current step or metadata selection.'); launching = true; renderRun(); renderInspectionControls();
     try {
+    if (!session.stepOperation && !session.stepPending) await finishInspection();
     await session.finishClose();
     if (session.run === null) { savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; await syncSource(); await session.start(model, $('history').checked, false); renderInspectionControls(); }
-    const response = await session.step(inspectionSelection.payload(session.run).choices);
-    if (inspectionSelection.snapshot) await inspectionSelection.selectSnapshot(request, session.run, '', true);
+    const response = resume ? await session.resume() : await session.step(inspectionSelection.payload(session.run).choices);
+    if (!response || session.status === 'canceled') return;
+    if (response.stepChoices) inspectionSelection.assignments = new Map(Object.entries(response.stepChoices).map(([key,value]) => [key,value ? 'first' : 'second']));
+    const run = session.run;
+    if (inspectionSelection.snapshot) await inspectionSelection.selectSnapshot(request, run, '', true);
+    if (session.run !== run || session.canceling || session.status === 'canceled') return;
     await inspect();
     if (response?.step?.event !== null && response?.step?.rule !== undefined) {
       const name = session.submission.program.rules[response.step.rule]?.name ?? `Rule ${response.step.rule + 1}`;
       message(response.step.shared ? `${name} applied across the selection and other alternatives.` : `${name} applied.`);
     } else { message('No further rule applies in this selection.'); }
     } finally { launching = false; renderInspectionControls(); renderRun(); await saveEditor(); }
-  });
+  }
+  $('step').onclick = () => safe(() => runStep());
   $('execution').onchange = () => safe(async () => {
     if (!$('execution').value) return;
     const run = Number($('execution').value);
@@ -1057,7 +1100,7 @@ function mountNotebook() {
   $('release-run').onclick = () => safe(async () => {
     await finishInspection(); await session.closeRun(); await saveEditor(); renderInspectionControls(); message('Execution released. Saved answers remain available.');
   });
-  $('pause').onclick = () => session.pause(); $('resume').onclick = () => safe(() => session.resume());
+  $('pause').onclick = () => session.pause(); $('resume').onclick = () => safe(() => session.stepOperation || session.stepPending ? runStep(true) : session.resume());
   $('cancel').onclick = () => safe(async () => { inspectionCanceled = true; await session.cancel(); if (!inspecting) await finishInspection(); }); $('inspect').onclick = () => safe(inspect);
   $('alternatives').onchange = () => { answerNumber = Number($('alternatives').value); resetResultPages(); renderResults(); };
   $('output-mode').onchange = () => safe(async () => { outputMode = $('output-mode').value; answerNumber = null; answerPage = 0; resetResultPages(); await refreshSaved(); });
