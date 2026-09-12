@@ -1,4 +1,5 @@
-import { clone, at, atomOf, applyEdit, validateNotebook, renderGraph } from './graph.mjs';
+import { clone, at, atomOf, applyEdit, validateNotebook, renderGraph, renderScene } from './graph.mjs';
+import { OutputAssembler, IndexedAnswerStore } from './answers.mjs';
 
 const check = (ok, message) => { if (!ok) throw new Error(message); };
 const uint = value => {
@@ -12,169 +13,6 @@ const id = value => {
   }
   return String(uint(value));
 };
-
-export class OutputAssembler {
-  constructor(tables, limit = Infinity) {
-    check(Array.isArray(tables?.signatures) && Array.isArray(tables?.variables), 'Run response needs signatures and variables.');
-    for (const signature of tables.signatures) {
-      check(typeof signature.name === 'string', 'Invalid relation name in run response.');
-      uint(signature.arity);
-    }
-    check(tables.variables.every(v => typeof v === 'string'), 'Invalid query variable names in run response.');
-    check(limit === Infinity || (Number.isSafeInteger(limit) && limit > 0), 'Answer queue capacity must be positive.');
-    this.tables = clone({ signatures: tables.signatures, variables: tables.variables });
-    this.limit = limit; this.answers = []; this.total = 0; this.current = null; this.fact = null; this.pending = null; this.expressions = [];
-  }
-  push(event) {
-    const current = this.current;
-    switch (event.kind) {
-      case 'begin': {
-        check(!current, 'An alternative is already open.');
-        check(this.answers.length < this.limit, 'Save or explicitly release queued answers before consuming more output.');
-        const completion = id(event.completion), alternative = id(event.alternative);
-        this.current = { completion, alternative, variables: [], facts: [] }; break;
-      }
-      case 'variable':
-        check(current && !this.fact && !this.pending && !current.pending?.length && !current.facts.length, 'Query variables must precede facts.');
-        check(uint(event.slot) === current.variables.length && event.slot < this.tables.variables.length, 'Unexpected query variable slot.');
-        current.variables.push(id(event.variable)); break;
-      case 'fact': {
-        check(current && !this.fact && !this.pending && !current.pending?.length, 'Expected an alternative without an open fact or pending body.');
-        check(current.variables.length === this.tables.variables.length, 'Missing query variables.');
-        const relation = uint(event.relation), signature = this.tables.signatures[relation];
-        check(signature, 'Unknown relation index in output.');
-        this.fact = { occurrence: id(event.occurrence), relation, name: signature.name, args: [] }; break;
-      }
-      case 'port':
-        check(this.fact, 'A port needs an open fact.');
-        check(this.fact.args.length < this.tables.signatures[this.fact.relation].arity, 'Too many ports.');
-        this.fact.args.push(id(event.variable)); break;
-      case 'end_fact':
-        check(this.fact && current, 'No open fact.');
-        check(this.fact.args.length === this.tables.signatures[this.fact.relation].arity, 'Missing fact ports.');
-        current.facts.push(this.fact); this.fact = null; break;
-      case 'pending_begin':
-        check(current && !this.fact && !this.pending, 'A pending body needs an open alternative.');
-        check(current.variables.length === this.tables.variables.length, 'Missing query variables.');
-        this.pending = {event:id(event.event), body:null}; break;
-      case 'expression':
-        check(['and', 'or', 'equal', 'true', 'fail'].includes(event.operator), 'Unknown pending expression.');
-        this.expression(event.operator === 'and' || event.operator === 'or' ? {kind:event.operator, items:[]} : {kind:event.operator}); break;
-      case 'expression_relation': {
-        const signature = this.tables.signatures[uint(event.relation)];
-        check(signature, 'Unknown relation index in pending body.');
-        this.expression({kind:'atom', atom:{relation:signature.name, args:[]}}, signature.arity); break;
-      }
-      case 'expression_variable': {
-        const frame = this.expressions.at(-1), variable = `V${id(event.variable)}`;
-        check(frame, 'A pending variable needs an expression.');
-        if (frame.node.kind === 'atom') {
-          check(frame.node.atom.args.length < frame.arity, 'Too many pending ports.'); frame.node.atom.args.push(variable);
-        } else {
-          check(frame.node.kind === 'equal' && frame.node.right === undefined, 'Unexpected pending variable.');
-          if (frame.node.left === undefined) frame.node.left = variable; else frame.node.right = variable;
-        }
-        break;
-      }
-      case 'expression_end': {
-        const frame = this.expressions.at(-1);
-        check(frame, 'No pending expression is open.');
-        if (frame.node.kind === 'atom') check(frame.node.atom.args.length === frame.arity, 'Missing pending ports.');
-        if (frame.node.kind === 'equal') check(frame.node.right !== undefined, 'Missing equality variable.');
-        this.expressions.pop(); break;
-      }
-      case 'pending_end':
-        check(this.pending?.body && !this.expressions.length, 'A pending body must finish its expression.');
-        (current.pending ??= []).push(this.pending); this.pending = null; break;
-      case 'end':
-        check(current && !this.fact && !this.pending, 'An alternative must finish its fact and pending body first.');
-        check(current.variables.length === this.tables.variables.length, 'Missing query variables.');
-        current.number = ++this.total; this.answers.push(current);
-        this.current = null; break;
-      default: throw new Error(`Unknown output event: ${event.kind}`);
-    }
-  }
-  expression(node, arity = 0) {
-    check(this.pending, 'An expression needs a pending body.');
-    const parent = this.expressions.at(-1)?.node;
-    if (parent) { check(parent.items, 'Only a conjunction or disjunction can contain expressions.'); parent.items.push(node); }
-    else { check(!this.pending.body, 'A pending body has one root expression.'); this.pending.body = node; }
-    this.expressions.push({node, arity});
-  }
-  discardPartial() { this.current = null; this.fact = null; this.pending = null; this.expressions = []; }
-  finish() { check(!this.current && !this.fact, 'Output delivery ended inside an alternative.'); }
-}
-
-// A completed answer leaves the delivery queue only after its IndexedDB transaction commits.
-export class IndexedAnswerStore {
-  constructor(indexed = globalThis.indexedDB) {
-    this.ready = new Promise((resolve, reject) => {
-      if (!indexed) { reject(new Error('This browser cannot open saved answer storage.')); return; }
-      const request = indexed.open('chr-notebook-answers', 1);
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        db.createObjectStore('collections', { keyPath: 'id' });
-        db.createObjectStore('answers', { keyPath: ['collection', 'number'] });
-      };
-      request.onsuccess = () => { request.result.onversionchange = () => request.result.close(); resolve(request.result); };
-      request.onerror = () => reject(request.error);
-      request.onblocked = () => reject(new Error('Close other notebook tabs to open saved answer storage.'));
-    });
-    this.ready.catch(() => {});
-  }
-  async transaction(names, mode, work) {
-    const db = await this.ready;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(names, mode);
-      let result;
-      tx.oncomplete = () => resolve(result);
-      tx.onabort = () => reject(tx.error ?? new Error('Saved answer transaction was aborted.'));
-      tx.onerror = () => {}; // Abort owns the rejection; pending output stays with its run.
-      try { work(tx, value => { result = value; }); } catch (error) { tx.abort(); reject(error); }
-    });
-  }
-  create(tables, label) {
-    const record = { id: crypto.randomUUID(), tables: clone(tables), label, total: 0, created: Date.now() };
-    return this.transaction(['collections'], 'readwrite', (tx, result) => { tx.objectStore('collections').add(record); result(record.id); });
-  }
-  append(collection, answer) {
-    return this.transaction(['answers', 'collections'], 'readwrite', tx => {
-      const records = tx.objectStore('collections'), read = records.get(collection);
-      read.onsuccess = () => {
-        if (!read.result) { tx.abort(); return; }
-        tx.objectStore('answers').put({ ...clone(answer), collection });
-        records.put({ ...read.result, total: Math.max(read.result.total, answer.number) });
-      };
-    });
-  }
-  list() {
-    return this.transaction(['collections'], 'readonly', (tx, result) => {
-      const request = tx.objectStore('collections').getAll();
-      request.onsuccess = () => result(request.result.sort((a, b) => b.created - a.created));
-    });
-  }
-  page(collection, page = 0, size = 12) {
-    uint(page); uint(size); check(size > 0, 'Page size must be positive.');
-    return this.transaction(['collections', 'answers'], 'readonly', (tx, result) => {
-      const request = tx.objectStore('collections').get(collection);
-      request.onsuccess = () => {
-        const record = request.result;
-        if (!record) { result(null); return; }
-        const pages = Math.max(1, Math.ceil(record.total / size));
-        const current = Math.min(page, pages - 1);
-        const range = IDBKeyRange.bound([collection, current * size + 1], [collection, (current + 1) * size]);
-        const answers = tx.objectStore('answers').getAll(range, size);
-        answers.onsuccess = () => result({ ...record, answers: answers.result, page: current, pages });
-      };
-    });
-  }
-  clear(collection) {
-    return this.transaction(['collections', 'answers'], 'readwrite', tx => {
-      tx.objectStore('answers').delete(IDBKeyRange.bound([collection, 0], [collection, Number.MAX_SAFE_INTEGER]));
-      tx.objectStore('collections').delete(collection);
-    });
-  }
-}
 
 export class InspectionSelection {
   constructor() { this.choices = []; this.snapshots = []; this.assignments = new Map(); this.snapshot = ''; this.selectedSnapshot = null; this.cursors = {}; this.navigation = {}; this.loading = false; this.lease = null; this.retiring = null; this.operation = null; this.resetting = false; this.pendingCapture = null; this.nextCapture = 1; }
@@ -332,8 +170,31 @@ async function liveRequest(route, payload, api = request) {
     }
   }
 
+// A cached response is bounded by the server's delivery budget. On cancel,
+// preserve every complete alternative and retire only its unfinished suffix.
+export async function deliverCachedOutput(store, archive, stream, pending, cancel = false) {
+  const events = pending?.response?.events ?? [];
+  let limit = events.length;
+  if (cancel) {
+    limit = pending?.index ?? 0;
+    for (let index = events.length - 1; index >= limit; index--) {
+      if (events[index].kind === 'end') { limit = index + 1; break; }
+    }
+  }
+  if (!cancel || (pending && pending.index < limit)) await store.flush(archive, stream);
+  while (pending && pending.index < limit) {
+    stream.push(events[pending.index]);
+    pending.index++;
+    if (stream.needsFlush) await store.flush(archive, stream);
+  }
+  if (cancel) {
+    await store.discardPartial(archive, stream);
+    if (pending) pending.index = events.length;
+  } else await store.flush(archive, stream);
+}
+
 export class RunSession {
-  constructor(api = request, notify = () => {}, store = null) {
+  constructor(api = request, notify = () => {}, store = new IndexedAnswerStore()) {
     this.api = api; this.notify = notify; this.store = store; this.archive = null; this.pendingDelivery = null; this.run = null; this.status = 'idle';
     this.running = false; this.inFlight = null; this.timer = null; this.stream = null;
     this.applications = 0; this.error = null; this.starting = false; this.runs = new Map(); this.canceling = false; this.ack = null; this.selection = new InspectionSelection(); this.changingRun = false;
@@ -348,7 +209,7 @@ export class RunSession {
       this.status = 'starting'; this.error = null; this.notify();
       const response = await this.api('start', { ...clone(this.submission), record_history: recordHistory });
       this.run = uint(response.run); this.ack = null;
-      this.stream = new OutputAssembler(response, storeLimit(this.store));
+      this.stream = new OutputAssembler(response);
       this.archive = null;
       await this.ensureArchive();
       this.recordHistory = recordHistory; this.applications = 0; this.status = 'paused';
@@ -357,25 +218,14 @@ export class RunSession {
     finally { this.starting = false; this.notify(); }
   }
   async ensureArchive() {
-    if (this.store && this.stream && this.archive === null) this.archive = await this.store.create(this.stream.tables, `Run ${this.run}`);
+    if (this.stream && this.archive === null) this.archive = await this.store.create(this.stream.tables, `Run ${this.run}`);
   }
-  async savePending() {
-    if (!this.store || !this.stream?.answers.length) return;
+  async deliverPending(cancel = false) {
+    if (!this.stream) return;
     await this.ensureArchive();
-    while (this.stream?.answers.length) {
-      await this.store.append(this.archive, this.stream.answers[0]);
-      this.stream.answers.shift();
-    }
-  }
-  async deliverPending() {
-    await this.savePending();
     const pending = this.pendingDelivery;
+    await deliverCachedOutput(this.store, this.archive, this.stream, pending, cancel);
     if (!pending) return;
-    while (pending.index < pending.response.events.length) {
-      this.stream.push(pending.response.events[pending.index]);
-      pending.index++;
-      await this.savePending();
-    }
     const response = pending.response;
     if (response.delivery_done) this.stream.finish();
     this.ack = response.sequence ?? this.ack;
@@ -466,16 +316,14 @@ export class RunSession {
         const canceled = await this.api('cancel', { run: this.run });
         if (canceled.pending && canceled.pending.sequence !== this.ack) this.pendingDelivery ??= {response: canceled.pending, index: 0};
       }
-      this.status = this.run === null ? 'idle' : 'canceled'; this.running = false; this.rememberRun(); this.notify();
-      await this.deliverPending();
-      if (this.stream) this.stream.discardPartial();
-      this.rememberRun();
+      this.status = this.run === null ? 'idle' : 'canceled'; this.running = false;
+      await this.deliverPending(true);
+      this.error = null;
+      this.rememberRun(); this.notify();
     } finally { this.canceling = false; }
   }
 
 }
-
-const storeLimit = store => store ? 1 : Infinity;
 
 if (typeof document !== 'undefined' && document.getElementById('editor-graph')) mountNotebook();
 
@@ -498,9 +346,11 @@ function mountNotebook() {
   let path = ['query'], selected = null, page = 0, portPage = 0, dirty = false, busy = false, revision = 0;
   let undo = [], redo = [], debounce, inspected = null, outputMode = 'answers', answerNumber = null;
   const store = new IndexedAnswerStore();
-  let savedView = null, savedSelection = '', answerPage = 0, loadRevision = 0, inspectionPending = null, inspecting = false, launching = false;
+  let savedView = null, savedSelection = '', answerPage = 0, inspectionPending = null, inspecting = false, launching = false;
   let resultPage = 0, resultPortPage = 0, bindingPage = 0;
-  let pendingNumber = 0, pendingPath = ['query'], pendingPage = 0, pendingPortPage = 0;
+  let pendingNumber = 0, pendingPath = [], pendingPage = 0, pendingPortPage = 0;
+  let catalog = {records:[], next:null, prev:null}, catalogCursor = null, catalogDirection = 'next', catalogDirty = true, catalogStamp = '';
+  let refreshing = null, refreshAgain = false, sceneLoading = false, desiredScene = null, loadedSceneKey = null;
   let inspectionCanceled = false;
   const session = new RunSession(request, renderRun, store);
   const inspectionSelection = session.selection;
@@ -572,7 +422,7 @@ function mountNotebook() {
     for (const [suffix, delta, ports] of [['prev', -1, false], ['next', 1, false], ['port-prev', -1, true], ['port-next', 1, true]]) {
       const current = ports ? info.portPage : info.page, max = ports ? info.portPages : info.pages;
       $(prefix + '-' + suffix).disabled = current + delta < 0 || current + delta >= max;
-      $(prefix + '-' + suffix).onclick = () => { if (prefix === 'graph') { if (ports) portPage += delta; else page += delta; } else if (prefix === 'pending') { if (ports) pendingPortPage += delta; else pendingPage += delta; } else { if (ports) resultPortPage += delta; else resultPage += delta; } render(); };
+      $(prefix + '-' + suffix).onclick = () => { if (prefix === 'graph') { if (ports) portPage = current + delta; else page = current + delta; } else if (prefix === 'pending') { if (ports) pendingPortPage = current + delta; else pendingPage = current + delta; } else { if (ports) resultPortPage = current + delta; else resultPage = current + delta; } render(); };
     }
   }
   function renderInspector() {
@@ -629,25 +479,48 @@ function mountNotebook() {
     if (session.error) message(session.error.message, true);
     renderResults(); safe(refreshSaved);
   }
-  async function refreshSaved() {
-    const version = ++loadRevision;
-    const records = await store.list();
-    const collection = outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive;
-    const view = collection ? await store.page(collection, answerPage) : null;
-    if (version !== loadRevision) return;
-    $('saved-run').replaceChildren(el('option', 'Current run', { value: '' }), ...records.map(record => el('option', `${record.label} · ${record.total} answers · ${new Date(record.created).toLocaleString()}`, { value: record.id })));
-    $('saved-run').value = savedSelection;
-    savedView = view; answerPage = view?.page ?? 0;
-    $('saved-page').value = answerPage + 1;
-    $('saved-page').max = view?.pages ?? 1;
-    $('saved-pages').textContent = `/ ${view?.pages ?? 1}`;
-    $('saved-prev').disabled = answerPage === 0;
-    $('saved-next').disabled = !view || answerPage + 1 >= view.pages;
-    $('clear-answers').disabled = !view || (view.id === session.archive && session.run !== null) || view.id === inspectionPending?.archive;
-    renderResults();
+  function refreshSaved() {
+    refreshAgain = true;
+    if (refreshing) return refreshing;
+    refreshing = (async () => {
+      while (refreshAgain) {
+        refreshAgain = false;
+        const stamp = `${session.archive}|${inspected?.archive}`;
+        if (stamp !== catalogStamp) { catalogStamp = stamp; catalogDirty = true; }
+        if (catalogDirty) {
+          const cursor = catalogCursor, direction = catalogDirection;
+          const page = await store.list({cursor, direction, size:32});
+          if (cursor !== catalogCursor || direction !== catalogDirection) { refreshAgain = true; continue; }
+          catalog = page; catalogDirty = false;
+        }
+        const collection = outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive;
+        const requestedPage = answerPage;
+        const view = collection ? await store.page(collection, requestedPage) : null;
+        if (collection !== (outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive) || requestedPage !== answerPage) {
+          refreshAgain = true; continue;
+        }
+        const records = catalog.records.map(record => record.id === view?.id ? {...record, total:view.total} : record);
+        if (savedSelection && view && !records.some(record => record.id === savedSelection)) records.unshift(view);
+        $('saved-run').replaceChildren(el('option', 'Current run', { value: '' }), ...records.map(record => el('option', `${record.label} · ${record.total} answers · ${new Date(record.created).toLocaleString()}`, { value: record.id })));
+        $('saved-run').value = savedSelection;
+        $('collections-prev').disabled = !catalog.prev;
+        $('collections-next').disabled = !catalog.next;
+        if (savedView?.id !== view?.id) resetResultPages();
+        savedView = view; answerPage = view?.page ?? 0;
+        $('saved-page').value = answerPage + 1;
+        $('saved-page').max = view?.pages ?? 1;
+        $('saved-pages').textContent = `/ ${view?.pages ?? 1}`;
+        $('saved-prev').disabled = answerPage === 0;
+        $('saved-next').disabled = !view || answerPage + 1 >= view.pages;
+        $('clear-answers').disabled = !view || (view.id === session.archive && session.run !== null) || view.id === inspectionPending?.archive;
+        renderResults();
+      }
+    })().finally(() => { refreshing = null; });
+    return refreshing;
   }
   function renderResults() {
-    const stream = savedView;
+    const collection = outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive;
+    const stream = savedView?.id === collection ? savedView : null;
     $('output-mode').value = outputMode;
     const answers = stream?.answers ?? [];
     let answer = answers.find(answer => answer.number === answerNumber) ?? answers.at(-1);
@@ -659,45 +532,60 @@ function mountNotebook() {
     $('answer-prev').disabled = index <= 0; $('answer-next').disabled = index < 0 || index === answers.length - 1;
     $('answer-prev').onclick = () => { answerNumber = answers[index - 1].number; resetResultPages(); renderResults(); };
     $('answer-next').onclick = () => { answerNumber = answers[index + 1].number; resetResultPages(); renderResults(); };
-    $('bindings').replaceChildren();
-    const bindings = answer?.variables ?? [];
-    const bindingPages = Math.max(1, Math.ceil(bindings.length / 24)); bindingPage = Math.min(bindingPage, bindingPages - 1);
-    bindings.slice(bindingPage * 24, bindingPage * 24 + 24).forEach((variable, i) => $('bindings').append(el('span', `${stream.tables.variables[bindingPage * 24 + i]} = V${variable}`)));
-    $('binding-page').textContent = `Bindings ${bindingPage + 1} / ${bindingPages}`;
-    $('binding-prev').disabled = bindingPage === 0; $('binding-next').disabled = bindingPage === bindingPages - 1;
-    $('binding-prev').onclick = () => { bindingPage--; renderResults(); }; $('binding-next').onclick = () => { bindingPage++; renderResults(); };
     $('result-empty').hidden = !!answer;
     $('result-graph').toggleAttribute('hidden', !answer);
-    const facts = answer?.facts ?? [];
-    const resultModel = { query: { kind: 'and', items: facts.map(fact => ({ kind: 'atom', atom: { relation: fact.name, args: fact.args.map(v => `V${v}`) } })) } };
-    const info = renderGraph($('result-graph'), resultModel, ['query'], { readonly: true, page: resultPage, portPage: resultPortPage, occurrences: facts.map(f => f.occurrence), label: outputMode === 'inspect' ? 'Inspected graph' : 'Answer hypergraph' });
-    resultPage = info.page; resultPortPage = info.portPage; pager('result', info, renderResults);
-    renderPending(answer?.pending ?? []);
+    if (!answer) {
+      desiredScene = null; loadedSceneKey = null;
+      $('bindings').replaceChildren(); $('result-graph').replaceChildren(); $('pending-bodies').hidden = true;
+      return;
+    }
+    const options = {page:resultPage, portPage:resultPortPage, bindingPage, pendingNumber, pendingPage, pendingPortPage, pendingPath:[...pendingPath]};
+    const key = JSON.stringify([stream.id, answer.number, options]);
+    desiredScene = {key, collection:stream.id, number:answer.number, options};
+    if (loadedSceneKey !== key) safe(loadScene);
   }
-  function renderPending(bodies) {
-    $('pending-bodies').hidden = bodies.length === 0;
-    if (!bodies.length) return;
-    pendingNumber = Math.min(pendingNumber, bodies.length - 1);
-    const body = bodies[pendingNumber], model = {query:body.body};
-    try { at(model, pendingPath); } catch { pendingPath = ['query']; }
-    $('pending-body-number').value = pendingNumber + 1; $('pending-body-number').max = bodies.length;
-    $('pending-body-count').textContent = `/ ${bodies.length} · event ${body.event}`;
-    const choose = number => { pendingNumber = Math.min(uint(number), bodies.length - 1); pendingPath = ['query']; pendingPage = pendingPortPage = 0; renderResults(); };
-    $('pending-body-prev').disabled = pendingNumber === 0; $('pending-body-next').disabled = pendingNumber + 1 === bodies.length;
-    $('pending-body-prev').onclick = () => choose(pendingNumber - 1); $('pending-body-next').onclick = () => choose(pendingNumber + 1);
+  async function loadScene() {
+    if (sceneLoading) return;
+    sceneLoading = true;
+    try {
+      while (desiredScene && desiredScene.key !== loadedSceneKey) {
+        const request = desiredScene;
+        let scene;
+        try { scene = await store.scene(request.collection, request.number, request.options); }
+        catch (error) { if (desiredScene?.key !== request.key) continue; throw error; }
+        if (desiredScene?.key !== request.key) continue;
+        if (!scene) { loadedSceneKey = request.key; return; }
+        $('bindings').replaceChildren(...scene.bindings.map(binding => el('span', `${binding.name} = V${binding.variable}`)));
+        bindingPage = scene.bindingPage;
+        $('binding-page').textContent = `Bindings ${bindingPage + 1} / ${scene.bindingPages}`;
+        $('binding-prev').disabled = bindingPage === 0;
+        $('binding-next').disabled = bindingPage + 1 === scene.bindingPages;
+        $('binding-prev').onclick = () => { bindingPage = scene.bindingPage - 1; renderResults(); };
+        $('binding-next').onclick = () => { bindingPage = scene.bindingPage + 1; renderResults(); };
+        const info = renderScene($('result-graph'), scene.facts, {readonly:true, label:outputMode === 'inspect' ? 'Inspected graph' : 'Answer hypergraph'});
+        resultPage = info.page; resultPortPage = info.portPage; pager('result', info, renderResults);
+        renderPending(scene.pending);
+        loadedSceneKey = request.key;
+      }
+    } finally { sceneLoading = false; }
+  }
+  function renderPending(body) {
+    $('pending-bodies').hidden = !body;
+    if (!body) return;
+    pendingNumber = body.index; pendingPath = body.path;
+    $('pending-body-number').value = pendingNumber + 1; $('pending-body-number').max = body.count;
+    $('pending-body-count').textContent = `/ ${body.count} · event ${body.event}`;
+    const choose = number => { pendingNumber = Math.min(uint(number), body.count - 1); pendingPath = []; pendingPage = pendingPortPage = 0; renderResults(); };
+    $('pending-body-prev').disabled = pendingNumber === 0; $('pending-body-next').disabled = pendingNumber + 1 === body.count;
+    $('pending-body-prev').onclick = () => choose(body.index - 1); $('pending-body-next').onclick = () => choose(body.index + 1);
     $('pending-body-number').onchange = () => safe(() => choose(Number($('pending-body-number').value) - 1));
     const open = path => { pendingPath = path; pendingPage = pendingPortPage = 0; renderResults(); };
-    $('pending-location').replaceChildren(button('Body', () => open(['query'])));
-    for (let i = 1; i < pendingPath.length; i += 2) {
-      const prefix = pendingPath.slice(0, i + 2);
-      $('pending-location').append(button(`Item ${Number(pendingPath[i + 1]) + 1}`, () => open(prefix)));
-    }
-    const kind = at(model, pendingPath).kind;
-    $('pending-location').append(el('span', ` · ${{atom:'relation', and:'And conjunction', or:'Or alternatives', equal:'variable equality', true:'true', fail:'fail'}[kind]}`));
-    const info = renderGraph($('pending-graph'), model, pendingPath, {readonly:true, page:pendingPage, portPage:pendingPortPage, onOpen:open, label:'Pending body graph'});
+    $('pending-location').replaceChildren(button('Body', () => open([])));
+    for (const crumb of body.breadcrumbs) $('pending-location').append(el('span', ' / '), button(crumb.label, () => open(crumb.path)));
+    const info = renderScene($('pending-graph'), body.scene, {readonly:true, onOpen:open, label:'Pending body graph'});
     pendingPage = info.page; pendingPortPage = info.portPage; pager('pending', info, renderResults);
   }
-  function resetResultPages() { resultPage = resultPortPage = bindingPage = pendingNumber = pendingPage = pendingPortPage = 0; pendingPath = ['query']; }
+  function resetResultPages() { resultPage = resultPortPage = bindingPage = pendingNumber = pendingPage = pendingPortPage = 0; pendingPath = []; desiredScene = null; loadedSceneKey = null; }
   async function inspect() {
     check(!inspecting, 'An inspection is already in progress.');
     inspecting = true; renderRun();
@@ -711,30 +599,32 @@ function mountNotebook() {
       const response = await liveRequest('inspect', inspectionSelection.payload(run));
       check(session.run === run, 'The run changed during inspection.');
       inspectionCanceled = false;
-      inspectionPending = { stream: new OutputAssembler(tables, 1), response: null, index: 0, archive: null, run, inspection: response.inspection, ack: null };
+      inspectionPending = { stream: new OutputAssembler(tables), response: null, index: 0, archive: null, run, inspection: response.inspection, ack: null };
       await inspectionSelection.page(request, run); renderInspectionControls();
     }
     const pending = inspectionPending;
     pending.archive ??= await store.create(pending.stream.tables, `Inspection of run ${pending.run}`);
-    const save = async () => {
-      while (pending.stream.answers.length) { await store.append(pending.archive, pending.stream.answers[0]); pending.stream.answers.shift(); }
-    };
-    await save();
     for (;;) {
       if (inspectionCanceled) {
         let response;
-        do { response = await liveRequest('inspect_cancel', { run: pending.run, inspection: pending.inspection, budget: 2048 }); }
-        while (!response.done);
+        do {
+          response = await liveRequest('inspect_cancel', { run: pending.run, inspection: pending.inspection, budget: 2048 });
+          if (response.pending && response.pending.sequence !== pending.ack
+              && response.pending.sequence !== pending.response?.sequence) {
+            pending.response = response.pending; pending.index = 0;
+          }
+          await deliverCachedOutput(store, pending.archive, pending.stream, pending, true);
+          pending.ack = pending.response?.sequence ?? pending.ack;
+        } while (!response.done);
         break;
       }
       pending.response ??= await request('inspect_advance', { run: pending.run, inspection: pending.inspection, budget: 2048, ack: pending.ack });
-      while (pending.index < pending.response.events.length) {
-        pending.stream.push(pending.response.events[pending.index]); pending.index++; await save();
-      }
+      await deliverCachedOutput(store, pending.archive, pending.stream, pending);
       if (pending.response.error) {
         const failure = pending.response.error;
         let discarded;
         do { discarded = await liveRequest('inspect_cancel', {run: pending.run, inspection: pending.inspection, budget: 2048}); } while (!discarded.done);
+        await store.discardPartial(pending.archive, pending.stream);
         await liveRequest('inspect_release', {run: pending.run, inspection: pending.inspection});
         inspectionPending = null;
         throw new Error(`Inspection failed: ${failure}`);
@@ -744,6 +634,7 @@ function mountNotebook() {
       pending.response = null; pending.index = 0;
       await new Promise(resolve => setTimeout(resolve, 0));
     }
+    await store.discardPartial(pending.archive, pending.stream);
     await liveRequest('inspect_release', { run: pending.run, inspection: pending.inspection });
     inspected = { archive: pending.archive }; inspectionPending = null;
     outputMode = 'inspect'; answerNumber = null; answerPage = 0; resetResultPages();
@@ -827,26 +718,31 @@ function mountNotebook() {
     if (!$('execution').value) return;
     await session.switchRun(Number($('execution').value));
     inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0;
+    answerNumber = null; resetResultPages(); renderResults();
     renderInspectionControls(); await refreshSaved();
   });
   $('release-run').onclick = () => safe(async () => {
     await session.closeRun(); renderInspectionControls(); message('Execution released. Saved answers remain available.');
   });
   $('pause').onclick = () => session.pause(); $('resume').onclick = () => safe(() => session.resume());
-  $('cancel').onclick = () => safe(async () => { inspectionCanceled = true; await session.cancel(); }); $('inspect').onclick = () => safe(inspect);
+  $('cancel').onclick = () => safe(async () => { inspectionCanceled = true; await session.cancel(); if (inspectionPending && !inspecting) await inspect(); }); $('inspect').onclick = () => safe(inspect);
   $('alternatives').onchange = () => { answerNumber = Number($('alternatives').value); resetResultPages(); renderResults(); };
   $('output-mode').onchange = () => safe(async () => { outputMode = $('output-mode').value; answerNumber = null; answerPage = 0; resetResultPages(); await refreshSaved(); });
+  for (const [suffix, direction] of [['prev','prev'], ['next','next']]) $('collections-' + suffix).onclick = () => safe(async () => {
+    catalogCursor = catalog[suffix]; catalogDirection = direction; catalogDirty = true;
+    await refreshSaved();
+  });
   $('saved-run').onchange = () => safe(async () => { savedSelection = $('saved-run').value; outputMode = 'answers'; answerNumber = null; answerPage = 0; resetResultPages(); await refreshSaved(); });
   const changeSavedPage = next => safe(async () => { answerPage = uint(next); answerNumber = null; resetResultPages(); await refreshSaved(); });
-  $('saved-prev').onclick = () => changeSavedPage(answerPage - 1);
-  $('saved-next').onclick = () => changeSavedPage(answerPage + 1);
+  $('saved-prev').onclick = () => changeSavedPage((savedView?.page ?? 0) - 1);
+  $('saved-next').onclick = () => changeSavedPage((savedView?.page ?? 0) + 1);
   $('saved-page').onchange = () => changeSavedPage(Number($('saved-page').value) - 1);
   $('clear-answers').onclick = () => safe(async () => {
     const collection = savedView?.id; check(collection, 'Select saved answers first.');
     check(collection !== session.archive || session.run === null, 'Cancel the run before clearing its saved answers.');
     check(collection !== inspectionPending?.archive, 'Finish saving the inspection before clearing it.');
     if (!window.confirm('Permanently clear all saved answers in this selection?')) return;
-    await store.clear(collection);
+    await store.clear(collection); catalogDirty = true; catalogCursor = null; catalogDirection = 'next';
     if (session.archive === collection) session.archive = null;
     if (inspected?.archive === collection) inspected = null;
     savedSelection = ''; savedView = null; answerNumber = null; answerPage = 0;

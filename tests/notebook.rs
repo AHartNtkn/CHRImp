@@ -385,6 +385,14 @@ fn unacknowledged_output_batches_are_replayed_exactly_after_response_loss() {
         ),
         first
     );
+    for _ in 0..2 {
+        let canceled = retry(
+            &runtime,
+            "/api/inspect_cancel",
+            json!({"run":run,"inspection":inspection,"budget":4096}),
+        );
+        assert_eq!(canceled["pending"], first);
+    }
 }
 
 #[test]

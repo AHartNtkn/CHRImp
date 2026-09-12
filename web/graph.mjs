@@ -148,60 +148,89 @@ function interactive(node, label, action) {
 }
 
 export function renderGraph(svg, model, path, options = {}) {
-  const entries = sceneEntries(model, path);
+  const scope = at(model, path);
+  const children = Array.isArray(scope) ? scope : scope.kind === 'and' || scope.kind === 'or' ? scope.items : null;
+  const childPath = Array.isArray(scope) ? path : [...path, 'items'];
+  const count = children ? children.length : 1;
   const pageSize = 18, portsPerPage = 8;
-  const pages = Math.max(1, Math.ceil(entries.length / pageSize));
-  const page = Math.min(options.page ?? 0, pages - 1);
-  const maxPorts = entries.reduce((n, e) => Math.max(n, atomOf(e.node)?.args.length ?? 0), 0);
-  const portPages = Math.max(1, Math.ceil(maxPorts / portsPerPage));
-  const portPage = Math.min(options.portPage ?? 0, portPages - 1);
-  const visible = entries.slice(page * pageSize, (page + 1) * pageSize);
-  const names = new Set();
-  for (const { node } of visible) {
-    const args = atomOf(node)?.args.slice(portPage * portsPerPage, (portPage + 1) * portsPerPage) ??
-      (node.kind === 'equal' ? [node.left, node.right] : []);
-    args.forEach(v => names.add(v));
+  const clamp = (value, pages) => {
+    require(Number.isSafeInteger(value) && value >= 0, 'Choose a nonnegative graph page.');
+    return Math.min(value, pages - 1);
+  };
+  const pages = Math.max(1, Math.ceil(count / pageSize));
+  const page = clamp(options.page ?? 0, pages);
+  const selected = [];
+  let maxPorts = 0;
+  for (let i = page * pageSize; i < Math.min(count, (page + 1) * pageSize); i++) {
+    const node = children ? children[i] : scope;
+    const atom = atomOf(node);
+    maxPorts = Math.max(maxPorts, atom?.args.length ?? 0);
+    selected.push({node, atom, path:children ? [...childPath, i] : path, index:i});
   }
+  const portPages = Math.max(1, Math.ceil(maxPorts / portsPerPage));
+  const portPage = clamp(options.portPage ?? 0, portPages);
+  const entries = selected.map(({node, atom, path, index}) => {
+    if (atom) return {
+      kind:'atom', relation:atom.relation, arity:atom.args.length,
+      args:atom.args.slice(portPage * portsPerPage, (portPage + 1) * portsPerPage),
+      portStart:portPage * portsPerPage, path, occurrence:options.occurrences?.[index],
+    };
+    return {kind:node.kind, args:node.kind === 'equal' ? [node.left, node.right] : [],
+      portStart:0, count:node.items?.length, path};
+  });
+  return renderScene(svg, {entries, page, pages, portPage, portPages, count}, options);
+}
+
+// Both AST preparation and saved-answer storage supply a single flat window.
+// Relation kind is "atom"; arity is total ports, args are only visible ports.
+export function renderScene(svg, scene, options = {}) {
+  const {entries, page, pages, portPage, portPages, count} = scene;
+  require(Array.isArray(entries) && entries.length <= 18, 'A graph window contains at most 18 entries.');
+  for (const entry of entries) {
+    require(Array.isArray(entry.args) && entry.args.length <= 8, 'A graph entry contains at most 8 visible ports.');
+  }
+  const names = new Set();
+  for (const entry of entries) entry.args.forEach(v => names.add(v));
   const variables = [...names];
   const columns = 3, width = 760;
-  const junctionY = Math.max(140, Math.ceil(visible.length / columns) * 130 + 50);
+  const junctionY = Math.max(140, Math.ceil(entries.length / columns) * 130 + 50);
   const height = junctionY + Math.max(1, Math.ceil(variables.length / 6)) * 62 + 35;
   svg.replaceChildren(); svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   svg.setAttribute('aria-label', options.label ?? 'Ordered-port hypergraph');
+  svg.setAttribute('role', !options.readonly || (options.onOpen && entries.some(e => e.kind === 'and' || e.kind === 'or')) ? 'group' : 'img');
   svg.append(svgNode('title', {}, options.label ?? 'Ordered-port hypergraph'));
   const wires = svgNode('g', { class: 'wires', 'aria-hidden': 'true' });
   const nodes = svgNode('g'); svg.append(wires, nodes);
   const positions = new Map(variables.map((v, i) => [v, { x: 62 + (i % 6) * 125, y: junctionY + Math.floor(i / 6) * 62 }]));
-  if (!visible.length) svg.append(svgNode('text', { x: 28, y: 65, class: 'graph-empty' }, options.readonly ? 'No facts in this alternative.' : 'Add a relation to this view.'));
-  visible.forEach(({ node, path: itemPath }, index) => {
-    const atom = atomOf(node), x = 28 + (index % columns) * 246, y = 30 + Math.floor(index / columns) * 130;
-    const color = atom ? relationColor(atom.relation) : node.kind === 'equal' ? 'violet' : 'neutral';
-    const selected = JSON.stringify(options.selected?.path) === JSON.stringify(itemPath);
+  if (!entries.length) svg.append(svgNode('text', { x: 28, y: 65, class: 'graph-empty' }, options.readonly ? 'No facts in this alternative.' : 'Add a relation to this view.'));
+  entries.forEach((entry, index) => {
+    const {kind, path:itemPath, args, portStart:start} = entry;
+    const atom = kind === 'atom', container = kind === 'and' || kind === 'or';
+    const x = 28 + (index % columns) * 246, y = 30 + Math.floor(index / columns) * 130;
+    const color = atom ? relationColor(entry.relation) : kind === 'equal' ? 'violet' : 'neutral';
+    const selected = !!options.selected && JSON.stringify(options.selected.path) === JSON.stringify(itemPath);
     const group = svgNode('g', { class: `relation-node ${color}${selected ? ' selected' : ''}` });
-    group.append(svgNode('rect', { x, y, width: 212, height: 66, rx: atom ? 7 : 2, class: node.kind === 'or' ? 'or-boundary' : '' }));
-    let title = atom ? `${atom.relation} / ${atom.args.length}` : node.kind === 'equal' ? `${node.left} = ${node.right}` :
-      node.items ? `${node.kind === 'and' ? 'And' : 'Or'} · ${node.items.length} ${node.kind === 'and' ? 'items' : 'branches'}` : node.kind;
+    group.append(svgNode('rect', { x, y, width: 212, height: 66, rx: atom ? 7 : 2, class: kind === 'or' ? 'or-boundary' : '' }));
+    const title = atom ? `${entry.relation} / ${entry.arity}` : kind === 'equal' ? `${args[0]} = ${args[1]}` :
+      container ? `${kind === 'and' ? 'And' : 'Or'} · ${entry.count} ${kind === 'and' ? 'items' : 'branches'}` : kind;
     group.append(svgNode('text', { x: x + 12, y: y + 27, class: 'node-name' }, title.length > 26 ? title.slice(0, 23) + '…' : title));
     group.append(svgNode('title', {}, title));
-    if (node.items) group.append(svgNode('text', { x: x + 12, y: y + 49, class: 'node-note' }, 'Select to open group'));
-    if (atom && options.occurrences) group.append(svgNode('text', { x: x + 12, y: y + 48, class: 'node-note' }, `occurrence ${options.occurrences[page * pageSize + index]}`));
+    if (container) group.append(svgNode('text', { x: x + 12, y: y + 49, class: 'node-note' }, 'Select to open group'));
+    if (atom && entry.occurrence !== undefined) group.append(svgNode('text', { x: x + 12, y: y + 48, class: 'node-note' }, `occurrence ${entry.occurrence}`));
     if (!options.readonly) interactive(group, `Select ${title}`, () => options.onSelect?.({ path: itemPath }));
-    else if (node.items && options.onOpen) interactive(group, `Open ${title}`, () => options.onOpen(itemPath));
+    else if (container && options.onOpen) interactive(group, `Open ${title}`, () => options.onOpen(itemPath));
     nodes.append(group);
-    const args = atom?.args ?? (node.kind === 'equal' ? [node.left, node.right] : []);
-    const start = atom ? portPage * portsPerPage : 0;
-    const shown = args.slice(start, start + portsPerPage);
-    shown.forEach((variable, i) => {
+    args.forEach((variable, i) => {
       const px = x + 18 + i * 25, py = y + 66, dest = positions.get(variable);
       if (!dest) return;
       wires.append(svgNode('path', { d: `M${px},${py} C${px},${py + 38} ${dest.x},${dest.y - 40} ${dest.x},${dest.y}`, class: `wire ${color}` }));
       const activePort = selected && options.selected?.port === start + i;
       const port = svgNode('g', { class: `port ${color}${activePort ? ' selected' : ''}` });
       port.append(svgNode('circle', { cx: px, cy: py, r: 10 }), svgNode('text', { x: px, y: py + 3.5, 'text-anchor': 'middle' }, start + i + 1));
-      if (!options.readonly && atom) interactive(port, `Select port ${start + i + 1} of ${atom.relation}, connected to ${variable}`, () => options.onSelect?.({ path: itemPath, port: start + i }));
+      if (!options.readonly && atom) interactive(port, `Select port ${start + i + 1} of ${entry.relation}, connected to ${variable}`, () => options.onSelect?.({ path: itemPath, port: start + i }));
       nodes.append(port);
     });
-    if (args.length > portsPerPage) nodes.append(svgNode('text', { x: x + 12, y: y + 100, class: 'node-note' }, shown.length ? `ports ${start + 1}–${Math.min(start + portsPerPage, args.length)} of ${args.length}` : 'No ports on this page'));
+    if (entry.arity > 8) nodes.append(svgNode('text', { x: x + 12, y: y + 100, class: 'node-note' }, args.length ? `ports ${start + 1}–${start + args.length} of ${entry.arity}` : 'No ports on this page'));
   });
   for (const [name, { x, y }] of positions) {
     const junction = svgNode('g', { class: 'junction' });
@@ -209,5 +238,5 @@ export function renderGraph(svg, model, path, options = {}) {
     if (!options.readonly) interactive(junction, `Connect selected port to ${name}`, () => options.onConnect?.(name));
     nodes.append(junction);
   }
-  return { pages, page, portPages, portPage, count: entries.length };
+  return { pages, page, portPages, portPage, count };
 }

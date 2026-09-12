@@ -1,6 +1,59 @@
 import assert from 'node:assert/strict';
+import {test as runTest} from 'node:test';
 import { applyEdit, at, sceneEntries, validateNotebook } from './graph.mjs';
-import { OutputAssembler, RunSession, InspectionSelection } from './notebook.mjs';
+import { RunSession, InspectionSelection, deliverCachedOutput } from './notebook.mjs';
+import { OutputAssembler } from './answers.mjs';
+
+await runTest('notebook persistence and production UI', async t => {
+const test = t.test.bind(t);
+
+// Node tests explicitly own a small normalized-record sink. Production uses IndexedDB.
+const testSession = (api, notify = () => {}, store = memorySink()) => new RunSession(api, notify, store);
+
+function memorySink() {
+  let next = 0;
+  const archives = new Map();
+  return {
+    archives, commits: [], beforeCommit: null, afterCommit: null,
+    async create(tables, label) {
+      const archive = String(++next);
+      archives.set(archive, { tables: structuredClone(tables), label, answers: new Map(), parts: new Map() });
+      return archive;
+    },
+    async flush(archive, assembler, discard = false) {
+      const discardNumber = discard ? assembler.current?.number : undefined;
+      if (!assembler.writes.length && discardNumber === undefined) return;
+      const batch = structuredClone(assembler.writes);
+      assert.ok(batch.length <= assembler.capacity, 'each committed batch is bounded');
+      const preserved = batch.filter(record => record.value.number !== discardNumber);
+      if (preserved.length) await this.beforeCommit?.(preserved, archive);
+      const saved = archives.get(archive);
+      assert.ok(saved, 'archive must exist before storage');
+      for (const { store, value } of preserved) {
+        if (store === 'answers') saved.answers.set(value.number, value);
+        else if (store === 'parts') saved.parts.set(JSON.stringify([value.number, value.kind, value.node, value.slot]), value);
+        else {
+          assert.equal(store, 'discard');
+          for (const [key, part] of saved.parts) if (part.number === value.number) saved.parts.delete(key);
+        }
+      }
+      if (discardNumber !== undefined) {
+        for (const [key, part] of saved.parts) if (part.number === discardNumber) saved.parts.delete(key);
+      }
+      this.commits.push(preserved);
+      if (preserved.length) await this.afterCommit?.(preserved, archive);
+      assembler.writes.splice(0, batch.length);
+      assembler.answers.splice(0, batch.filter(record => record.store === 'answers').length);
+      if (discardNumber !== undefined) assembler.discardPartial();
+    },
+    async discardPartial(archive, assembler) {
+      await this.flush(archive, assembler, true);
+    },
+  };
+}
+const summaries = assembler => assembler.answers;
+const parts = (records, number, kind, node) => records.filter(part => part.number === number && part.kind === kind && (node === undefined || part.node === node)).sort((a, b) => a.slot - b.slot);
+const queuedParts = assembler => assembler.writes.filter(record => record.store === 'parts').map(record => record.value);
 
 const atom = (relation, ...args) => ({ kind: 'atom', atom: { relation, args } });
 const original = {
@@ -52,20 +105,24 @@ const answer = (id) => [
 ];
 for (let n = 0; n < 5; n++) for (const event of answer(n)) stream.push(event);
 assert.equal(stream.total, 5);
-assert.equal(stream.answers.length, 5);
-assert.equal(stream.answers[0].completion, '0');
-const bounded = new OutputAssembler(tables, 1);
-answer(0).forEach(event => bounded.push(event));
-assert.throws(() => bounded.push(answer(1)[0]), /release/);
-assert.equal(bounded.answers[0].completion, '0');
-assert.deepEqual(stream.answers[1].facts.map(f => f.occurrence), ['11', '12']);
-assert.deepEqual(stream.answers[1].facts[0].args, ['7', '7']);
+assert.equal(summaries(stream).length, 5);
+assert.equal(summaries(stream)[0].completion, '0');
+const bounded = new OutputAssembler(tables, 4);
+answer(0).slice(0,3).forEach(event => bounded.push(event));
+assert.equal(bounded.needsFlush, true);
+const heldWrites = structuredClone(bounded.writes);
+assert.throws(() => bounded.push(answer(0)[3]), /[Ff]lush/);
+assert.deepEqual(bounded.writes, heldWrites);
+assert.equal(bounded.current.facts, 0);
+assert.deepEqual(parts(queuedParts(stream), 2, 'node').map(node => node.occurrence), ['11', '12']);
+assert.deepEqual(parts(queuedParts(stream), 2, 'port', 0).map(port => port.variable), ['7', '7']);
+assert.deepEqual(summaries(stream)[1], {format:2, number:2, completion:'1', alternative:'0', variables:2, facts:2, pending:0, nodes:2, maxArity:2});
 assert.equal(stream.current, null);
 assert.throws(() => stream.push({ kind: 'port', variable: 1 }), /fact/);
 assert.throws(() => stream.push({ kind: 'begin', completion: Number.MAX_SAFE_INTEGER + 1, alternative: 0 }), /integer/);
 const broken = new OutputAssembler(tables);
 broken.push(answer(0)[0]);
-assert.throws(() => broken.push({ kind: 'end' }), /variables/);
+assert.throws(() => broken.push({ kind: 'end' }), /alternative/);
 for (const event of answer(0).slice(1, 5)) broken.push(event);
 assert.throws(() => broken.push({ kind: 'end_fact' }), /ports/);
 
@@ -78,7 +135,7 @@ const api = async (route, payload) => {
   if (route === 'advance') return new Promise(resolve => { resolveAdvance = resolve; });
   throw new Error('unexpected endpoint');
 };
-const session = new RunSession(api);
+const session = testSession(api);
 await session.start(original, false, false);
 original.query.items[0].atom.relation = 'changed_after_start';
 assert.equal(session.submission.query.items[0].atom.relation, 'p');
@@ -96,46 +153,55 @@ await session.cancel();
 assert.equal(session.run, 8);
 assert.equal(session.status, 'canceled');
 assert.equal(calls.at(-1)[0], 'cancel');
-const disconnected = new RunSession(async () => { throw new Error('connection unavailable'); });
+const disconnected = testSession(async () => { throw new Error('connection unavailable'); });
 await assert.rejects(disconnected.start(untouched, false, false), /connection unavailable/);
 assert.equal(disconnected.run, null);
 console.log('AST editing, schema validation, server metadata, bounded stream assembly and run lifecycle checks passed.');
 
 // Persistence is the ownership handoff: a failed save must not consume a new batch.
-const durable = new Map();
-let storageBlocked = false, nextCollection = 0, advanceCalls = 0;
-const store = {
-  async create(metadata) { const key = String(++nextCollection); durable.set(key, { metadata: structuredClone(metadata), answers: new Map() }); return key; },
-  async append(key, answer) { if (storageBlocked) throw new Error('Storage full'); durable.get(key).answers.set(answer.number, structuredClone(answer)); },
-};
-const persisted = new RunSession(async route => {
+let storageBlocked = false, advanceCalls = 0;
+const store = memorySink();
+const durable = store.archives;
+store.beforeCommit = () => { if (storageBlocked) throw new Error('Storage full'); };
+const persisted = testSession(async route => {
   if (route === 'start') return { run: 9, ...tables };
   if (route === 'cancel') return {};
-  if (route === 'advance') { advanceCalls++; return { events: [0, 1, 2].flatMap(answer), applications: 3, exhausted: true, delivery_done: true }; }
+  if (route === 'advance') { advanceCalls++; return { sequence: 7, events: [0, 1, 2].flatMap(answer), applications: 3, exhausted: true, delivery_done: true }; }
 }, () => {}, store);
 await persisted.start(untouched, false, false);
 storageBlocked = true;
 await assert.rejects(persisted.advance(), /Storage full/);
 assert.equal(persisted.status, 'error');
 assert.equal(persisted.running, false);
-assert.equal(persisted.stream.answers.length, 1);
-assert.equal(persisted.stream.answers[0].completion, '0');
-assert.ok(persisted.pendingDelivery.index > 0);
+assert.equal(summaries(persisted.stream).length, 3);
+assert.equal(summaries(persisted.stream)[0].completion, '0');
+assert.equal(persisted.pendingDelivery.index, 3 * answer(0).length);
+assert.equal(persisted.ack, null);
+assert.equal(persisted.timer, null);
 assert.equal(durable.get(persisted.archive).answers.size, 0);
+const failedIndex = persisted.pendingDelivery.index;
+await assert.rejects(persisted.advance(), /Storage full/);
+assert.equal(persisted.pendingDelivery.index, failedIndex);
+assert.equal(advanceCalls, 1);
+assert.equal(persisted.stream.total, 3);
 storageBlocked = false;
 await persisted.advance();
 assert.equal(advanceCalls, 1);
-assert.equal(persisted.stream.answers.length, 0);
+assert.equal(persisted.stream.writes.length, 0);
 assert.equal(persisted.pendingDelivery, null);
+assert.equal(persisted.ack, 7);
 assert.equal(persisted.stream.total, 3);
 assert.deepEqual([...durable.get(persisted.archive).answers.values()].map(a => a.completion), ['0', '1', '2']);
-assert.equal(durable.get(persisted.archive).answers.get(1).facts[0].name, 'p');
+const savedParts = [...durable.get(persisted.archive).parts.values()];
+assert.deepEqual(parts(savedParts, 1, 'node').map(node => node.relation), [1, 1]);
+assert.equal(durable.get(persisted.archive).tables.signatures[1].name, 'p');
+assert.deepEqual(parts(savedParts, 1, 'port', 0).map(port => port.variable), ['7', '7']);
 const priorArchive = persisted.archive;
 await persisted.start(untouched, false, false);
 assert.notEqual(persisted.archive, priorArchive);
 assert.equal(durable.get(priorArchive).answers.size, 3);
 await persisted.cancel();
-assert.throws(() => new OutputAssembler({ signatures: tables.signatures }), /variables/);
+assert.throws(() => new OutputAssembler({ signatures: tables.signatures }), /tables/);
 console.log('Durable handoff, storage failure backpressure, retry without duplicate delivery, and earlier-run retention checks passed.');
 
 const selection = new InspectionSelection();
@@ -154,7 +220,7 @@ console.log('Labeled tri-state choices, authoritative descriptors, and snapshot 
 
 const stepCalls = [];
 let stepAdvances = 0;
-const stepped = new RunSession(async (route, payload) => {
+const stepped = testSession(async (route, payload) => {
   stepCalls.push([route, payload]);
   if (route === 'start') return {run: 12, ...tables};
   if (route === 'step') return {};
@@ -171,7 +237,7 @@ assert.equal(stepAdvances, 3);
 assert.deepEqual(stepCalls.find(([route]) => route === 'step')[1].choices, {'41': true});
 assert.equal(stepped.applications, 1);
 assert.equal(stepped.status, 'paused');
-const ownedRuns = new RunSession(async (route, payload) => {
+const ownedRuns = testSession(async (route, payload) => {
   if (route === 'start') return {run: ownedRuns.runs.size + 1, ...tables};
   if (['cancel', 'close'].includes(route)) return {};
   throw new Error(`Unexpected ${route}`);
@@ -188,9 +254,10 @@ assert.equal(ownedRuns.runs.has(1), false);
 assert.equal(ownedRuns.runs.has(2), true);
 const recoveryCalls = [];
 let busyResume = true, loseBatch = true, fullStorage = false;
-const recoveryStore = { async create() { return 'recovery'; }, async append() { if (fullStorage) throw new Error('Storage full'); } };
+const recoveryStore = memorySink();
+recoveryStore.beforeCommit = () => { if (fullStorage) throw new Error('Storage full'); };
 const recoverableBatch = {sequence: 1, events: answer(1), applications: 1, exhausted: true, delivery_done: true};
-const recovering = new RunSession(async (route, payload) => {
+const recovering = testSession(async (route, payload) => {
   recoveryCalls.push([route, payload]);
   if (route === 'start') return {run: 20, ...tables};
   if (route === 'resume') { if (busyResume) {busyResume = false; const error = new Error('Collecting'); error.retry = true; throw error;} return {}; }
@@ -216,7 +283,7 @@ assert.equal(recovering.ack, 1);
 assert.equal(recovering.stream.total, 1);
 
 let recoveryRun = 0;
-const switchedRecovery = new RunSession(async route => {
+const switchedRecovery = testSession(async route => {
   if (route === 'start') return {run: ++recoveryRun, ...tables};
   if (route === 'advance') throw new Error('Response disconnected');
   if (route === 'cancel') return {pending: recoverableBatch};
@@ -279,7 +346,7 @@ assert.deepEqual(pagedSelection.payload(1), coherentPayload);
 await completePage(); await loadingPage;
 assert.equal(pagedSelection.snapshot, '');
 
-const pendingStream = new OutputAssembler(tables, 1);
+const pendingStream = new OutputAssembler(tables);
 const pendingEvents = [
   ...answer(9).slice(0,3),
   {kind:'pending_begin', event:'19'}, {kind:'expression', operator:'and'},
@@ -290,15 +357,26 @@ const pendingEvents = [
   {kind:'expression_end'}, {kind:'expression_end'}, {kind:'pending_end'}, {kind:'end'},
 ];
 pendingEvents.forEach(event => pendingStream.push(event)); pendingStream.finish();
-assert.deepEqual(pendingStream.answers[0].pending, [{event:'19', body:{kind:'and', items:[
-  atom('p', 'V7', 'V8'), {kind:'or', items:[{kind:'equal',left:'V7',right:'V8'},{kind:'fail'}]},
-]}}]);
-assert.deepEqual(pendingStream.answers[0].facts, []);
+assert.deepEqual(summaries(pendingStream), [{format:2, number:1, completion:'9', alternative:'0', variables:2, facts:0, pending:1, nodes:5, maxArity:0}]);
+const pendingParts = queuedParts(pendingStream);
+assert.deepEqual(parts(pendingParts, 1, 'pending'), [{number:1,kind:'pending',node:0,slot:0,event:'19',target:0}]);
+assert.deepEqual(parts(pendingParts, 1, 'node').sort((a,b) => a.node-b.node).map(n => [n.node,n.kindValue,n.relation,n.arity,n.childcount]), [
+  [0,'and',undefined,0,2], [1,'atom',1,2,0], [2,'or',undefined,0,2], [3,'equal',undefined,2,0], [4,'fail',undefined,0,0],
+]);
+assert.deepEqual(parts(pendingParts, 1, 'child', 0).map(n => n.target), [1,2]);
+assert.deepEqual(parts(pendingParts, 1, 'child', 2).map(n => n.target), [3,4]);
+assert.deepEqual(parts(pendingParts, 1, 'port', 1).map(n => n.variable), ['7','8']);
+assert.deepEqual(parts(pendingParts, 1, 'port', 3).map(n => n.variable), ['7','8']);
 const unfinishedPending = new OutputAssembler(tables);
 pendingEvents.slice(0,6).forEach(event => unfinishedPending.push(event));
-assert.throws(() => unfinishedPending.push({kind:'expression_end'}), /Missing pending ports/);
-assert.throws(() => unfinishedPending.push({kind:'end'}), /pending body/);
-unfinishedPending.discardPartial(); unfinishedPending.finish();
+assert.throws(() => unfinishedPending.push({kind:'expression_end'}), /[Mm]issing expression ports/);
+assert.throws(() => unfinishedPending.push({kind:'end'}), /alternative/);
+assert.throws(() => unfinishedPending.discardPartial(), /through the store/);
+const partialStore = memorySink();
+const partialArchive = await partialStore.create(tables, 'Partial test');
+await partialStore.discardPartial(partialArchive, unfinishedPending);
+unfinishedPending.finish();
+assert.equal(partialStore.archives.get(partialArchive).parts.size, 0);
 assert.equal(unfinishedPending.pending, null);
 assert.equal(unfinishedPending.expressions.length, 0);
 
@@ -328,7 +406,7 @@ const leaseApi = async (route, payload) => {
     next_choice:'41', prev_choice:null, next_snapshot:null, prev_snapshot:null,
   };
 };
-const leased = new RunSession(leaseApi);
+const leased = testSession(leaseApi);
 await leased.start(untouched, false, false);
 busyCapture = true;
 await leased.selection.page(leaseApi, leased.run);
@@ -487,3 +565,412 @@ await replaySelection.reset(replayApi);
 assert.equal(replayHeld.size, 0);
 assert.deepEqual(replayCalls.filter(([route]) => route === 'snapshot').map(([,p]) => [p.run,p.capture]), [[1,1],[1,1],[1,2],[1,2],[1,2],[2,3],[1,4]]);
 console.log('Lost capture/release response replay preserves bounded snapshot ownership across pages, resets and runs.');
+
+// A single large answer crosses bounded commits; storage failure pauses midway.
+const wideEvents = answer(70).slice(0, 3);
+for (let i = 0; i < 160; i++) wideEvents.push(
+  {kind:'fact', occurrence:String(1000+i), relation:1},
+  {kind:'port', variable:'7'}, {kind:'port', variable:'8'}, {kind:'end_fact'},
+);
+wideEvents.push({kind:'end'});
+const wideStore = memorySink();
+let wideRequests = 0, blockWide = true;
+const wideSession = testSession(async route => {
+  if (route === 'start') return {run:30, ...tables};
+  if (route === 'resume') return {};
+  if (route === 'advance') {
+    wideRequests++;
+    return {sequence:11, events:wideEvents, applications:1, exhausted:true, delivery_done:true};
+  }
+  throw new Error(`Unexpected ${route}`);
+}, () => {}, wideStore);
+await wideSession.start(untouched, false, false);
+wideStore.beforeCommit = () => {
+  assert.equal(wideSession.ack, null, 'ack waits for the entire response to persist');
+  if (wideStore.commits.length === 1 && blockWide) throw new Error('Mid-answer storage failure');
+};
+const consumedWide = [], pushWide = wideSession.stream.push.bind(wideSession.stream);
+wideSession.stream.push = event => { pushWide(event); consumedWide.push(event); };
+await wideSession.resume();
+assert.equal(wideSession.running, true);
+await assert.rejects(wideSession.advance(), /Mid-answer storage failure/);
+const stoppedAt = wideSession.pendingDelivery.index;
+assert.ok(stoppedAt > 3 && stoppedAt < wideEvents.length);
+assert.deepEqual(consumedWide, wideEvents.slice(0, stoppedAt));
+assert.equal(wideSession.stream.total, 0);
+assert.equal(wideSession.stream.answers.length, 0);
+assert.ok(wideSession.stream.current);
+assert.ok(Object.values(wideSession.stream.current).every(value => !Array.isArray(value)));
+assert.ok(wideSession.stream.writes.length <= wideSession.stream.capacity);
+assert.ok(wideStore.archives.get(wideSession.archive).parts.size > 0);
+assert.equal(wideStore.archives.get(wideSession.archive).answers.size, 0, 'partial answer has no completed summary');
+assert.equal(wideSession.running, false);
+assert.equal(wideSession.timer, null);
+assert.equal(wideSession.inFlight, null);
+await assert.rejects(wideSession.advance(), /Mid-answer storage failure/);
+assert.equal(wideRequests, 1);
+assert.equal(wideSession.pendingDelivery.index, stoppedAt);
+assert.equal(consumedWide.length, stoppedAt);
+blockWide = false;
+await wideSession.advance();
+assert.equal(wideRequests, 1);
+assert.deepEqual(consumedWide, wideEvents, 'each scalar event is consumed exactly once');
+assert.equal(wideSession.ack, 11);
+assert.equal(wideSession.pendingDelivery, null);
+assert.equal(wideSession.stream.current, null);
+assert.equal(wideSession.stream.writes.length, 0);
+assert.equal(wideSession.stream.answers.length, 0);
+assert.ok(wideStore.commits.length >= 3);
+const wideSaved = wideStore.archives.get(wideSession.archive);
+assert.deepEqual([...wideSaved.answers.values()], [{format:2, number:1, completion:'70', alternative:'0', variables:2, facts:160, pending:0, nodes:160, maxArity:2}]);
+assert.equal(wideSaved.parts.size, 642);
+assert.deepEqual(parts([...wideSaved.parts.values()], 1, 'port', 159).map(port => port.variable), ['7','8']);
+
+// An uncertain flush may have committed; stable scalar keys make its retry idempotent.
+const uncertainStore = memorySink();
+let uncertainRequests = 0, loseCommit = true;
+const uncertainEvents = [answer(80), answer(81)].flat();
+const uncertainSession = testSession(async route => {
+  if (route === 'start') return {run:31, ...tables};
+  if (route === 'advance') {
+    uncertainRequests++;
+    return {sequence:12, events:uncertainEvents, applications:2, exhausted:true, delivery_done:true};
+  }
+  throw new Error(`Unexpected ${route}`);
+}, () => {}, uncertainStore);
+await uncertainSession.start(untouched, false, false);
+uncertainStore.afterCommit = () => { if (loseCommit) { loseCommit = false; throw new Error('Commit result lost'); } };
+const consumedUncertain = [], pushUncertain = uncertainSession.stream.push.bind(uncertainSession.stream);
+uncertainSession.stream.push = event => { pushUncertain(event); consumedUncertain.push(event); };
+await assert.rejects(uncertainSession.advance(), /Commit result lost/);
+assert.equal(uncertainSession.ack, null);
+assert.equal(uncertainSession.stream.answers.length, 2);
+assert.equal(uncertainStore.archives.get(uncertainSession.archive).answers.size, 2);
+await uncertainSession.advance();
+assert.equal(uncertainRequests, 1);
+assert.deepEqual(consumedUncertain, uncertainEvents);
+assert.equal(uncertainSession.stream.total, 2);
+assert.equal(uncertainSession.ack, 12);
+assert.equal(uncertainSession.stream.writes.length, 0);
+assert.equal(uncertainSession.stream.answers.length, 0);
+assert.equal(uncertainStore.archives.get(uncertainSession.archive).answers.size, 2);
+assert.equal(uncertainStore.archives.get(uncertainSession.archive).parts.size, 20);
+
+// Response-end flushes also persist unfinished output, whose cancellation is scoped.
+const splitStore = memorySink();
+let splitResponses = 0;
+const splitEvents = answer(90);
+const splitSession = testSession(async route => {
+  if (route === 'start') return {run:32, ...tables};
+  if (route === 'advance') {
+    splitResponses++;
+    return splitResponses === 1
+      ? {sequence:1, events:splitEvents.slice(0,5), applications:0, exhausted:false, delivery_done:false}
+      : {sequence:2, events:splitEvents.slice(5), applications:0, exhausted:true, delivery_done:true};
+  }
+  throw new Error(`Unexpected ${route}`);
+}, () => {}, splitStore);
+await splitSession.start(untouched, false, false);
+await splitSession.advance();
+assert.equal(splitSession.ack, 1);
+assert.ok(splitSession.stream.current);
+assert.equal(splitSession.stream.writes.length, 0);
+assert.equal(splitStore.archives.get(splitSession.archive).answers.size, 0);
+assert.equal(splitStore.archives.get(splitSession.archive).parts.size, 3);
+await splitSession.advance();
+assert.equal(splitSession.ack, 2);
+assert.equal(splitSession.stream.total, 1);
+assert.equal(splitStore.archives.get(splitSession.archive).answers.size, 1);
+assert.equal(splitStore.archives.get(splitSession.archive).parts.size, 10);
+
+const cancelPartialStore = memorySink();
+const cancelPartial = testSession(async route => {
+  if (route === 'start') return {run:33, ...tables};
+  if (route === 'advance') return {sequence:1, events:[...answer(100), ...pendingEvents.slice(0,6)], applications:0, exhausted:false, delivery_done:false};
+  if (route === 'cancel') return {};
+  throw new Error(`Unexpected ${route}`);
+}, () => {}, cancelPartialStore);
+await cancelPartial.start(untouched, false, false);
+await cancelPartial.advance();
+const canceledArchive = cancelPartialStore.archives.get(cancelPartial.archive);
+assert.equal(canceledArchive.answers.size, 1);
+assert.ok([...canceledArchive.parts.values()].some(part => part.number === 2));
+await cancelPartial.cancel();
+assert.equal(cancelPartial.stream.current, null);
+assert.equal(cancelPartial.stream.pending, null);
+assert.equal(cancelPartial.stream.expressions.length, 0);
+assert.equal(cancelPartial.stream.writes.length, 0);
+assert.equal(cancelPartial.stream.answers.length, 0);
+assert.equal(canceledArchive.answers.size, 1);
+assert.equal(canceledArchive.parts.size, 10);
+assert.ok([...canceledArchive.parts.values()].every(part => part.number === 1));
+console.log('Bounded mid-answer writes, durable acknowledgements, quiescent retries, split responses, and partial cancellation checks passed.');
+
+// Execute the UI's production closures with a small DOM and deferred storage.
+// Keeping storage unresolved reproduces repeated clicks before a new page paints.
+const {readFileSync} = await import('node:fs');
+const {createContext, runInContext} = await import('node:vm');
+const notebookSource = readFileSync(new URL('./notebook.mjs', import.meta.url), 'utf8');
+function productionSection(start, end) {
+  const first = notebookSource.indexOf(start), last = notebookSource.indexOf(end, first);
+  assert.ok(first >= 0 && last > first, `Production section ${start} is available`);
+  return notebookSource.slice(first, last);
+}
+function renderingHarness() {
+  const elements = new Map(), reads = [], paints = [], errors = [], tasks = [];
+  const element = () => ({disabled:false, value:'', children:[],
+    replaceChildren(...children) { this.children = children; },
+    append(...children) { this.children.push(...children); },
+    toggleAttribute() {},
+  });
+  const $ = name => { if (!elements.has(name)) elements.set(name, element()); return elements.get(name); };
+  const context = createContext({$, el:element, button:element,
+    uint(value) { assert.ok(Number.isSafeInteger(value) && value >= 0); return value; },
+    safe(action) { const task = Promise.resolve().then(action).catch(error => { errors.push(error); }); tasks.push(task); return task; },
+    store:{scene(collection, number, options) { return new Promise(resolve => reads.push({collection,number,options,resolve})); }},
+    renderScene(svg, scene) { paints.push(svg); return scene; },
+    session:{stream:null, archive:'first', async switchRun(run) { assert.equal(run, 2); }},
+    renderInspectionControls() {}, async refreshSaved() {},
+    savedView:{id:'first',total:1,answers:[{number:1,completion:'1',alternative:'0'}]},
+    savedSelection:'', inspected:null, outputMode:'answers', answerNumber:1, answerPage:0,
+    page:0, portPage:0, resultPage:1, resultPortPage:1, bindingPage:1,
+    pendingNumber:1, pendingPath:[42,43], pendingPage:1, pendingPortPage:1,
+    sceneLoading:false, desiredScene:null, loadedSceneKey:null,
+  });
+  runInContext(productionSection('  function pager(', '  function renderInspector(')
+    + productionSection('  function renderResults()', '  async function inspect()')
+    + productionSection("  $('execution').onchange", "  $('release-run').onclick"), context);
+  const scene = () => ({bindings:[],bindingPage:1,bindingPages:3,
+    facts:{entries:[],page:1,pages:3,portPage:1,portPages:3,count:54},
+    pending:{index:1,count:3,event:'1',path:[42,43],breadcrumbs:[],
+      scene:{entries:[],page:1,pages:3,portPage:1,portPages:3,count:54}},
+  });
+  return {context,$,reads,paints,errors,tasks,scene,
+    async start() { context.renderResults(); await Promise.resolve(); assert.equal(reads.length, 1); },
+    async paint() { reads[0].resolve(scene()); await Promise.all(tasks); assert.equal(errors.length, 0); },
+  };
+}
+for (const [control, field] of [
+  ['result','page'], ['result-port','portPage'], ['binding','bindingPage'],
+  ['pending','pendingPage'], ['pending-port','pendingPortPage'], ['pending-body','pendingNumber'],
+]) for (const [direction, expected] of [['prev',0], ['next',2]]) {
+  await test(`production ${control} ${direction}: rapid clicks target the displayed page`, async () => {
+    const h = renderingHarness(); await h.start(); await h.paint();
+    const controlElement = h.$(`${control}-${direction}`);
+    assert.equal(controlElement.disabled, false);
+    controlElement.onclick(); await Promise.resolve();
+    controlElement.onclick(); await Promise.resolve();
+    assert.equal(h.reads.length, 2, 'only one additional scene read is in flight');
+    assert.equal(h.context.desiredScene.options[field], expected, 'both clicks request the same adjacent page');
+    assert.ok(Object.entries(h.context.desiredScene.options).every(([key,value]) => key === 'pendingPath' || value >= 0));
+    h.reads[1].resolve(h.scene()); await Promise.all(h.tasks);
+    assert.equal(h.errors.length, 0);
+    assert.equal(h.reads.length, 2, 'rapid clicks do not schedule a further page');
+  });
+}
+await test('production execution switch resets navigation and rejects an outstanding old scene', async () => {
+  const h = renderingHarness(); await h.start();
+  h.$('execution').value = '2';
+  await h.$('execution').onchange();
+  for (const field of ['answerPage','resultPage','resultPortPage','bindingPage','pendingNumber','pendingPage','pendingPortPage']) {
+    assert.equal(h.context[field], 0, `${field} resets for the new execution`);
+  }
+  assert.equal(h.context.answerNumber, null);
+  assert.equal(h.context.pendingPath.length, 0);
+  assert.equal(h.context.desiredScene, null, 'the old scene request is invalidated before loading new summaries');
+  h.reads[0].resolve(h.scene()); await Promise.all(h.tasks);
+  assert.equal(h.paints.length, 0, 'a late old-execution scene cannot paint');
+  assert.equal(h.context.loadedSceneKey, null);
+  assert.equal(h.errors.length, 0);
+});
+
+
+await test('quota cancellation discards an unfinished cached suffix without flushing it', async () => {
+// Cancellation must not allocate storage for an unfinished cached suffix.
+const quotaCancelStore = memorySink();
+let quotaCancelBlocked = false;
+quotaCancelStore.beforeCommit = () => { if (quotaCancelBlocked) throw new Error('Partial quota failure'); };
+const partialResponse = {sequence:21, events:answer(200).slice(0,5), applications:0, exhausted:false, delivery_done:false};
+const quotaCancelSession = testSession(async route => {
+  if (route === 'start') return {run:40, ...tables};
+  if (route === 'advance') return partialResponse;
+  if (route === 'cancel') return {pending:partialResponse};
+  throw new Error(`Unexpected ${route}`);
+}, () => {}, quotaCancelStore);
+await quotaCancelSession.start(untouched, false, false);
+quotaCancelBlocked = true;
+await assert.rejects(quotaCancelSession.advance(), /Partial quota failure/);
+assert.ok(quotaCancelSession.stream.current);
+assert.equal(quotaCancelSession.pendingDelivery.index, partialResponse.events.length);
+await quotaCancelSession.cancel();
+assert.equal(quotaCancelSession.ack, 21);
+assert.equal(quotaCancelSession.pendingDelivery, null);
+assert.equal(quotaCancelSession.stream.current, null);
+assert.equal(quotaCancelSession.stream.writes.length, 0);
+assert.equal(quotaCancelStore.archives.get(quotaCancelSession.archive).parts.size, 0);
+assert.equal(quotaCancelStore.archives.get(quotaCancelSession.archive).answers.size, 0);
+
+});
+
+await test('cancel retries complete cached alternatives without consuming the unfinished suffix', async () => {
+  const store = memorySink();
+  let blocked = true, advances = 0;
+  store.beforeCommit = records => {
+    if (blocked || records.some(record => record.value.number === 3)) throw Error('Quota');
+  };
+  const response = {sequence:31, events:[...answer(201), ...answer(202), ...answer(203).slice(0,5)]};
+  const notifications = [];
+  const session = testSession(async route => {
+    if (route === 'start') return {run:41, ...tables};
+    if (route === 'advance') { advances++; return response; }
+    if (route === 'cancel') return {pending:response};
+    throw Error(route);
+  }, () => notifications.push({error:session.error, ack:session.ack}), store);
+  await session.start(untouched, false, false);
+  session.stream = new OutputAssembler(tables, 8);
+  let pushes = 0;
+  const push = session.stream.push.bind(session.stream);
+  session.stream.push = event => { push(event); pushes++; };
+  await assert.rejects(session.advance(), /Quota/);
+  const index = session.pendingDelivery.index;
+  assert.ok(index < answer(201).length);
+  await assert.rejects(session.cancel(), /Quota/);
+  assert.equal(session.pendingDelivery.index, index);
+  assert.equal(session.ack, null);
+  assert.ok(session.error);
+  blocked = false;
+  await session.cancel();
+  assert.equal(advances, 1);
+  assert.equal(pushes, 2 * answer(201).length);
+  assert.equal(session.ack, 31);
+  assert.equal(session.error, null);
+  assert.deepEqual(notifications.at(-1), {error:null, ack:31});
+  const saved = store.archives.get(session.archive);
+  assert.equal(saved.answers.size, 2);
+  assert.equal(saved.parts.size, 20);
+  assert.equal(session.stream.current, null);
+  assert.equal(session.stream.writes.length, 0);
+});
+
+for (const complete of [false, true]) await test(`inspection cancellation preserves cached completions (${complete}) under quota`, async () => {
+  const store = memorySink(), stream = new OutputAssembler(tables, 8);
+  const archive = await store.create(tables, 'Inspection');
+  const events = complete ? [...answer(211), ...answer(212).slice(0,5)] : answer(211).slice(0,5);
+  const pending = {stream, archive, response:{sequence:42, events}, index:0, ack:null, run:42, inspection:7};
+  for (; pending.index < 5; pending.index++) stream.push(events[pending.index]);
+  let blocked = true;
+  store.beforeCommit = records => {
+    if (blocked || records.some(record => record.value.number === 2)) throw Error('Inspection quota');
+  };
+  const calls = [];
+  const context = createContext({store, deliverCachedOutput, inspectionPending:pending, inspectionCanceled:true,
+    liveRequest:async route => { calls.push(route); return {done:true, pending:pending.response}; },
+    inspected:null, outputMode:'answers', answerNumber:1, answerPage:0,
+    resetResultPages() {}, async refreshSaved() {}, message() {},
+  });
+  runInContext(productionSection('  async function inspectOnce()', '  function renderInspectionControls()'), context);
+  if (complete) {
+    await assert.rejects(context.inspectOnce(), /Inspection quota/);
+    assert.equal(pending.index, 5);
+    assert.equal(pending.ack, null);
+    assert.deepEqual(calls, ['inspect_cancel']);
+    calls.length = 0;
+    blocked = false;
+  }
+  await context.inspectOnce();
+  assert.deepEqual(calls, ['inspect_cancel', 'inspect_release']);
+  assert.equal(context.inspectionPending, null);
+  assert.equal(pending.ack, 42);
+  assert.equal(stream.current, null);
+  assert.equal(stream.writes.length, 0);
+  assert.equal(store.archives.get(archive).answers.size, complete ? 1 : 0);
+  assert.equal(store.archives.get(archive).parts.size, complete ? 10 : 0);
+});
+
+await test('inspection cancel recovers a lost cached batch and ignores its acknowledged replay', async () => {
+  const store = memorySink(), stream = new OutputAssembler(tables, 8);
+  const archive = await store.create(tables, 'Lost inspection');
+  const batch = {sequence:51, events:[...answer(221), ...answer(222).slice(0,5)]};
+  const pending = {stream, archive, response:null, index:0, ack:null, run:51, inspection:8};
+  let cancels = 0;
+  const context = createContext({store, deliverCachedOutput, inspectionPending:pending, inspectionCanceled:true,
+    liveRequest:async route => {
+      if (route === 'inspect_cancel') return {done:++cancels === 2, pending:batch};
+      assert.equal(route, 'inspect_release'); return {};
+    },
+    inspected:null, outputMode:'answers', answerNumber:1, answerPage:0,
+    resetResultPages() {}, async refreshSaved() {}, message() {},
+  });
+  runInContext(productionSection('  async function inspectOnce()', '  function renderInspectionControls()'), context);
+  await context.inspectOnce();
+  assert.equal(cancels, 2);
+  assert.equal(pending.ack, 51);
+  assert.equal(stream.total, 1);
+  assert.equal(store.archives.get(archive).answers.size, 1);
+  assert.equal(store.archives.get(archive).parts.size, 10);
+  assert.equal(stream.current, null);
+});
+
+for (const active of [false, true]) await test(`Cancel resumes only a quiescent inspection (active=${active})`, async () => {
+  const controls = new Map(), calls = [];
+  const context = createContext({$:id => {
+    if (!controls.has(id)) controls.set(id, {});
+    return controls.get(id);
+  }, safe:action => action(), inspectionCanceled:false, inspecting:active, inspectionPending:{},
+  session:{async cancel() { calls.push('cancel'); }}, async inspect() { calls.push('inspect'); }});
+  runInContext(productionSection("  $('cancel').onclick", "  $('alternatives').onchange"), context);
+  await controls.get('cancel').onclick();
+  assert.equal(context.inspectionCanceled, true);
+  assert.deepEqual(calls, active ? ['cancel'] : ['cancel', 'inspect']);
+});
+
+await test('clearing the last catalog entry resets the cursor only after successful storage', async () => {
+  const controls = new Map(); let blocked = true;
+  const context = createContext({$:id => {
+    if (!controls.has(id)) controls.set(id, {});
+    return controls.get(id);
+  }, safe:action => action(), check:assert.ok, window:{confirm:() => true},
+  savedView:{id:'last'}, session:{archive:'other',run:1}, inspectionPending:null, inspected:null,
+  store:{async clear() { if (blocked) throw Error('Clear failed'); }},
+  catalogDirty:false, catalogCursor:'last-page', catalogDirection:'prev',
+  savedSelection:'last', answerNumber:1, answerPage:0, async refreshSaved() {}, message() {}});
+  runInContext(productionSection("  $('clear-answers').onclick", '  renderWorkspace(); renderRun(); renderInspectionControls();'), context);
+  await assert.rejects(controls.get('clear-answers').onclick(), /Clear failed/);
+  assert.equal(context.catalogCursor, 'last-page');
+  blocked = false;
+  await controls.get('clear-answers').onclick();
+  assert.equal(context.catalogCursor, null);
+  assert.equal(context.catalogDirection, 'next');
+  assert.equal(context.catalogDirty, true);
+});
+
+await test('cancel persists buffered summaries while omitting already consumed quota suffix writes', async () => {
+  const store = memorySink(), stream = new OutputAssembler(tables);
+  const archive = await store.create(tables, 'Buffered');
+  const response = {sequence:61, events:[...answer(231), ...answer(232).slice(0,5)]};
+  const pending = {response, index:0};
+  store.beforeCommit = records => {
+    if (records.some(record => record.value.number === 2)) throw Error('Suffix quota');
+  };
+  await assert.rejects(deliverCachedOutput(store, archive, stream, pending), /Suffix quota/);
+  assert.equal(pending.index, response.events.length);
+  await deliverCachedOutput(store, archive, stream, pending, true);
+  assert.equal(store.archives.get(archive).answers.size, 1);
+  assert.equal(store.archives.get(archive).parts.size, 10);
+  assert.equal(stream.current, null);
+  assert.equal(stream.writes.length, 0);
+});
+
+await test('changing the selected archive cannot reload stale saved summaries', async () => {
+  const h = renderingHarness(); await h.start();
+  h.context.session.archive = 'second';
+  h.context.renderResults();
+  assert.equal(h.context.desiredScene, null);
+  assert.equal(h.context.answerNumber, null);
+  h.reads[0].resolve(h.scene()); await Promise.all(h.tasks);
+  assert.equal(h.paints.length, 0);
+  assert.equal(h.reads.length, 1);
+  assert.equal(h.errors.length, 0);
+});
+
+});

@@ -349,7 +349,13 @@ impl Runtime {
                     .view();
                 view_result(e.cancel_inspection(id))?;
                 view_result(e.advance_inspection(id, request.budget))?;
-                json!({"done":view_result(e.inspection_status(id))?.done})
+                let pending = self
+                    .batches
+                    .lock()
+                    .unwrap()
+                    .get(&(request.run, Some(id.0)))
+                    .cloned();
+                json!({"done":view_result(e.inspection_status(id))?.done,"pending":pending})
             }
             "/api/inspect_release" => {
                 let id = request
@@ -721,6 +727,10 @@ fn connection(mut stream: TcpStream, runtime: &Runtime, port: u16) -> io::Result
             "/notebook.mjs" => Some((
                 "text/javascript; charset=utf-8",
                 include_bytes!("../web/notebook.mjs").as_slice(),
+            )),
+            "/answers.mjs" => Some((
+                "text/javascript; charset=utf-8",
+                include_bytes!("../web/answers.mjs").as_slice(),
             )),
             "/graph.mjs" => Some((
                 "text/javascript; charset=utf-8",
