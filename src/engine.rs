@@ -32,6 +32,7 @@ pub struct Completion {
 enum Owner {
     Task(u64),
     Completion,
+    Collection,
 }
 struct Scheduled {
     id: u64,

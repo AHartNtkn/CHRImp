@@ -183,3 +183,108 @@ impl<I: Iterator<Item = Root>> Collector<I> {
         None
     }
 }
+
+/// Filter once-only support against unfinished execution and the surviving heads.
+/// This requires a fixed graph root and exclusive ownership of history publication.
+pub struct Prune {
+    graph: Root,
+    filter: store::Filter<Condition>,
+    active: Condition,
+    remaining: Condition,
+    heads: Option<Arc<Vec<u64>>>,
+    head: usize,
+    boolean: Option<crate::condition::Job>,
+}
+impl History {
+    pub fn prune(
+        &self,
+        g: &crate::graph::Graph,
+        graph: Root,
+        history: Root,
+        active: Condition,
+    ) -> Prune {
+        assert!(g.index.contains(graph), "stale or foreign graph root");
+        Prune {
+            graph,
+            filter: self.index.filter(history),
+            active,
+            remaining: Condition::FALSE,
+            heads: None,
+            head: 0,
+            boolean: None,
+        }
+    }
+}
+impl Prune {
+    pub fn graph_root(&self) -> Root {
+        self.graph
+    }
+    pub fn history_roots(&self) -> impl Iterator<Item = Root> + '_ {
+        self.filter.roots()
+    }
+    pub fn condition_roots(&self) -> impl Iterator<Item = Condition> + '_ {
+        [self.active, self.remaining]
+            .into_iter()
+            .chain(self.boolean.iter().flat_map(crate::condition::Job::roots))
+            .chain(self.filter.values())
+    }
+    pub fn tick(
+        &mut self,
+        g: &crate::graph::Graph,
+        h: &mut History,
+        a: &mut crate::condition::Arena,
+    ) -> Option<Root> {
+        use crate::condition::{Operation, Progress};
+        if let Some(job) = &mut self.boolean {
+            if let Progress::Complete(c) = job.tick(a) {
+                self.remaining = c;
+                self.boolean = None;
+            }
+        } else if let Some(heads) = &self.heads {
+            if self.remaining == Condition::FALSE || self.head == heads.len() {
+                self.filter
+                    .replace((self.remaining != Condition::FALSE).then_some(self.remaining));
+                self.heads = None;
+            } else {
+                let live = g
+                    .fact(self.graph, heads[self.head])
+                    .map_or(Condition::FALSE, |f| f.support);
+                self.head += 1;
+                self.boolean = Some(a.start(Operation::And(self.remaining, live)));
+            }
+        } else {
+            match self.filter.tick(&mut h.index) {
+                store::FilterStatus::Pending => {}
+                store::FilterStatus::Complete(root) => return Some(root),
+                store::FilterStatus::Leaf { key, value } => {
+                    self.heads = Some(
+                        h.records
+                            .get(&key[0])
+                            .expect("rooted history record")
+                            .key
+                            .heads
+                            .clone(),
+                    );
+                    self.head = 0;
+                    self.remaining = value;
+                    self.boolean = Some(a.start(Operation::And(value, self.active)));
+                }
+            }
+        }
+        None
+    }
+}
+impl crate::trace::Trace for Prune {
+    fn trace(&self, c: &mut crate::trace::Cursor) -> crate::trace::Step {
+        use crate::trace::Step;
+        match c.phase {
+            0 => c.fields(&[self.active, self.remaining]),
+            1 => c.optional(self.boolean.as_ref()),
+            2 => match self.filter.values().next() {
+                Some(value) => c.fields(&[value]),
+                None => c.advance(),
+            },
+            _ => Step::Done,
+        }
+    }
+}

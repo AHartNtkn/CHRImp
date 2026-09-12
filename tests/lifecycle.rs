@@ -97,3 +97,50 @@ fn an_owned_output_event_survives_collection_and_later_projection() {
     let a = finish(&mut check);
     assert_eq!(facts(&check, &a), ["tag"]);
 }
+
+#[test]
+fn propagation_churn_releases_obsolete_tuples_during_execution() {
+    let program = "p(X) ==> seen(X). p(X) \\ seen(X) <=> next(X). p(X),next(X) <=> p(Y).";
+    let mut e = engine(program, "p(X)");
+    let mut maximum = 0;
+    for _ in 0..600000 {
+        e.advance(1);
+        maximum = maximum.max(e.memory().history_records);
+    }
+    assert!(!e.exhausted());
+    assert!(e.applications() > 1000, "{}", e.applications());
+    assert!(e.collections() > 5);
+    assert!(
+        maximum < 128,
+        "obsolete propagation tuples accumulated: {maximum}"
+    );
+}
+
+#[test]
+fn history_pruning_does_not_replay_a_live_tuple() {
+    let mut e = engine(
+        "keep(X) ==> result(X,Y). loop(X) <=> X=Y,loop(Y).",
+        "keep(A),(true;loop(A))",
+    );
+    let answer = finish(&mut e);
+    assert_eq!(facts(&e, &answer), ["keep", "result"]);
+    for _ in 0..100000 {
+        e.advance(1);
+        assert!(e.take_output().is_none());
+    }
+    let memory = e.memory();
+    assert!(e.collections() > 3);
+    assert!(e.applications() > 10);
+    assert_eq!(memory.history_records, 1);
+    assert!(!e.exhausted());
+    // Each merge wakes keep again; its retained tuple must still remain once-only.
+    let relation = e
+        .program()
+        .signatures
+        .iter()
+        .position(|s| s.name == "result")
+        .unwrap();
+    let mut rows = e.graph().relation(e.state().graph, relation).unwrap();
+    assert!(rows.next(e.graph()).is_some());
+    assert!(rows.next(e.graph()).is_none());
+}

@@ -265,6 +265,20 @@ impl<V: Copy + Eq> Store<V> {
         }
     }
 
+    /// Visit each leaf once and rebuild changed branches bottom-up. Keep the
+    /// token's roots and pending values traced whenever collection intervenes.
+    pub fn filter(&self, root: Root) -> Filter<V> {
+        assert!(self.contains(root), "stale or foreign index root");
+        Filter {
+            owner: self.owner,
+            base: root,
+            frame: Some(FilterFrame::Visit(root)),
+            frames: Vec::new(),
+            last: EMPTY,
+            leaf: None,
+        }
+    }
+
     /// Supply all current, staged and explicitly inspected roots. Cursor roots
     /// retain their whole coherent index version. Leaf events expose payloads
     /// so the graph owner can trace occurrence and condition dependencies.
@@ -285,6 +299,160 @@ impl<V: Copy + Eq> Store<V> {
             sweep: None,
             marking: true,
             done: false,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum FilterFrame {
+    Visit(Root),
+    AfterLeft { root: Root },
+    AfterRight { root: Root, left: Root },
+}
+
+struct FilterLeaf<V> {
+    root: Root,
+    key: Key,
+    value: V,
+    replacement: Option<Option<V>>,
+}
+
+/// An owned filter continuation. Call `replace` exactly once after every Leaf.
+/// Dropping this token abandons the staged result without changing its input.
+pub struct Filter<V> {
+    owner: u32,
+    base: Root,
+    frame: Option<FilterFrame>,
+    // Only branch continuations are stacked, so even a full-width path has
+    // at most 256 entries. The active Visit is held separately.
+    frames: Vec<FilterFrame>,
+    last: Root,
+    leaf: Option<FilterLeaf<V>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FilterStatus<V> {
+    Pending,
+    Leaf { key: Key, value: V },
+    Complete(Root),
+}
+
+impl<V: Copy + Eq> Filter<V> {
+    pub fn replace(&mut self, value: Option<V>) {
+        let leaf = self.leaf.as_mut().expect("filter replace requires a Leaf");
+        assert!(leaf.replacement.is_none(), "filter Leaf already replaced");
+        leaf.replacement = Some(value);
+    }
+
+    pub fn roots(&self) -> impl Iterator<Item = Root> + '_ {
+        [self.base, self.last].into_iter().chain(
+            self.frames
+                .iter()
+                .chain(self.frame.iter())
+                .filter_map(|frame| match *frame {
+                    FilterFrame::AfterRight { left, .. } => Some(left),
+                    _ => None,
+                }),
+        )
+    }
+
+    /// Values supplied by the caller but not yet installed in a store leaf.
+    pub fn values(&self) -> impl Iterator<Item = V> + '_ {
+        self.leaf
+            .iter()
+            .filter_map(|leaf| leaf.replacement.flatten())
+    }
+
+    fn returned(&mut self, root: Root) -> FilterStatus<V> {
+        self.last = root;
+        self.frame = self.frames.pop();
+        if self.frame.is_none() {
+            self.base = root;
+            self.frames = Vec::new();
+            FilterStatus::Complete(root)
+        } else {
+            FilterStatus::Pending
+        }
+    }
+
+    /// Perform one traversal transition or allocate at most one changed node.
+    /// GC may run between ticks, but its lease must be dropped before ticking.
+    pub fn tick(&mut self, store: &mut Store<V>) -> FilterStatus<V> {
+        assert_eq!(self.owner, store.owner, "foreign index filter");
+        store.assert_mutable();
+        assert!(store.contains(self.base), "stale index filter root");
+        if let Some(leaf) = &self.leaf {
+            let replacement = leaf
+                .replacement
+                .expect("filter Leaf requires replace before tick");
+            let root = match replacement {
+                None => EMPTY,
+                Some(value) if value == leaf.value => leaf.root,
+                Some(value) => store.allocate(Node::Leaf {
+                    key: leaf.key,
+                    value,
+                }),
+            };
+            self.leaf = None;
+            return self.returned(root);
+        }
+        match self.frame {
+            None => FilterStatus::Complete(self.last),
+            Some(FilterFrame::Visit(root)) if root == EMPTY => self.returned(EMPTY),
+            Some(FilterFrame::Visit(root)) => match store.node(root) {
+                Node::Leaf { key, value } => {
+                    self.leaf = Some(FilterLeaf {
+                        root,
+                        key,
+                        value,
+                        replacement: None,
+                    });
+                    FilterStatus::Leaf { key, value }
+                }
+                Node::Branch { left, .. } => {
+                    self.frames.push(FilterFrame::AfterLeft { root });
+                    self.frame = Some(FilterFrame::Visit(left));
+                    FilterStatus::Pending
+                }
+            },
+            Some(FilterFrame::AfterLeft { root }) => {
+                let Node::Branch { right, .. } = store.node(root) else {
+                    unreachable!("filter branch")
+                };
+                self.frames.push(FilterFrame::AfterRight {
+                    root,
+                    left: self.last,
+                });
+                self.frame = Some(FilterFrame::Visit(right));
+                FilterStatus::Pending
+            }
+            Some(FilterFrame::AfterRight { root, left }) => {
+                let Node::Branch {
+                    prefix,
+                    bit,
+                    left: old_left,
+                    right: old_right,
+                } = store.node(root)
+                else {
+                    unreachable!("filter branch")
+                };
+                let right = self.last;
+                let result = if left == old_left && right == old_right {
+                    root
+                } else if left == EMPTY {
+                    right
+                } else if right == EMPTY {
+                    left
+                } else {
+                    store.allocate(Node::Branch {
+                        prefix,
+                        bit,
+                        left,
+                        right,
+                    })
+                };
+                self.returned(result)
+            }
         }
     }
 }
@@ -392,5 +560,47 @@ impl<I: Iterator<Item = Root>> Collector<I> {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod filter_tests {
+    use super::*;
+
+    #[test]
+    fn maximal_filter_stack_is_256_and_completion_releases_capacity() {
+        let mut store = Store::default();
+        let mut root = store.insert(store.empty(), [0; 4], 0_u64);
+        for bit in 0..256 {
+            let mut key = [0; 4];
+            key[bit / 64] = 1_u64 << (63 - bit % 64);
+            root = store.insert(root, key, bit as u64 + 1);
+        }
+        let mut filter = store.filter(root);
+        let mut peak = 0;
+        let before = store.node_count();
+        let mut leaves = 0;
+        loop {
+            let status = filter.tick(&mut store);
+            peak = peak.max(filter.frames.len());
+            assert!(filter.frames.len() <= 256);
+            match status {
+                FilterStatus::Pending => {}
+                FilterStatus::Leaf { value, .. } => {
+                    leaves += 1;
+                    filter.replace(Some(value));
+                }
+                FilterStatus::Complete(result) => {
+                    assert_eq!(result, root);
+                    break;
+                }
+            }
+        }
+        assert_eq!(leaves, 257);
+        assert_eq!(peak, 256);
+        assert_eq!(store.node_count(), before);
+        assert_eq!(filter.frames.capacity(), 0);
+        assert!(filter.frame.is_none());
+        assert!(filter.leaf.is_none());
     }
 }

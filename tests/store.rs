@@ -208,3 +208,224 @@ fn owned_collection_freezes_mutators_and_drop_releases_the_owner() {
         assert_eq!(values, [(key(1), 10), (key(3), 30)]);
     }
 }
+
+fn full_width_rows() -> BTreeMap<Key, u64> {
+    let mut rows = BTreeMap::new();
+    let mut random = 91_u64;
+    for value in 0..512 {
+        let mut key = [0; 4];
+        for word in &mut key {
+            random ^= random << 13;
+            random ^= random >> 7;
+            random ^= random << 17;
+            *word = random;
+        }
+        rows.insert(key, value);
+    }
+    rows.insert([0; 4], 512);
+    rows.insert([u64::MAX; 4], 513);
+    rows.insert([0, 0, 0, 1], 514);
+    rows.insert([1 << 63, 0, 0, 0], 515);
+    rows
+}
+
+fn snapshot_rows(store: &Store<u64>, root: chr::store::Root) -> BTreeMap<Key, u64> {
+    let mut cursor = store.range(root, [0; 4], [u64::MAX; 4]);
+    std::iter::from_fn(|| cursor.next(store)).collect()
+}
+
+fn filter_rows(
+    store: &mut Store<u64>,
+    root: chr::store::Root,
+    mut replace: impl FnMut(Key, u64) -> Option<u64>,
+) -> (chr::store::Root, Vec<Key>, usize) {
+    use chr::store::FilterStatus;
+    let mut filter = store.filter(root);
+    let mut visited = Vec::new();
+    let before = store.node_count();
+    let mut ticks = 0;
+    loop {
+        ticks += 1;
+        assert!(ticks <= 8 * (visited.len() + 257), "bounded traversal work");
+        let count = store.node_count();
+        let status = filter.tick(store);
+        assert!(store.node_count() - count <= 1, "one allocation per tick");
+        match status {
+            FilterStatus::Pending => {}
+            FilterStatus::Leaf { key, value } => {
+                visited.push(key);
+                filter.replace(replace(key, value));
+            }
+            FilterStatus::Complete(result) => {
+                assert_eq!(filter.tick(store), FilterStatus::Complete(result));
+                assert_eq!(filter.values().count(), 0);
+                assert!(filter.roots().all(|r| r == result || r == store.empty()));
+                return (result, visited, store.node_count() - before);
+            }
+        }
+    }
+}
+
+#[test]
+fn filter_full_width_keys_reuses_noop_and_rebuilds_each_changed_node_once() {
+    let original = full_width_rows();
+    let mut store = Store::default();
+    let mut root = store.empty();
+    for (&key, &value) in &original {
+        root = store.insert(root, key, value);
+    }
+    let (same, visited, allocations) = filter_rows(&mut store, root, |_, value| Some(value));
+    assert_eq!(same, root);
+    assert_eq!(allocations, 0);
+    assert_eq!(visited, original.keys().copied().collect::<Vec<_>>());
+
+    let old_nodes = 2 * original.len() - 1;
+    let (changed, _, allocations) = filter_rows(&mut store, root, |_, value| Some(value + 1000));
+    assert_eq!(
+        allocations, old_nodes,
+        "exactly one new copy of each changed leaf and branch"
+    );
+    assert_eq!(snapshot_rows(&store, root), original);
+    assert_eq!(
+        snapshot_rows(&store, changed),
+        original.iter().map(|(&k, &v)| (k, v + 1000)).collect()
+    );
+
+    let (subset, _, allocations) = filter_rows(&mut store, root, |_, value| match value % 3 {
+        0 => None,
+        1 => Some(value),
+        _ => Some(value + 2000),
+    });
+    assert!(allocations <= old_nodes);
+    assert_eq!(
+        snapshot_rows(&store, subset),
+        original
+            .iter()
+            .filter_map(|(&k, &v)| match v % 3 {
+                0 => None,
+                1 => Some((k, v)),
+                _ => Some((k, v + 2000)),
+            })
+            .collect()
+    );
+    assert_eq!(snapshot_rows(&store, root), original);
+    let (empty, _, allocations) = filter_rows(&mut store, root, |_, _| None);
+    assert_eq!(empty, store.empty());
+    assert_eq!(allocations, 0);
+    let (empty_again, visited, allocations) = filter_rows(&mut store, empty, |_, _| unreachable!());
+    assert_eq!(empty_again, empty);
+    assert!(visited.is_empty());
+    assert_eq!(allocations, 0);
+}
+
+#[test]
+fn filter_collapses_to_the_existing_child_without_allocating() {
+    let mut store = Store::default();
+    let child = store.insert(store.empty(), [0; 4], 1);
+    let root = store.insert(child, [u64::MAX; 4], 2);
+    let (result, _, allocations) =
+        filter_rows(&mut store, root, |_, value| (value == 1).then_some(value));
+    assert_eq!(result, child);
+    assert_eq!(allocations, 0);
+    assert_eq!(store.get(root, &[u64::MAX; 4]), Some(2));
+}
+
+#[test]
+fn filter_survives_gc_between_every_transition_and_traces_pending_values() {
+    use chr::store::FilterStatus;
+    let rows: BTreeMap<_, _> = full_width_rows().into_iter().take(48).collect();
+    let mut store = Store::default();
+    let mut root = store.empty();
+    for (&key, &value) in &rows {
+        root = store.insert(root, key, value);
+    }
+    let mut filter = store.filter(root);
+    let collect = |store: &mut Store<u64>, filter: &chr::store::Filter<u64>| {
+        let mut gc = store.collect(filter.roots());
+        while !gc.done() {
+            gc.tick(store);
+        }
+    };
+    collect(&mut store, &filter);
+    let result = loop {
+        let status = filter.tick(&mut store);
+        collect(&mut store, &filter);
+        match status {
+            FilterStatus::Pending => {}
+            FilterStatus::Leaf { key: _, value } => {
+                assert_eq!(filter.values().count(), 0);
+                let replacement = (value % 3 != 0).then_some(value + 1000);
+                filter.replace(replacement);
+                assert_eq!(
+                    filter.values().collect::<Vec<_>>(),
+                    replacement.into_iter().collect::<Vec<_>>()
+                );
+                collect(&mut store, &filter);
+            }
+            FilterStatus::Complete(root) => break root,
+        }
+    };
+    let expected: BTreeMap<_, _> = rows
+        .into_iter()
+        .filter_map(|(k, v)| (v % 3 != 0).then_some((k, v + 1000)))
+        .collect();
+    assert_eq!(snapshot_rows(&store, result), expected);
+    assert_eq!(
+        store.node_count(),
+        2 * expected.len() - 1,
+        "completed filter retains only its resulting tree"
+    );
+}
+
+#[test]
+fn filter_protocol_owner_freeze_and_stale_checks_precede_progress() {
+    use chr::store::{Filter, FilterStatus, Root};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    fn begin(store: &Store<u64>, root: Root) -> Filter<u64> {
+        store.filter(root)
+    }
+    let mut store = Store::default();
+    let root = store.insert(store.empty(), key(1), 10);
+    let mut filter = begin(&store, root);
+    let mut foreign = Store::<u64>::default();
+    assert!(catch_unwind(AssertUnwindSafe(|| foreign.filter(root))).is_err());
+    assert!(catch_unwind(AssertUnwindSafe(|| filter.replace(None))).is_err());
+    assert!(catch_unwind(AssertUnwindSafe(|| filter.tick(&mut foreign))).is_err());
+    assert_eq!(
+        filter.tick(&mut store),
+        FilterStatus::Leaf {
+            key: key(1),
+            value: 10
+        }
+    );
+    assert!(catch_unwind(AssertUnwindSafe(|| filter.tick(&mut store))).is_err());
+    filter.replace(Some(20));
+    assert!(catch_unwind(AssertUnwindSafe(|| filter.replace(None))).is_err());
+    assert_eq!(filter.values().collect::<Vec<_>>(), [20]);
+    let mut gc = store.collect(filter.roots().collect::<Vec<_>>().into_iter());
+    let before = store.node_count();
+    assert!(catch_unwind(AssertUnwindSafe(|| filter.tick(&mut store))).is_err());
+    assert_eq!(store.node_count(), before);
+    assert_eq!(filter.values().collect::<Vec<_>>(), [20]);
+    gc.tick(&mut store);
+    drop(gc); // A cancelled collector releases the filter's owner too.
+    let FilterStatus::Complete(result) = filter.tick(&mut store) else {
+        panic!("leaf completes")
+    };
+    assert_eq!(store.get(result, &key(1)), Some(20));
+    assert_eq!(store.get(root, &key(1)), Some(10));
+    assert!(catch_unwind(AssertUnwindSafe(|| filter.replace(None))).is_err());
+    assert!(catch_unwind(AssertUnwindSafe(|| filter.tick(&mut foreign))).is_err());
+    assert_eq!(filter.tick(&mut store), FilterStatus::Complete(result));
+    let mut stale = store.filter(root);
+    let mut gc = store.collect(std::iter::empty());
+    while !gc.done() {
+        gc.tick(&mut store);
+    }
+    drop(gc);
+    assert!(catch_unwind(AssertUnwindSafe(|| store.filter(root))).is_err());
+    assert!(catch_unwind(AssertUnwindSafe(|| stale.tick(&mut store))).is_err());
+    assert_eq!(store.node_count(), 0);
+    let mut empty = store.filter(store.empty());
+    assert!(catch_unwind(AssertUnwindSafe(|| empty.tick(&mut foreign))).is_err());
+}

@@ -7,6 +7,7 @@ use std::ops::Bound::{Excluded, Unbounded};
 type Roots = std::vec::IntoIter<Root>;
 #[derive(Clone, Copy)]
 enum Phase {
+    Prune,
     Tasks,
     Parked,
     Births,
@@ -19,6 +20,8 @@ enum Phase {
 }
 pub(super) struct Collection {
     phase: Phase,
+    owns_lane: bool,
+    prune: Option<history::Prune>,
     index: usize,
     task_roots: bool,
     after: Option<u64>,
@@ -73,27 +76,57 @@ impl Engine {
         self.collections
     }
     pub fn collecting(&self) -> bool {
-        self.collector.is_some() || self.collection_requested
+        self.collector.is_some()
+            || self.collection_requested
+            || self.lane == Some(Owner::Collection)
+            || self.requested.contains(&Owner::Collection)
     }
     pub(super) fn collect_heap(&mut self) -> bool {
         if self.collector.is_none() {
-            if !self.collection_requested && self.memory().total() <= self.collection_limit {
+            if !self.collection_requested
+                && self.memory().total() <= self.collection_limit
+                && self.lane != Some(Owner::Collection)
+            {
                 return false;
             }
             self.collection_requested = false;
+            // Semantic pruning reserves the same FIFO lane as rule updates.
+            // A held update can first receive physical GC, then finish and hand
+            // the lane to pruning; its staged history cannot restore old records.
+            let owns_lane = (self.state.history != self.history.empty()
+                || self.lane == Some(Owner::Collection))
+                && self.acquire(Owner::Collection);
+            let prune = owns_lane.then(|| {
+                self.history.prune(
+                    &self.graph,
+                    self.state.graph,
+                    self.state.history,
+                    self.active,
+                )
+            });
             let mut pending_roots = vec![self.pending_root];
             if let Some(ready) = &self.ready {
                 pending_roots.push(ready.cursor.root());
             }
             self.collector = Some(Collection {
-                phase: Phase::Tasks,
+                phase: if owns_lane {
+                    Phase::Prune
+                } else {
+                    Phase::Tasks
+                },
+                owns_lane,
+                prune,
                 index: 0,
                 task_roots: false,
                 after: None,
                 slot: 0,
                 trace: TraceCursor::default(),
                 graph_roots: vec![self.state.graph],
-                history_roots: vec![self.state.history],
+                history_roots: if owns_lane {
+                    vec![]
+                } else {
+                    vec![self.state.history]
+                },
                 pending_roots,
                 conditions: vec![self.active, self.failed],
                 graph: None,
@@ -105,6 +138,18 @@ impl Engine {
         }
         let mut c = self.collector.take().unwrap();
         match c.phase {
+            Phase::Prune => {
+                if let Some(root) = c.prune.as_mut().expect("history pruning").tick(
+                    &self.graph,
+                    &mut self.history,
+                    &mut self.arena,
+                ) {
+                    self.state.history = root;
+                    c.history_roots.push(root);
+                    c.prune = None;
+                    c.phase = Phase::Tasks;
+                }
+            }
             Phase::Tasks | Phase::Parked => {
                 let task = if matches!(c.phase, Phase::Tasks) {
                     self.queue.get(c.index)
@@ -259,6 +304,9 @@ impl Engine {
                     if gc.tick(&mut self.arena) {
                         c.arena = None;
                         self.collections += 1;
+                        if c.owns_lane {
+                            self.release_lane();
+                        }
                         self.collection_limit =
                             self.memory().total().saturating_mul(2).saturating_add(1024);
                         return true;
@@ -327,5 +375,52 @@ impl Trace for Ready {
             1 => c.optional(self.job.as_ref()),
             _ => Step::Done,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn collection_status_covers_waiting_for_a_history_writer() {
+        let code = crate::program::prepare(
+            &crate::syntax::parse_program("p(X) ==> seen(X). loop(X) <=> loop(X).").unwrap(),
+            &crate::syntax::parse_query("p(X),loop(X)").unwrap(),
+        )
+        .unwrap();
+        let mut e = Engine::new(std::sync::Arc::new(code));
+        for _ in 0..10000 {
+            e.advance(1);
+            if e.state.history != e.history.empty() && matches!(e.lane, Some(Owner::Task(_))) {
+                break;
+            }
+        }
+        assert!(matches!(e.lane, Some(Owner::Task(_))));
+        assert_ne!(e.state.history, e.history.empty());
+        e.request_collection();
+        e.advance(1);
+        assert!(e.requested.contains(&Owner::Collection));
+        for _ in 0..100000 {
+            if e.collector.is_none() {
+                break;
+            }
+            e.advance(1);
+        }
+        assert!(e.collector.is_none());
+        assert!(e.requested.contains(&Owner::Collection));
+        assert!(
+            e.collecting(),
+            "the requested semantic pass still awaits its writer"
+        );
+        let before = e.collections();
+        for _ in 0..100000 {
+            if !e.collecting() {
+                break;
+            }
+            e.advance(1);
+        }
+        assert!(!e.collecting());
+        assert!(e.collections() > before);
+        assert!(!e.requested.contains(&Owner::Collection));
     }
 }

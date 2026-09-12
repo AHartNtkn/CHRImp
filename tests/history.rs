@@ -287,3 +287,84 @@ fn owned_collection_freezes_interning_through_metadata_sweep() {
         assert_eq!(h.support(updated, 1, &fresh), Condition::TRUE);
     }
 }
+
+#[test]
+fn semantic_pruning_keeps_only_active_regions_where_all_tuple_heads_remain_live() {
+    use chr::condition::{Operation, Progress};
+    let mut a = Arena::default();
+    let (_, c) = a.fresh_choice();
+    let (_, d) = a.fresh_choice();
+    let (_, active) = a.fresh_choice();
+    let mut g = Graph::new(&[Signature {
+        name: "p".into(),
+        arity: 0,
+    }]);
+    let mut root = g.empty();
+    let mut ids = vec![];
+    for support in [c, d, Condition::TRUE] {
+        let mut u = g.post(root, 0, vec![], support).unwrap();
+        ids.push(u.occurrence());
+        root = loop {
+            if let UpdateStatus::Complete(r) = u.tick(&mut g) {
+                break r;
+            }
+        };
+    }
+    let mut h = History::default();
+    let live = Arc::new(vec![ids[0], ids[1]]);
+    let dead = Arc::new(vec![ids[2]]);
+    let old = h.set_support(h.empty(), 0, live.clone(), Condition::TRUE);
+    let old = h.set_support(old, 1, dead.clone(), Condition::TRUE);
+    let mut u = g.set_liveness(root, ids[2], Condition::FALSE).unwrap();
+    root = loop {
+        if let UpdateStatus::Complete(r) = u.tick(&mut g) {
+            break r;
+        }
+    };
+    let mut prune = h.prune(&g, root, old, active);
+    let mut done = None;
+    for _ in 0..10000 {
+        let mut roots = prune.condition_roots().collect::<Vec<_>>();
+        let mut gc = g.collect([root].into_iter());
+        while !gc.done() {
+            if let Some(c) = gc.tick(&mut g) {
+                roots.push(c);
+            }
+        }
+        drop(gc);
+        let mut gc = h.collect(prune.history_roots());
+        while !gc.done() {
+            if let Some(c) = gc.tick(&mut h) {
+                roots.push(c);
+            }
+        }
+        drop(gc);
+        let mut gc = a.collect(roots.into_iter());
+        while !gc.tick(&mut a) {}
+        drop(gc);
+        if let Some(r) = prune.tick(&g, &mut h, &mut a) {
+            done = Some(r);
+            break;
+        }
+    }
+    let new = done.expect("finite pruning completes");
+    drop(prune);
+    let mut cd = a.start(Operation::And(c, d));
+    let cd = loop {
+        if let Progress::Complete(c) = cd.tick(&mut a) {
+            break c;
+        }
+    };
+    let mut want = a.start(Operation::And(cd, active));
+    let want = loop {
+        if let Progress::Complete(c) = want.tick(&mut a) {
+            break c;
+        }
+    };
+    assert_eq!(h.support(new, 0, &live), want);
+    assert_eq!(h.support(new, 1, &dead), Condition::FALSE);
+    assert_eq!(h.support(old, 0, &live), Condition::TRUE);
+    assert_eq!(h.support(old, 1, &dead), Condition::TRUE);
+    collect(&mut h, &[new]);
+    assert_eq!(h.record_count(), 1);
+}
