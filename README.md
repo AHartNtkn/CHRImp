@@ -32,3 +32,9 @@ Standard output is newline-delimited JSON. A `program` event supplies relation s
 The engine reclaims completed choices during continuing execution when they no longer distinguish surviving alternatives. Suspended matches keep their progress across compaction. Explicitly held views and notebook choice selections retain the information needed for inspection.
 
 Run the checks with `cargo test --offline`.
+
+Measure complete engine runs with `cargo run --release --example measure -- --list`,
+then choose a case and size, for example `cargo run --release --example measure -- dense 32`.
+The runner checks exact ordered tuples and answer multiplicity. It reports preparation,
+execution and delivery, disposal, and sampled memory separately; execution timings include
+the output checks. A run that reaches its work or time limit is reported as incomplete.

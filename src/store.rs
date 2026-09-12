@@ -106,10 +106,13 @@ impl<V: Copy + Eq> Store<V> {
 
     fn node(&self, root: Root) -> Node<V> {
         assert!(
-            root != EMPTY && self.contains(root),
+            root != EMPTY && root.owner == self.owner,
             "stale or foreign index root"
         );
-        self.nodes[&root.id].node
+        self.nodes
+            .get(&root.id)
+            .expect("stale or foreign index root")
+            .node
     }
     fn allocate(&mut self, node: Node<V>) -> Root {
         let id = self.next_node;
@@ -141,18 +144,19 @@ impl<V: Copy + Eq> Store<V> {
         if root == EMPTY {
             return self.allocate(Node::Leaf { key, value });
         }
+        // Reuse visited branch values when splitting and rebuilding the path.
         let mut path = Vec::new();
         let mut cursor = root;
         let (found, old) = loop {
             match self.node(cursor) {
                 Node::Leaf { key, value } => break (key, value),
-                Node::Branch {
+                node @ Node::Branch {
                     bit,
                     left,
                     right: r,
                     ..
                 } => {
-                    path.push(cursor);
+                    path.push((cursor, node));
                     cursor = if right(&key, bit) { r } else { left };
                 }
             }
@@ -164,11 +168,9 @@ impl<V: Copy + Eq> Store<V> {
         if let Some(split) = difference(&found, &key) {
             let index = path
                 .iter()
-                .position(
-                    |&root| matches!(self.node(root), Node::Branch { bit, .. } if bit >= split),
-                )
+                .position(|&(_, node)| matches!(node, Node::Branch { bit, .. } if bit >= split))
                 .unwrap_or(path.len());
-            let subtree = path.get(index).copied().unwrap_or(cursor);
+            let subtree = path.get(index).map_or(cursor, |&(root, _)| root);
             path.truncate(index);
             let (left, r) = if right(&key, split) {
                 (subtree, replacement)
@@ -185,14 +187,14 @@ impl<V: Copy + Eq> Store<V> {
         self.rebuild(&path, &key, replacement)
     }
 
-    fn rebuild(&mut self, path: &[Root], key: &Key, mut replacement: Root) -> Root {
-        for &ancestor in path.iter().rev() {
+    fn rebuild(&mut self, path: &[(Root, Node<V>)], key: &Key, mut replacement: Root) -> Root {
+        for &(_, node) in path.iter().rev() {
             let Node::Branch {
                 prefix,
                 bit,
                 left,
                 right: r,
-            } = self.node(ancestor)
+            } = node
             else {
                 unreachable!("branch path")
             };
@@ -226,18 +228,18 @@ impl<V: Copy + Eq> Store<V> {
                     }
                     break;
                 }
-                Node::Branch {
+                node @ Node::Branch {
                     bit,
                     left,
                     right: r,
                     ..
                 } => {
-                    path.push(cursor);
+                    path.push((cursor, node));
                     cursor = if right(key, bit) { r } else { left };
                 }
             }
         }
-        let Some(parent) = path.pop() else {
+        let Some((_, parent)) = path.pop() else {
             return EMPTY;
         };
         let Node::Branch {
@@ -245,7 +247,7 @@ impl<V: Copy + Eq> Store<V> {
             left,
             right: r,
             ..
-        } = self.node(parent)
+        } = parent
         else {
             unreachable!("branch path")
         };
