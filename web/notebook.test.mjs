@@ -1057,7 +1057,7 @@ function renderingHarness() {
     renderScene(svg, scene) { paints.push(svg); return scene; },
     session:{stream:null, archive:'first', async switchRun(run) { assert.equal(run, 2); }},
     renderInspectionControls() {}, async refreshSaved() {}, async finishInspection() {},
-    savedView:{id:'first',total:1,answers:[{number:1,completion:'1',alternative:'0'}]},
+    savedView:{id:'first',page:0,total:1,answers:[{number:1,completion:'1',alternative:'0'}]},
     savedSelection:'', inspected:null, outputMode:'answers', answerNumber:1, answerPage:0,
     page:0, portPage:0, resultPage:1, resultPortPage:1, bindingPage:1,
     pendingNumber:1, pendingPath:[42,43], pendingPage:1, pendingPortPage:1,
@@ -1335,13 +1335,31 @@ await test('cancel persists buffered summaries while omitting already consumed q
 
 await test('changing the selected archive cannot reload stale saved summaries', async () => {
   const h = renderingHarness(); await h.start();
-  h.context.session.archive = 'second';
+  runInContext(productionSection("  $('saved-run').onchange", '  const changeSavedPage'), h.context);
+  h.$('saved-run').value = 'second';
+  await h.$('saved-run').onchange();
   h.context.renderResults();
   assert.equal(h.context.desiredScene, null);
   assert.equal(h.context.answerNumber, null);
   h.reads[0].resolve(h.scene()); await Promise.all(h.tasks);
   assert.equal(h.paints.length, 0);
   assert.equal(h.reads.length, 1);
+  assert.equal(h.errors.length, 0);
+});
+
+await test('a previous answer page cannot overwrite the locator while its requested page loads', async () => {
+  const h = renderingHarness(); await h.start();
+  h.context.answerPage = 1; h.context.answerNumber = 13;
+  h.context.renderResults();
+  assert.equal(h.context.answerNumber, 13);
+  assert.equal(h.context.desiredScene, null);
+  h.reads[0].resolve(h.scene()); await Promise.all(h.tasks);
+  assert.equal(h.paints.length, 0);
+  h.context.savedView = {id:'first',page:1,total:14,answers:[{number:13,completion:'1',alternative:'12'},{number:14,completion:'1',alternative:'13'}]};
+  h.context.renderResults(); await Promise.resolve();
+  assert.equal(h.context.answerNumber, 13);
+  assert.equal(h.reads[1].number, 13);
+  h.reads[1].resolve(h.scene()); await Promise.all(h.tasks);
   assert.equal(h.errors.length, 0);
 });
 
@@ -1792,23 +1810,164 @@ await test('source terminal delivery refreshes the catalog in inspection mode wi
   runInContext(productionSection('  function refreshSaved()', '  function renderResults()'),c);
   const initial=c.refreshSaved();
   const catalog=total=>({records:[{id:'source',label:'Run 1',total,created:1}],next:null,prev:null});
-  lists[0](catalog(0));await initial;
+  await Promise.resolve(); lists[0](catalog(0));await initial;
   for(let i=0;i<5;i++)await c.refreshSaved();
   assert.equal(lists.length,1);
   session.status='done';session.ack=2;
-  const completed=c.refreshSaved();
+  const completed=c.refreshSaved(); await Promise.resolve();
   assert.equal(lists.length,2,'terminal completion invalidates the source catalog entry');
   lists[1](catalog(2));await completed;
   assert.match($('saved-run').children.find(item=>item.attrs.value==='source').text,/Run 1 · 2 answers/);
   for(let i=0;i<5;i++)await c.refreshSaved();
   assert.equal(lists.length,2,'unchanged terminal state reuses the same bounded page');
   assert.equal(c.outputMode,'inspect');assert.equal(c.savedView.id,'inspection');
-  session.status='canceled';const canceling=c.refreshSaved();
+  session.status='canceled';const canceling=c.refreshSaved(); await Promise.resolve();
   session.ack=3;c.refreshSaved();lists[2](catalog(2));
   await new Promise(setImmediate);
   assert.equal(lists.length,4,'a committed ack change during a list read is not lost');
   lists[3](catalog(3));await canceling;
   assert.match($('saved-run').children.find(item=>item.attrs.value==='source').text,/Run 1 · 3 answers/);
+});
+
+for (const [inspection, mode, live] of [['present','inspect',false], ['missing','inspect',false], ['empty','inspect',false], ['read-error','inspect',false], ['present','answers',true]]) await test(`${live ? 'completed run' : 'idle'} reload reconciles ${inspection} ${mode} archive and selected answer`, async () => {
+  const h = renderingHarness(), c = h.context, store = memorySink(), messages = [], pageReads = [];
+  const oldBoot = 'a'.repeat(32), boot = live ? oldBoot : 'b'.repeat(32);
+  c.store = store;
+  c.session = {run:null, archive:null, status:'idle', applications:0, runs:new Map(), stream:null,
+    async restore(preferred) {
+      assert.equal(preferred, live ? 1 : null);
+      if (live) { this.run = 1; this.archive = 'old-source'; this.status = 'done'; this.applications = 2; this.runs.set(1,{run:1}); }
+    }};
+  Object.assign(c, {connection:{state:{boot},async initialize(){}},request:()=>{},
+    inspectionSelection:new InspectionSelection(),clone:structuredClone,validateNotebook,
+    connected:false,restoring:true,model:untouched,dirty:false,editorWriting:null,editorDirty:false,
+    catalog:{records:[],next:null,prev:null},catalogCursor:null,catalogDirection:'next',catalogDirty:true,catalogStamp:'',
+    refreshing:null,refreshAgain:false,inspectionPending:null,inspecting:false,launching:false,busy:false,
+    renderWorkspace(){},message:text=>messages.push(text)});
+  const display = {mode,inspectionArchive:'old-inspection',savedArchive:'',sourceArchive:'old-source',
+    answerNumber:1,answerPage:0,resultPage:0,resultPortPage:0,bindingPage:0,pendingNumber:0,pendingPage:0,pendingPortPage:0,pendingPath:[]};
+  await store.saveRecovery('display',display);
+  await store.saveRecovery('editor',{model:untouched,program:'p(X) <=> (q(X); r(X)).',query:'p(A)',dirty:false,history:false,run:1,boot:oldBoot});
+  // A different archive can have the same label. It is not the saved locator.
+  store.list = async () => ({records:[{id:'other-inspection',label:'Inspection of run 1',created:1,total:1}],next:null,prev:null});
+  store.page = async (archive,page) => {
+    pageReads.push({archive,page});
+    if (inspection === 'read-error') throw Error('Archive read failed');
+    if (archive !== (mode === 'inspect' ? 'old-inspection' : 'old-source') || inspection === 'missing') return null;
+    return {id:archive,label:'Inspection of run 1',created:1,page:0,pages:1,total:inspection === 'empty' ? 0 : 2,
+      answers:inspection === 'empty' ? [] : [{number:1,completion:'1',alternative:'0'}, {number:2,completion:'1',alternative:'1'}]};
+  };
+  store.scene = (...args) => new Promise(resolve => h.reads.push({collection:args[0],number:args[1],options:args[2],resolve}));
+  runInContext(productionSection('  function saveEditor()', '  function message(')
+    + productionSection('  function renderRun()', '  function renderResults()'),c);
+  runInContext(productionSection('  async function safe(', '  function remember('), c);
+  const productionSafe = c.safe;
+  c.safe = action => { const pending = productionSafe(action); h.tasks.push(pending); return pending; };
+  // Full mount starts a catalog refresh before initialize reads durable display state.
+  c.renderRun(); c.renderInspectionControls();
+  if (inspection === 'read-error') {
+    await assert.rejects(c.initialize(), /Archive read failed/);
+    await Promise.all(h.tasks);
+    assert.equal((await store.recovery('display')).inspectionArchive, 'old-inspection');
+    assert.equal(c.inspected.archive, 'old-inspection');
+    assert.ok(!messages.some(text=>text.includes('Showing saved inspection')));
+    return;
+  }
+  await c.initialize();
+  assert.equal(h.$('run-status').textContent, live ? 'done' : 'idle');
+  assert.equal(h.$('applications').textContent, `${live ? 2 : 0} applications`);
+  assert.equal(h.$('program').value, 'p(X) <=> (q(X); r(X)).');
+  if (inspection === 'present') {
+    assert.equal(c.savedView.id, mode === 'inspect' ? 'old-inspection' : 'old-source');
+    assert.equal(h.$('answer-count').textContent, '2 saved · 2 on this page');
+    assert.equal(h.$('result-empty').hidden, true);
+    assert.equal(h.reads.length, 1);
+    assert.equal(c.answerNumber, 1, 'loading cannot replace the saved selection with the last answer');
+    assert.equal(h.$('alternatives').value, 1);
+    assert.equal(h.reads[0].number, 1);
+    h.reads[0].resolve(h.scene()); await Promise.all(h.tasks);
+    assert.equal(h.errors.length, 0);
+    assert.match(messages.at(-1), live ? /Run 1 restored done at 2 applications/ : /Notebook restored\. Showing saved inspection\./);
+    assert.equal((await store.recovery('display')).answerNumber, 1);
+  } else if (inspection === 'empty') {
+    assert.equal(h.reads.length, 0);
+    assert.equal(h.$('answer-count').textContent, '0 saved · 0 on this page');
+    assert.match(messages.at(-1), /Saved inspection has no completed answers/);
+  } else {
+    assert.equal(c.inspected, null);
+    assert.equal(c.outputMode, 'answers');
+    assert.equal(c.savedSelection, '');
+    assert.equal(c.savedView, null);
+    assert.equal(h.reads.length, 0);
+    assert.match(messages.at(-1), /Saved inspection is unavailable/);
+    assert.equal((await store.recovery('display')).inspectionArchive, null);
+    assert.equal(h.$('saved-run').children.length, 2, 'other archives remain available');
+  }
+  assert.ok(pageReads.length <= 3, 'only bounded selected-archive lookups, no catalog search');
+  assert.ok(!pageReads.some(read=>read.archive === 'other-inspection'));
+});
+
+for (const gap of [0,1,2,3,4,5,6,7,8]) await test(`restore refresh at drain completion loads selected archive (gap ${gap})`, async () => {
+  const controls = new Map(), $ = name => { if (!controls.has(name)) controls.set(name,{replaceChildren(){}}); return controls.get(name); };
+  const pages = [], paints = []; let injected = false, restored;
+  const c = createContext({$,el:()=>({}),session:{run:null,archive:null,status:'idle'},
+    catalog:{records:[],next:null,prev:null},catalogCursor:null,catalogDirection:'next',catalogDirty:true,catalogStamp:'',
+    refreshing:null,refreshAgain:false,savedView:null,inspectionPending:null,
+    resetResultPages(){},renderResults(){paints.push(c.savedView?.id ?? null);},
+    store:{async list(){return {records:[{id:'available',label:'Inspection of run 2',created:1,total:1}],next:null,prev:null};},
+      async page(archive){pages.push(archive);return {id:archive,total:1,page:0,pages:1,answers:[{number:1}]};}},
+    async saveDisplay(){
+      if (injected) return;
+      injected = true;
+      // initialize can resume after the drain loop ends, before an external
+      // Promise.finally releases its cached promise.
+      let remaining = gap;
+      const admit = () => { if (remaining-- > 0) { queueMicrotask(admit); return; }
+        c.outputMode = 'inspect'; c.inspected = {archive:'available'}; c.answerNumber = 1;
+        restored = c.refreshSaved();
+      };
+      queueMicrotask(admit);
+    }});
+  runInContext(productionSection('  function refreshSaved()', '  function renderResults()'),c);
+  await c.refreshSaved();
+  while (!restored) await Promise.resolve();
+  await restored;
+  assert.deepEqual(pages,['available']);
+  assert.equal(c.savedView.id,'available');
+  assert.equal(paints.at(-1),'available');
+  assert.equal(c.refreshAgain,false);
+});
+
+for (const kind of ['editor','display']) for (const gap of [0,1,2,3,4]) await test(`${kind} save retains a change arriving at drain completion (${gap})`, async () => {
+  const controls = {program:{value:'first'},query:{value:'p(A)'},history:{checked:false}};
+  const writes = []; let injected = false, next;
+  const c = createContext({$:name=>controls[name],connection:{state:{boot:'a'.repeat(32)}},
+    model:untouched,dirty:false,editorDirty:false,editorWriting:null,answerNumber:1,
+    inspectionSelection:{checkpoint:()=>null},store:{async saveRecovery(key,value) {
+      writes.push(structuredClone(value));
+      if (injected) return;
+      injected = true;
+      let remaining = gap;
+      const admit = () => {
+        if (remaining-- > 0) { queueMicrotask(admit); return; }
+        controls.program.value = 'second'; c.answerNumber = 2;
+        next = kind === 'editor' ? c.saveEditor() : c.saveDisplay();
+      };
+      queueMicrotask(admit);
+    }}});
+  runInContext(productionSection('  function saveEditor()', '  function restoreDisplay('),c);
+  await (kind === 'editor' ? c.saveEditor() : c.saveDisplay());
+  while (!next) await Promise.resolve();
+  await next;
+  assert.equal(kind === 'editor' ? writes.at(-1).program : writes.at(-1).answerNumber,kind === 'editor' ? 'second' : 2);
+  assert.equal(c[kind + 'Writing'],null);
+  assert.equal(c[kind + 'Dirty'],false);
+  c.store.saveRecovery = async()=>{throw Error('Storage unavailable');};
+  controls.program.value = 'third'; c.answerNumber = 3;
+  await assert.rejects(kind === 'editor' ? c.saveEditor() : c.saveDisplay(),/Storage unavailable/);
+  c.store.saveRecovery = async(_key,value)=>writes.push(structuredClone(value));
+  await (kind === 'editor' ? c.saveEditor() : c.saveDisplay());
+  assert.equal(kind === 'editor' ? writes.at(-1).program : writes.at(-1).answerNumber,kind === 'editor' ? 'third' : 3);
 });
 
 });

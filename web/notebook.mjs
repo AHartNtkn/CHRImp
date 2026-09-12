@@ -540,13 +540,15 @@ function mountNotebook() {
   function saveEditor() {
     if (!connected || restoring) return Promise.resolve();
     editorDirty = true;
-    editorWriting ??= (async () => {
-      while (editorDirty) {
-        editorDirty = false;
-        await store.saveRecovery('editor', {model,program:$('program').value,query:$('query').value,dirty,
-          history:$('history').checked,run:session.run,boot:connection.state.boot,selection:inspectionSelection.checkpoint()});
-      }
-    })().finally(() => { editorWriting = null; });
+    editorWriting ??= Promise.resolve().then(async () => {
+      try {
+        while (editorDirty) {
+          editorDirty = false;
+          await store.saveRecovery('editor', {model,program:$('program').value,query:$('query').value,dirty,
+            history:$('history').checked,run:session.run,boot:connection.state.boot,selection:inspectionSelection.checkpoint()});
+        }
+      } finally { editorWriting = null; }
+    });
     return editorWriting;
   }
   function displayState() {
@@ -557,15 +559,17 @@ function mountNotebook() {
     if (!connected || restoring) return Promise.resolve();
     if (JSON.stringify(displayState()) === displayStamp && !displayWriting) return Promise.resolve();
     displayDirty = true;
-    displayWriting ??= (async () => {
-      while (displayDirty) {
-        displayDirty = false;
-        const value = displayState(), stamp = JSON.stringify(value);
-        if (stamp === displayStamp) continue;
-        await store.saveRecovery('display',value);
-        displayStamp = stamp;
-      }
-    })().finally(() => { displayWriting = null; });
+    displayWriting ??= Promise.resolve().then(async () => {
+      try {
+        while (displayDirty) {
+          displayDirty = false;
+          const value = displayState(), stamp = JSON.stringify(value);
+          if (stamp === displayStamp) continue;
+          await store.saveRecovery('display',value);
+          displayStamp = stamp;
+        }
+      } finally { displayWriting = null; }
+    });
     return displayWriting;
   }
   function restoreDisplay(saved) {
@@ -601,8 +605,13 @@ function mountNotebook() {
       restoring = false; renderWorkspace(); renderRun(); renderInspectionControls(); await refreshSaved();
     }
     await saveEditor();
-    if (session.run !== null) message(`Run ${session.run} restored ${session.status} at ${session.applications} applications.${outputMode === 'inspect' && inspected ? ' Showing saved inspection.' : ''}${session.stepPending ? ' Step continues the unfinished application.' : ''}`);
-    else if (editor || display) message(outputMode === 'inspect' && inspected ? 'Notebook restored. Showing saved inspection.' : 'Notebook restored.');
+    const inspectionNotice = display?.mode === 'inspect' && display.inspectionArchive
+      ? outputMode === 'inspect' && savedView?.id === inspected?.archive
+        ? savedView.total > 0 ? ' Showing saved inspection.' : ' Saved inspection has no completed answers.'
+        : ' Saved inspection is unavailable. Choose a saved archive.'
+      : '';
+    if (session.run !== null) message(`Run ${session.run} restored ${session.status} at ${session.applications} applications.${inspectionNotice}${session.stepPending ? ' Step continues the unfinished application.' : ''}`);
+    else if (editor || display) message(`Notebook restored.${inspectionNotice}`);
   }
   function message(text, error = false) { $('message').textContent = text; $('message').classList.toggle('error', error); }
   async function safe(action) { try { return await action(); } catch (error) { message(error.message, true); } }
@@ -716,7 +725,7 @@ function mountNotebook() {
     $('run-status').textContent = session.status;
     $('applications').textContent = `${session.applications} applications`;
     const runIds = [...new Set([...session.runs.keys(), ...(session.run === null ? [] : [session.run])])];
-    $('execution').replaceChildren(el('option', 'Current notebook', {value: ''}), ...runIds.map(run => el('option', `Run ${run}`, {value: run})));
+    $('execution').replaceChildren(el('option', 'Current notebook', {value: '', disabled: session.run !== null}), ...runIds.map(run => el('option', `Run ${run}`, {value: run})));
     $('execution').value = session.run ?? '';
     $('execution').disabled = inspecting || launching || session.starting;
     $('release-run').disabled = session.run === null || inspecting || launching || session.starting;
@@ -740,51 +749,62 @@ function mountNotebook() {
   function refreshSaved() {
     refreshAgain = true;
     if (refreshing) return refreshing;
-    refreshing = (async () => {
-      while (refreshAgain) {
-        refreshAgain = false;
-        const terminal = ['done','canceled'].includes(session.status) ? `${session.status}:${session.ack}` : '';
-        const stamp = `${session.archive}|${inspected?.archive}|${terminal}`;
-        if (stamp !== catalogStamp) { catalogStamp = stamp; catalogDirty = true; }
-        if (catalogDirty) {
-          const cursor = catalogCursor, direction = catalogDirection;
-          const page = await store.list({cursor, direction, size:32});
-          if (cursor !== catalogCursor || direction !== catalogDirection) { refreshAgain = true; continue; }
-          catalog = page; catalogDirty = false;
+    refreshing = Promise.resolve().then(async () => {
+      try {
+        while (refreshAgain) {
+          refreshAgain = false;
+          const terminal = ['done','canceled'].includes(session.status) ? `${session.status}:${session.ack}` : '';
+          const stamp = `${session.archive}|${inspected?.archive}|${terminal}`;
+          if (stamp !== catalogStamp) { catalogStamp = stamp; catalogDirty = true; }
+          if (catalogDirty) {
+            const cursor = catalogCursor, direction = catalogDirection;
+            const page = await store.list({cursor, direction, size:32});
+            if (cursor !== catalogCursor || direction !== catalogDirection) { refreshAgain = true; continue; }
+            catalog = page; catalogDirty = false;
+          }
+          const collection = outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive;
+          const requestedPage = answerPage;
+          const view = collection ? await store.page(collection, requestedPage) : null;
+          if (collection !== (outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive) || requestedPage !== answerPage) {
+            refreshAgain = true; continue;
+          }
+          // An archive locator is not a loaded view. Reconcile only a definitive
+          // missing result; storage errors above retain the selection for retry.
+          if (collection && !view && (outputMode === 'inspect' || savedSelection)) {
+            if (outputMode === 'inspect') { inspected = null; outputMode = 'answers'; }
+            else savedSelection = '';
+            answerNumber = null; answerPage = 0; resetResultPages();
+            refreshAgain = true; continue;
+          }
+          const records = catalog.records.map(record => record.id === view?.id ? {...record, total:view.total} : record);
+          if (savedSelection && view && !records.some(record => record.id === savedSelection)) records.unshift(view);
+          $('saved-run').replaceChildren(el('option', 'Current run', { value: '' }), ...records.map(record => el('option', `${record.label} · ${record.total} answers · ${new Date(record.created).toLocaleString()}`, { value: record.id })));
+          $('saved-run').value = savedSelection;
+          $('collections-prev').disabled = !catalog.prev;
+          $('collections-next').disabled = !catalog.next;
+          if (savedView && savedView.id !== view?.id) resetResultPages();
+          savedView = view; answerPage = view?.page ?? 0;
+          $('saved-page').value = answerPage + 1;
+          $('saved-page').max = view?.pages ?? 1;
+          $('saved-pages').textContent = `/ ${view?.pages ?? 1}`;
+          $('saved-prev').disabled = answerPage === 0;
+          $('saved-next').disabled = !view || answerPage + 1 >= view.pages;
+          $('clear-answers').disabled = !view || (view.id === session.archive && session.run !== null) || view.id === inspectionPending?.archive;
+          renderResults();
+          await saveDisplay();
         }
-        const collection = outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive;
-        const requestedPage = answerPage;
-        const view = collection ? await store.page(collection, requestedPage) : null;
-        if (collection !== (outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive) || requestedPage !== answerPage) {
-          refreshAgain = true; continue;
-        }
-        const records = catalog.records.map(record => record.id === view?.id ? {...record, total:view.total} : record);
-        if (savedSelection && view && !records.some(record => record.id === savedSelection)) records.unshift(view);
-        $('saved-run').replaceChildren(el('option', 'Current run', { value: '' }), ...records.map(record => el('option', `${record.label} · ${record.total} answers · ${new Date(record.created).toLocaleString()}`, { value: record.id })));
-        $('saved-run').value = savedSelection;
-        $('collections-prev').disabled = !catalog.prev;
-        $('collections-next').disabled = !catalog.next;
-        if (savedView && savedView.id !== view?.id) resetResultPages();
-        savedView = view; answerPage = view?.page ?? 0;
-        $('saved-page').value = answerPage + 1;
-        $('saved-page').max = view?.pages ?? 1;
-        $('saved-pages').textContent = `/ ${view?.pages ?? 1}`;
-        $('saved-prev').disabled = answerPage === 0;
-        $('saved-next').disabled = !view || answerPage + 1 >= view.pages;
-        $('clear-answers').disabled = !view || (view.id === session.archive && session.run !== null) || view.id === inspectionPending?.archive;
-        renderResults();
-        await saveDisplay();
-      }
-    })().finally(() => { refreshing = null; });
+      } finally { refreshing = null; }
+    });
     return refreshing;
   }
   function renderResults() {
     const collection = outputMode === 'inspect' ? inspected?.archive : savedSelection || session.archive;
-    const stream = savedView?.id === collection ? savedView : null;
+    const stream = savedView?.id === collection && savedView.page === answerPage ? savedView : null;
     $('output-mode').value = outputMode;
     const answers = stream?.answers ?? [];
     let answer = answers.find(answer => answer.number === answerNumber) ?? answers.at(-1);
-    answerNumber = answer?.number ?? null;
+    // A loading render has no authority to replace the restored answer locator.
+    if (stream) answerNumber = answer?.number ?? null;
     $('alternatives').replaceChildren(...answers.map(answer => el('option', `Answer ${answer.number} · completion ${answer.completion} / alternative ${answer.alternative}`, { value: answer.number })));
     $('alternatives').value = answerNumber ?? '';
     $('answer-count').textContent = stream ? `${stream.total} saved · ${answers.length} on this page${session.stream?.current && outputMode === 'answers' && !savedSelection ? ' · receiving an alternative…' : ''}` : 'No answers yet';
