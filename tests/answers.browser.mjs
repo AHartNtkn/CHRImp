@@ -1,4 +1,4 @@
-import {renderGraph,diagramControl} from '../web/graph.mjs';
+import {renderGraph,diagramControl,disposeGraph} from '../web/graph.mjs';
 import {OutputAssembler, IndexedAnswerStore} from '../web/answers.mjs';
 const assert=(ok,message)=>{if(!ok)throw new Error(message);};
 const equal=(actual,expected,message)=>assert(JSON.stringify(actual)===JSON.stringify(expected),`${message}: ${JSON.stringify(actual)} != ${JSON.stringify(expected)}`);
@@ -59,8 +59,19 @@ async function diagramChecks(log) {
     const zoomed=svg.getAttribute('viewBox').split(' ').map(Number);assert(zoomed[2]<before[2],'Zoom changes spatial viewport');
     svg.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight'}));
     assert(Number(svg.getAttribute('viewBox').split(' ')[0])>zoomed[0],'Keyboard pans canvas');
-    log('Worker layout, whole rules, nested wires, zoom and keyboard pan passed');
-  } finally {svg.remove();}
+    const query=document.createElementNS('http://www.w3.org/2000/svg','svg');query.style.cssText='width:800px;height:200px';document.body.append(query);
+    try {
+      const paint=()=>new Promise((resolve,reject)=>{
+        const timeout=setTimeout(()=>{observer.disconnect();reject(Error('Query worker timeout'));},10000);
+        const observer=new MutationObserver(()=>{if(!query.hasAttribute('aria-busy')){clearTimeout(timeout);observer.disconnect();resolve();}});
+        observer.observe(query,{attributes:true});renderGraph(query,{query:atom('request','X')},['query']);
+      });
+      await paint();equal(query.querySelectorAll('.relation-node').length,1,'Query has its own graphical canvas');
+      equal(svg.querySelectorAll('.relation-node').length,4,'Rendering query preserves program rule');
+      disposeGraph(query);await paint();equal(query.querySelectorAll('.relation-node').length,1,'Disposed canvas can render with a fresh worker scene');
+    } finally {disposeGraph(query);query.remove();}
+    log('Independent rule/query canvases, worker reclamation, nested wires and navigation passed');
+  } finally {disposeGraph(svg);svg.remove();}
 }
 export async function runChecks(log=()=>{}) {
   const names=[], dbs=[];

@@ -389,9 +389,14 @@ function computeLayout(state,scene,done) {
 }
 if(typeof document==='undefined'&&typeof self!=='undefined') {
   const scenes=new Map();
-  self.onmessage=({data})=>{try{if(data.scene)scenes.set(data.id,data.scene);self.postMessage({id:data.id,version:data.version,layout:layoutScene(scenes.get(data.id),new Map(data.positions))});}catch(error){self.postMessage({id:data.id,version:data.version,error:error.message});}};
+  self.onmessage=({data})=>{if(data.dispose){scenes.delete(data.dispose);return;}try{if(data.scene)scenes.set(data.id,data.scene);self.postMessage({id:data.id,version:data.version,layout:layoutScene(scenes.get(data.id),new Map(data.positions))});}catch(error){self.postMessage({id:data.id,version:data.version,error:error.message});}};
 }
 
+export function disposeGraph(svg) {
+  const state=canvases.get(svg);if(!state)return;
+  state.resize.disconnect();requests.delete(state.id);canvases.delete(svg);
+  layoutWorker?.postMessage({dispose:state.id});
+}
 export function diagramControl(svg,action) {canvases.get(svg)?.control(action);}
 export function renderGraph(svg,model,path,options={}) {
   const key=keyOf(path[0]==='program'?path.slice(0,3):path[0]==='query'?['query']:path),state=canvases.get(svg);
@@ -514,7 +519,7 @@ function drawScene(svg,state) {
     const drag=state.drag;state.drag=null;
     if(drag?.item?.type==='port'&&state.moved&&!options.readonly) {
       const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-variable]');
-      if(target)options.onWire?.({path:drag.item.path,port:drag.item.port},target.dataset.variable);
+      if(target?.ownerSVGElement===svg)options.onWire?.({path:drag.item.path,port:drag.item.port},target.dataset.variable);
     }
     if(state.moved&&drag?.offset)computeLayout(state,null,layout=>{state.layout=layout;drawScene(svg,state);});
     else if(state.moved)paint();

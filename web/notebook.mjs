@@ -1,4 +1,4 @@
-import { clone, at, atomOf, applyEdit, validateNotebook, renderGraph, renderScene, diagramControl, freshVariables, insertionPath } from './graph.mjs';
+import { clone, at, atomOf, applyEdit, validateNotebook, renderGraph, renderScene, diagramControl, disposeGraph, freshVariables, insertionPath } from './graph.mjs';
 import { OutputAssembler, IndexedAnswerStore } from './answers.mjs';
 import { NotebookConnection } from './connection.mjs';
 
@@ -566,6 +566,10 @@ function mountNotebook() {
   let catalog = {records:[], next:null, prev:null}, catalogCursor = null, catalogDirection = 'next', catalogDirty = true, catalogStamp = '';
   let refreshing = null, refreshAgain = false, sceneLoading = false, desiredScene = null, loadedSceneKey = null;
   let inspectionCanceled = false, runNotice = null;
+  $('query-section').append($('observations'));
+  $('query-section').insertBefore(document.querySelector('.runbar'),$('query-editor'));
+  const ruleCards=new Map();
+  const ruleObserver=new IntersectionObserver(entries=>{for(const entry of entries){const card=ruleCards.get(Number(entry.target.dataset.rule));if(card){card.visible=entry.isIntersecting;if(card.visible)card.paint?.();}}},{rootMargin:'300px'});
   const session = new RunSession(request, renderRun, store);
   const inspectionSelection = session.selection;
   inspectionSelection.persist = saveEditor;
@@ -618,7 +622,7 @@ function mountNotebook() {
     const editor = await store.recovery('editor'), display = await store.recovery('display');
     if (editor) {
       model = clone(validateNotebook(editor.model)); $('program').value = editor.program; $('query').value = editor.query;
-      dirty = editor.dirty; $('history').checked = editor.history;
+      dirty = editor.dirty; $('source-view').open=dirty; $('history').checked = editor.history;
     }
     try {
       await connection.initialize();
@@ -682,12 +686,13 @@ function mountNotebook() {
   function navigate(next) { path = next; selected = null; renderWorkspace(); }
   function renderWorkspace() {
     const disabled = !connected || restoring || dirty || busy;
+    $('query-editor').prepend($('graph-tools'));
     for (const name of ['program','query','sync','history']) $(name).disabled = !connected || restoring;
     $('graph-tools').disabled = disabled; $('inspector').disabled = disabled;
     $('undo').disabled = disabled || !undo.length; $('redo').disabled = disabled || !redo.length;
-    $('target').replaceChildren(el('option', 'Query', { value: 'query' }), ...model.program.rules.map((rule, i) => el('option', rule.name || `Rule ${i + 1}`, { value: String(i) })));
     const ruleIndex = path[0] === 'program' ? path[2] : null;
-    $('target').value = ruleIndex === null ? 'query' : String(ruleIndex);
+    $('editing-title').textContent=ruleIndex===null?'Editing query':`Editing ${model.program.rules[ruleIndex].name||`Rule ${ruleIndex+1}`}`;
+    $('add-rule').disabled=disabled;
     $('rule-name').hidden = ruleIndex === null;
     $('rule-name-input').value = ruleIndex === null ? '' : model.program.rules[ruleIndex].name ?? '';
     $('remove-rule').disabled = ruleIndex === null || disabled;
@@ -697,12 +702,36 @@ function mountNotebook() {
     if(head)$('add-kind').value='atom';
     const branch=scope.at(-2)==='items'?`Alternative ${Number(scope.at(-1))+1}`:scope.at(-1)==='query'?'Query':scope.at(-1)[0].toUpperCase()+scope.at(-1).slice(1);
     $('insertion-target').textContent=`In ${branch}`;
-    renderGraph($('editor-graph'), model, path, {
-      selected, insertion:scope, readonly: disabled, label: 'Editable query or whole rule diagram',
-      onSelect: select,
-      onConnect: variable => safe(() => { check(selected?.port !== undefined, 'Select a numbered relation port first.'); return edit({ type: 'set-port', path: selected.path, index: selected.port, variable }); }),
-      onWire: (port, variable) => safe(() => edit({type:'set-port',path:port.path,index:port.port,variable})),
+    const paint=(svg,root,label)=>renderGraph(svg,model,root,{
+      selected:root[0]===path[0]&&(root[0]==='query'||root[2]===path[2])?selected:null,
+      insertion:root[0]===path[0]&&(root[0]==='query'||root[2]===path[2])?scope:null,
+      readonly:disabled,label,
+      onSelect:value=>{path=root;select(value);},
+      onConnect:variable=>safe(()=>{check(selected?.port!==undefined,'Select a numbered port first.');return edit({type:'set-port',path:selected.path,index:selected.port,variable});}),
+      onWire:(port,variable)=>safe(()=>edit({type:'set-port',path:port.path,index:port.port,variable})),
     });
+    for(const [index,card] of ruleCards)if(index>=model.program.rules.length){ruleObserver.unobserve(card.element);disposeGraph(card.svg);card.element.remove();ruleCards.delete(index);}
+    $('program-empty').hidden=model.program.rules.length>0;
+    model.program.rules.forEach((rule,index)=>{
+      let card=ruleCards.get(index);
+      if(!card){
+        const element=el('li',undefined,{class:'rule-card','data-rule':index}),heading=el('div',undefined,{class:'section-heading'});
+        const title=button('',()=>navigate(['program','rules',index,'body']));heading.append(title);
+        const viewport=el('div',undefined,{class:'graph-scroll'}),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.id=`rule-graph-${index}`;viewport.append(svg);
+        const navigation=el('div',undefined,{class:'canvas-tools','aria-label':`Rule ${index+1} navigation`});
+        for(const [label,action] of [['−','out'],['+','in'],['Fit','fit'],['Arrange','layout'],['Expand','expand']])navigation.append(button(label,()=>diagramControl(svg,action)));
+        element.append(heading,viewport,navigation);$('rule-list').append(element);
+        card={element,title,svg,viewport,visible:false};ruleCards.set(index,card);ruleObserver.observe(element);
+      }
+      const label=rule.name||`Rule ${index+1}`;card.title.textContent=label;card.title.disabled=disabled;
+      card.element.classList.toggle('active',ruleIndex===index);
+      card.paint=()=>paint(card.svg,['program','rules',index,'body'],`Rule ${label}`);
+      if(ruleIndex===index)card.element.insertBefore($('graph-tools'),card.viewport);
+      if(card.visible||ruleIndex===index)card.paint();
+    });
+    if(ruleIndex===null)$('query-editor').prepend($('graph-tools'));
+    $('query-editor').classList.toggle('active',ruleIndex===null);
+    paint($('editor-graph'),['query'],'Query');
     renderInspector();
   }
   function renderInspector() {
@@ -1045,9 +1074,9 @@ function mountNotebook() {
   for (const control of document.querySelectorAll('[data-diagram]')) control.onclick = () => diagramControl($(control.dataset.diagram),control.dataset.action);
   $('close-selection').onclick = () => select(null);
   $('sync').onclick = () => safe(syncSource);
-  $('target').onchange = () => navigate($('target').value === 'query' ? ['query'] : ['program', 'rules', Number($('target').value), 'body']);
+  $('edit-query').onclick=()=>navigate(['query']);
   $('rule-name-input').onchange = () => safe(() => edit({ type: 'rule-name', path: path.slice(0, 3), name: $('rule-name-input').value }));
-  $('add-rule').onclick = () => safe(async () => { await edit({ type: 'add-rule' }); navigate(['program', 'rules', model.program.rules.length - 1, 'body']); });
+  $('add-rule').onclick = () => safe(async () => { await edit({ type: 'add-rule' }); navigate(['program', 'rules', model.program.rules.length - 1, 'body']);ruleCards.get(model.program.rules.length-1)?.element.scrollIntoView({block:'nearest'}); });
   $('remove-rule').onclick = () => safe(async () => { await edit({ type: 'remove-rule', index: path[2] }); navigate(['query']); });
   $('add').onclick = () => safe(async () => {
     const kind = $('add-kind').value;

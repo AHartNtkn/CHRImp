@@ -6,13 +6,13 @@ Start the local browser notebook:
 cargo run --release --offline -- --notebook
 ```
 
-Open the printed URL. Edit programs and queries as text or graphs, then run or step through execution. History recording is optional and off by default. Saved answers remain in this browser; execution handles and recorded states last until released or the server stops. Use `--port PORT` to choose a port.
+Open the printed URL. Program displays the editable rule diagrams; Query displays the editable query and its Run and Step controls, with answers underneath. Select a relation or compartment to edit it. Source text is available in the optional Source text section. History recording is optional and off by default. Saved answers remain in this browser; execution handles and recorded states last until released or the server stops. Use `--port PORT` to choose a port.
 
 Reloading the same notebook restores its editor, saved inspection, and paused execution while the server remains running. Resume continues that execution. One browser tab controls the notebook at a time; other tabs can browse saved answers.
 
 Step pauses after one rule application in the selected alternative. Pause can suspend an unfinished step; Resume step continues that same application, including after reload. Choice and history selection stay fixed until the step finishes or is canceled.
 
-The step’s inspection shows current relations and pending body expressions; open a conjunction or disjunction to inspect its contents. Choice and history controls load one page at a time and preserve your selection while you browse. Recorded failure states show rejected alternatives for inspection; they are never emitted as successful answers.
+The step’s inspection shows current relations and pending body expressions as graphs, with alternatives displayed in split boxes. Choice and history controls load one page at a time and preserve your selection while you browse. Recorded failure states show rejected alternatives for inspection; they are never emitted as successful answers.
 
 Run a program with a relational query:
 
@@ -32,7 +32,7 @@ The synthesis example chooses explicitly among identity, negation, and constant 
 cargo run --release --offline -- examples/synthesis.chr --query 'synthesize(P),zero(A),one(B),evaluate(P,A,B),evaluate(P,B,A)'
 ```
 
-These examples define their operations entirely through ordinary relations and rules. Paste the file text and its query into the notebook to inspect their graphs.
+These examples define their operations entirely through ordinary relations and rules. Open Source text and paste the file text and its query to inspect their graphs.
 
 Relation arguments are variables. Relations encode structure; `X=Y` explicitly makes two variables the same. A rule head checks existing relationships without changing them.
 
