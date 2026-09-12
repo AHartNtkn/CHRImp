@@ -1,0 +1,172 @@
+# CHR architecture assessment and proposal
+
+Recommend one incremental relational engine that represents common state and work once, with explicit conditions for branch-specific differences. Prepare indexed rule plans and keep identity, occurrence ownership, scheduling, and completion in that same engine.
+
+This is a proposal for architectural review. The language and notebook are not implemented or approved for implementation. Existing experiments establish useful mechanisms and substantial counterexamples; they do not validate this exact composition or establish a universal performance winner.
+
+## Agreed language and environment
+
+The language is uniformly relational. Every relation argument is a variable. Relation names and ordered ports describe structure; the engine does not assign constructor, pair, numeric, or tree semantics to ordinary relations. Rules may identify variables. Matching only tests existing identity and never creates identity to satisfy a pattern. Body-only variables are fresh for every application.
+
+Rules use standard CHR simplification, propagation, and kept/consumed heads. Propagation fires once for each rule and ordered tuple of occurrence identities in an alternative. This bookkeeping is automatic. Relation occurrences have identities distinct from variable identities; merging variables does not merge occurrences or reset propagation eligibility.
+
+Only explicit disjunction creates search. Competing applications commit without exploring competing schedules. Scheduling within an alternative is unspecified. Search must fairly service explicit alternatives: under finite-work and sufficient-resource assumptions, divergent work in one must not starve finite progress in another. This does not promise all normal forms obtainable through different committed rule schedules.
+
+An alternative returns its residual relational graph when no further application or pending body work remains. Explicit failure rejects an alternative. First-version answers are not deduplicated. Two successful explicit alternatives may return equal graphs. An execution budget ending is unfinished execution, not failure or exhaustion.
+
+The intended environment is a local execution process with a browser notebook. Text and direct diagram editing operate on the same program. Queries, rule sides, outputs, and intermediate states have colored, port-ordered hypergraph/string-diagram views. Support stepping, continuous execution, pause/resume, and individual alternative inspection. Execution uses its submitted program. History recording is separate and opt-in; ordinary execution does not retain a past-state trace.
+
+Synthesis examples are validation cases, not the domain boundary. The architecture must be assessed across general mathematical computation: sparse and dense relations, repeated-variable joins, identities and cycles, recursion, sharing, choice correlation, resource competition, and long execution. No required finite domain, groundness, single-headedness, acyclicity, or programmer-managed scheduling protocol follows from the examples.
+
+## Evidence that changes the architectural decision
+
+The evidence repository is `/home/ahart/Documents/CHRLang`. Reports below describe their registered experiments, not new measurements. Source inspection included working-tree files; the repository also contains ongoing work. The review observed HEAD `4ed9c045dc4eccfca58fb25e39a4f13f46a1a223`. Historical reports must be interpreted using their own frozen inputs.
+
+| Area | Finding and boundary | Consequence |
+|---|---|---|
+| Relational identity and ownership | [S02 relational owner](/home/ahart/Documents/CHRLang/docs/experiments/results/S02-relational-owner.md) validates equality-sensitive indexes and distinct consuming occurrences. It also implements constructor theory. | Transfer the incidence and ownership obligations. Constructor congruence, clashes, and occurs checks do not belong in this language's generic kernel. |
+| Complete conditional execution | [Runtime source tests](/home/ahart/Documents/CHRLang/research/chr-direct-conditional/tests/runtime.rs) exercise shared applications, consuming effects, dynamic choices, and publication. | Supported state can execute CHR; a term-only choice graph is insufficient. |
+| Common work and adverse ordinary work | [S10 arrival lifecycle](/home/ahart/Documents/CHRLang/docs/experiments/results/S10-arrival-lifecycle.md) reports 3.84 ms conditional versus 53.95 ms inferred specialization on one substantive choice/check case, but 352.74 ms versus 5.83 ms on its alias stream. These are exploratory medians in matched cells. | Neither unconditional symbolic processing nor repeating execution across explicit states is justified as a universal policy. The adverse conditional case is a design problem to address, not an excluded workload. |
+| Conditional overhead attribution | [S08 support attribution](/home/ahart/Documents/CHRLang/docs/experiments/results/S08-support-allocation-attribution.md) attributes 98.2% of execution allocation in its alias witness to Boolean operations. [Later costs](/home/ahart/Documents/CHRLang/docs/experiments/results/S08-support-lifecycle.md) show that identities and bounded caching help without closing the complete-path gap. | Cheap conditions must stay cheap. A cache alone is not a demonstrated solution. |
+| Representation and output interact | [S08 support order](/home/ahart/Documents/CHRLang/docs/experiments/results/S08-support-order-gate.md) reduces support nodes from 16,986 to 613 with reversed order, while combined-policy engine calls increase because of observation. An opposing arrival witness reverses construction costs. | Do not choose the Boolean representation or its order independently of exact observation and lifetime. |
+| Matching | [S01 partner order](/home/ahart/Documents/CHRLang/docs/experiments/results/S01-partner-order-entry.md) reduces candidate visits from 515 to 7 using an available key. [Intermediate joins](/home/ahart/Documents/CHRLang/docs/experiments/results/S01-intermediate-lifecycle.md) still cost more allocation and peak memory than local scanning in all 48 compared cells. | Prepare useful access plans. Do not automatically retain every partial join or materialize every candidate tuple. |
+| Demand and local graph execution | [S03 demand lifecycle](/home/ahart/Documents/CHRLang/docs/experiments/results/S03-demand-lifecycle.md) shows both favorable opaque work and adverse early discrimination. [Resource support](/home/ahart/Documents/CHRLang/docs/experiments/results/S03-demand-resource.md) has explicit restrictions on writable aliases, resource posts, and propagation. | Demand is a serious competitor, but that implementation does not establish a general CHR foundation. |
+| Why reuse occurs | [S03 matched dependencies](/home/ahart/Documents/CHRLang/docs/experiments/results/S03-match-dependencies.md) equalizes source expansions between ordinary demand and pull-tabbing in 72 cases. | Dependency validity, physical graph rewrites, and storage sharing are different mechanisms. A graph representation by itself does not establish shared execution. |
+| Restoration | [S04 source gate](/home/ahart/Documents/CHRLang/docs/experiments/results/S04-restoration-source-gate.md) validates copying, trails, and replay with fair-service witnesses. [Lifecycle costs](/home/ahart/Documents/CHRLang/docs/experiments/results/S04-lifecycle-pilot.md) give opposing regimes; a matcher defect partly contaminated the comparison. | These are viable state-management choices, not evidence that repeated common execution is preferable. |
+| Source preparation and compilation | [S05 amortization](/home/ahart/Documents/CHRLang/docs/experiments/results/S05-call-amortization.md) finds no qualified generated gain over prepared data plans plus inference, and 112 compilation-inclusive losses against installed-runtime controls. Reuse remains competitive against generated controls. | Start with prepared executable plans. Native generation and reuse require separate justifications; compilation is not a substitute for avoiding redundant work. |
+| Reuse with effects | [S05 body reuse](/home/ahart/Documents/CHRLang/docs/experiments/results/S05-body-reuse.md) preserves 90,792 checkpoints while matching, freshening, consumption, and propagation remain with the caller. Complete costs are unmeasured. | Never replay effects merely because inputs resemble an earlier call. Sharing between distinct applications needs its own dependency and fresh-identity account. |
+| Direct solving | [S06 repaired projection](/home/ahart/Documents/CHRLang/docs/experiments/results/S06-connected-repair-costs.md) improves its earlier implementation but qualifies faster than enumeration in none of 192 cases. Other finite fragments have favorable regimes. | Direct solving is a source-dependent transformation, not a general replacement justified by compact internal formulas. |
+| Progress and ownership | [S08 equality/observation interaction](/home/ahart/Documents/CHRLang/docs/experiments/results/S08-equality-overlap.md) shows a faster producer delivering fewer answers within the bound until backlog control is added. | Source scheduling, observer scheduling, reclamation, and throughput must be assessed together. |
+| Reclamation | [S08 metadata reclamation](/home/ahart/Documents/CHRLang/docs/experiments/results/S08-metadata-reclamation-gate.md) establishes reclamation of certain results and claims that cannot serve pending contexts. It does not collect all graph nodes, identities, or propagation state. | Use future reachability as the criterion. Query-disposal checks and a collector for one metadata category do not establish sustainable memory. |
+| Parallel work | [S09 factored lowering](/home/ahart/Documents/CHRLang/docs/experiments/results/S09-factored-lowering.md) finds serial contraction faster than four persistent workers in ten contractible cases. Some regional runners publish unique products while accounting for raw multiplicity separately. | Compare useful work after optimization, and requalify duplicate delivery. Neither those costs nor independent-worker results establish connected parallel performance. |
+
+The large [disposition review](/home/ahart/Documents/CHRLang/docs/experiments/results/R07-design-disposition-review.md) records many unresolved variants. A research-priority decision is not negative evidence about an architecture. Later reports supersede earlier boundaries where they supply additional results.
+
+## Complete alternatives
+
+**Incremental execution with persistent state and reusable computations** is the strongest conventional competitor. It combines good access plans, shared immutable storage, isolated updates, fair continuations, and dependency-checked reuse. It can avoid much symbolic-condition overhead. Its weakness is repeated execution across alternatives unless recognition or an existing shared computation catches it; exact recognition, transport, and retained keys have real costs. Comparing against a copying interpreter alone would understate this competitor.
+
+**An integrated conditional relational graph** represents occurrence liveness, identities, pending work, and propagation under conditions on explicit choices. It can perform an applicable operation once for many alternatives without first enumerating their states. Its intended capability includes arbitrary multiheaded interactions; that still requires the commitment and indexing protocols below. Its central risks are condition growth, conditional identity lookup, invalidation, and observation overhead. This is the recommended family, subject to the concrete design and outstanding checks below.
+
+**Demand-driven derivation graphs** retain suspended computations and reuse them according to what they read. They are attractive when much work remains independent of choices until late inspection. To serve as the whole language, they must also handle arbitrary interacting relations, consuming effects, fresh choices, and off-output failure. The existing restricted call fragments do not prove that extension. Imposing their restrictions on users is not part of this proposal.
+
+**Direct relational or derivation compilation** can eliminate more work than any general executor. However, its eligibility and transport must preserve explicit choice, fresh identities, residual graphs, and resource interactions. It belongs as a proved transformation of the same language, not as a second interpretation silently chosen when a query resembles a benchmark.
+
+The recommendation rests on covering general relational interactions while sharing an existing computation across alternatives. It does not rest on the assertion that symbolic conditions are always efficient. The first and third alternatives remain required challengers to the complete cost model.
+
+## Proposed engine responsibilities
+
+### One relational state with conditional differences
+
+Store occurrences as a stable identity, a relation name, ordered variable handles, and a condition describing where the occurrence is live. Store rule plans and body templates once. Query state, prepared program data, results retained by users, and optional recordings have separate ownership.
+
+A condition denotes a set of already-defined explicit choice histories. It is internal bookkeeping, not a new source choice. Unconditional and identical-condition operations take direct paths. General intersections, unions, and differences use shared canonical decision diagrams, with reusable operation storage and bounded auxiliary caches. The physical ordering of decisions is separate from the order in which source choices were born.
+
+The proposed response to low-sharing overhead is to scope uniform work under one condition and perform its interior operations directly, rather than constructing a Boolean job for every action. This is permissible only while the affected identity and resource records have uniform interpretations over that condition. If an operation touches a record that differs across contexts, it performs the relevant conditional operation; it does not copy a complete state or guess that current graph disconnection proves independence. Establishing that this representation actually avoids the stream pathology, including the cost of testing uniformity, is a required comparison. Cheap Boolean identities alone have already proved insufficient in the experiments.
+
+Choice creates two supported body continuations and preserves their shared surrounding work. It does not copy the relation store. A common application can execute once on its applicable condition. Different application occurrences and their fresh variables remain logically distinct even when some immutable representation is shared.
+
+Physical simplification of conditions must preserve answer multiplicity. Inactive nested choices do not multiply an unrelated answer. Equal normal forms from two actual alternatives remain two answers. A compact record of causal choice births is therefore distinct from the Boolean representation of liveness.
+
+For a concrete sharing obligation, consider an explicit choice between adding `a(X)` and `b(X)`, alongside a chain of rules rewriting `work(X)` to `done(X)`. If those rules neither inspect nor interact with `a` or `b`, the same chain should serve both alternatives. Add a rule joining `work(X)` with `a(X)`, and that independence no longer holds. The implementation must preserve the new interaction rather than trusting a cached assumption based on the original graph. With many independent choices, this distinction separates necessary answer enumeration from repeated execution of the same unaffected chain.
+
+### Variable identity and matching
+
+Use a representative forest for variable equivalence, with conditional parent changes where alternatives disagree. Resolve and merge only the affected region. Compression is valid only on the condition under which the path was established. Uniform identity regions use ordinary representative operations; no term construction or occurs-check traversal is involved.
+
+This is a proposed physical representation, not a measured selection over contextual direct-redirection alternatives. Conditional forest depth, partition growth, and merge costs need comparison with those alternatives. Unconditional equivalence must never leak from a local choice to its sibling.
+
+Prepare relation/arity dispatch, repeated-variable tests, partner access order, and occurrence-distinctness checks from the rules. Use live port indexes and lazy resumable joins. A merge repairs affected keys and activates newly enabled matches, including joins across different relation names. Matching returns both a local variable environment and the condition under which it is valid.
+
+Retain dependency information for ongoing work. Do not restart unrelated work on every global update. Retained partial joins require measured reuse and invalidation benefit; a dense Cartesian intermediate is not justified by the mere availability of memory. Any policy that enables retention must charge construction, updates, disposal, and transitions between policies.
+
+### Commitment and common execution
+
+For a candidate ordered occurrence tuple, intersect head liveness, identity tests, and permitted propagation support. Subtract contexts where that propagation already happened or the query has failed. Validate the dependencies read during preparation before commitment.
+
+One serial commit owner updates consumed occurrence support, propagation eligibility, and pending body obligations together. Large preparation work is resumable; a commit publishes a finite prepared update rather than exposing half an application. Conflicting applications commit according to an allowed policy. The engine does not search alternate conflict resolutions.
+
+Identity-sensitive and consuming effects share only where their validity has been established. A repeated pure body may admit additional reuse, but this is distinct from sharing the same application over many alternatives. The initial architecture must not require hashing and comparing complete states to discover common work it already represents.
+
+Shared execution needs a projection argument: selecting any active explicit history must yield fresh application variables, legal occurrence consumption, and propagation eligibility for that history. Physical node reuse must not correlate choices born in independent applications. Conversely, repeatedly observing a choice already born in one application must retain its correlation.
+
+### Fair progress, normal forms, and inspection
+
+Service discovery, identity operations, body execution, condition operations, and publication through finite resumable work units. Ageing or round-robin service must prevent new work from continually bypassing older live obligations. Dependency invalidation must not allow an unrelated continuing branch to restart a finite sibling indefinitely.
+
+Maintain completion information per condition. A region can publish only after its relevant pending effects, updates, and discovery are settled and it has no unused enabled application. All active relations count, including relations disconnected from displayed query variables. No global completion barrier may make a finished region wait for a divergent sibling.
+
+Observation has a bounded outstanding-work policy and receives fair service alongside execution. Avoid enumerating the Cartesian product of independent alternatives until concrete results are requested. Requested output can itself be exponential; redundant internal execution before output remains an implementation problem, not an unavoidable output cost.
+
+Inspection projects a selected alternative from the live engine. Rule stepping advances its logical rule application while the engine may internally share the operation. The UI must not force ordinary execution to maintain separate branch snapshots or past-state traces.
+
+### Reclamation and compilation
+
+Track roots from live occurrences, identities, continuations, propagation records still relevant to live occurrences, active observers, and explicit user-held results or recordings. Reclaim unreachable state during continuing execution, not only at query disposal. Unique tables and caches cannot accidentally keep all historical conditions alive. Handle reuse must invalidate weak caches safely.
+
+Fresh future work must not recreate identity, failure, or publication ambiguities after reclamation. A live propagation tuple still needs its once-only record; the architecture cannot reclaim that obligation merely because a result was delivered. Deep graph disposal and collection must also yield.
+
+Compile rules to reusable data plans first. Infer properties that simplify a plan, such as absence of identity changes, rather than requiring users to declare restrictive language modes. Native generation, region solvers, and parallel workers are additional implementation choices only after their full costs and semantic boundaries qualify. Multiple independent queries can have separate owners; connected parallel commitment is a distinct problem.
+
+## Protocol details required by the review
+
+These specifications make the candidate more concrete. They remain design obligations to verify, rather than properties established by the existing prototypes.
+
+**Uniformity is a property of a particular operation and condition.** Its certificate names the parent links, indexed relation buckets, live occurrence conditions, and propagation entries the operation reads. Every read must have the same interpretation throughout the condition. Each certificate records dependencies and their generations. A conditional update invalidates only the intersecting portion of a certificate, which must be rechecked or partitioned before reuse. Uniformity is not inferred merely from a lack of recent changes. Its discovery and maintenance costs belong in the comparison.
+
+**An index lookup produces supported candidates, not unconditional matches.** For `p(X), q(X)` with `p(A), q(B)`, merging A and B only under C must expose the joined tuple under C alone. Keep occurrence IDs in postings so equal rows remain distinct. Identity parent updates and corresponding index visibility publish together; path compression preserves the same conditional lookup result. A suspended cursor retains its enumeration position and dependency information. New postings enter a delta cursor; propagation/consumption checks suppress overlapping rediscovery, not distinct occurrences.
+
+**Semantic updates publish through a consistent current root.** Use persistent, structurally shared index/state roots for prepared updates and explicit inspections. They are transient execution ownership, not a default history log. A query has one serial mutation lane: once selected, an update prepares against the current root in finite resumable units, and later semantic writes wait until it publishes or aborts. Read-only discovery and inspection may continue against a stable root. This avoids an update being restarted forever by writers while it prepares. Publishing the new root is constant-size; constructing its potentially large delta is charged and yields. No source-rule execution recursively runs inside that transaction.
+
+**Revalidate both kept and consumed heads.** A candidate prepared for C may have a head consumed later under D. When selected for commitment, recompute eligibility against the current root and intersect with current liveness of every head, identity requirements, live alternatives, and unused propagation support. Commit only the surviving region. If a prior change enables a different tuple, delta discovery handles it. A stale candidate is never permission to consume its original full region.
+
+**One published application event owns its fresh variables and body continuations.** The event has a unique identity and an exact support E. It atomically establishes consumed support, propagation support, and pending body work. If the same propagation tuple later becomes eligible on an additional region, subtract its already-fired support and publish a distinct event for the novel region. Repeated discovery of overlapping support cannot execute that overlap again. Fresh choice births belong to the particular event and body position, not merely the rule name. A shared physical fresh-variable handle denotes a fresh variable separately in each projected alternative of its event; there is no cross-alternative identity operation.
+
+**Normal-form publication has a completion certificate.** Discovery maintains a generation for each relevant index/dependency set and accounts for its unfinished cursors. Body obligations, pending identity/index updates, selected applications, and relevant notifications must be settled for the candidate condition. A completion attempt records the generations it checked and its covered condition. The mutation lane revalidates that certificate before moving the region to completed status. A newly posted relation or merge makes the affected part ineligible for completion until delta discovery settles it. Unrelated updates must not invalidate a certificate globally.
+
+**Fairness must include completion and transaction selection.** Each queue has a finite admission boundary per service round. New work enters a later round; partially serviced tasks retain their age. A selected finite update is not indefinitely retried, and its preparation yields to other service categories and the UI. Proving fair delivery still requires showing that a finite derivation cannot accumulate infinitely many prerequisite administrative tasks. A FIFO queue or a passing finite-sibling test is not that proof. Large-but-finite operations also need latency measurement; mathematical termination is not an ergonomic responsiveness result.
+
+**Source completion and delivery have separate lifecycles.** A completed region enters resumable graph projection, then a bounded delivery queue. Limits cover projection builders, staged results, queue contents, and consumer-owned results separately; a queue count alone does not bound bytes. Pause preserves pending delivery. Cancellation stops further source progress and unfinished projections while retaining already queued/delivered results until the UI explicitly releases them. An answer event is published at most once by its completion identity; equal graphs from distinct events remain separate. Source exhaustion means no live unfinished source region; delivery completion additionally means every retained completed result has been delivered or explicitly discarded.
+
+**Only semantically live roots retain execution state.** Roots are unfinished work and its read dependencies, live residual occurrences for unfinished/completed-undelivered regions, propagation records whose tuples can still be encountered, active projection cursors, selected updates, and explicit user-held snapshots/results. An allocated occurrence or variable is not automatically a root. Causal birth information remains only while it is needed to interpret live contexts or distinguish pending answer events. Collection may reclaim a fact's dead support without reclaiming its live support elsewhere. Reused storage handles carry generations; cached entries cannot mistake new records for old identities.
+
+**Inspection freezes a coherent view only when requested.** Inspection pins an immutable committed root while creating a selected projection, then releases that root unless the user retains the snapshot. Collection cannot invalidate pinned data. Stepping the selected alternative allows one logical source application for that alternative; the UI reports if the same shared event also advances siblings. This does not require copying or unsharing those siblings. Internal preparation steps do not appear as completed rule applications. These are proposed interface semantics for review, not a request to add live program replacement.
+
+## Broad challenges and approval boundaries
+
+The following matrix is the required architecture challenge, not a claim that these cases have already passed in the proposed engine. Vary each relevant dimension over sizes and interactions; do not combine cells into an invented average workload.
+
+| Regime | The design must establish |
+|---|---|
+| No disjunction; tiny and large ordinary rewrites | Direct identity and support handling; no per-alternative administration where no alternatives exist. Compare complete preparation and runtime with strong data-plan execution. |
+| Sparse selective joins and dense weakly keyed joins | Index benefit without compulsory materialization of full products; bounded work between yields; efficient all-compatible and mostly-rejected partners. |
+| Sparse merges, high-degree merges, long alias chains, cyclic relational graphs | Correct activation and context isolation; measured representative/redirection tradeoffs; no built-in tree restriction. |
+| Large common prefixes and substantive common work after choices | Shared execution, not only shared bytes. Physical common work must not grow merely in proportion to the number of represented alternatives. |
+| Early discrimination, early failure, mostly distinct work | Charge recognition and support maintenance; do not perform arbitrary amounts of speculative common work before servicing failures. |
+| Independent components that later interact | Independence cannot be inferred from current variable disjointness alone. Consumption, future posts, and later identity changes must reconnect correctly. |
+| Overlapping consumers and propagation with changing identities | Legal single commitments, occurrence multiplicity, context-specific propagation, and fresh application identities. |
+| Continuing recursion beside finite results | Progress during matching, equality, invalidation, publication, collection, and cancellation, not just between top-level rule calls. |
+| Many tiny answers and large shared answers | Exact graph projection, duplicate alternative delivery, bounded observer backlog, and output retention separated from engine retention. |
+| Stable live state over a long run; then a genuinely growing frontier | Explain memory by live semantic obligations and explicitly retained outputs. Distinguish necessary live growth from accumulated dead records. |
+| Repeated and unique queries, cold and warm preparation | Charge cache keys, misses, transfer, compilation, retained artifacts, eviction, regeneration, and final disposal. |
+| Combined joins, aliases, choices, failure, and observation | The complete engine must qualify; adding isolated component improvements is not proof of an efficient composition. |
+
+Architectural endorsement still requires checking conditional identity/index completeness, fragmented application identity and commitment, the low-sharing condition/observation cost, fairness and completion certification, delivery ownership, semantic reclamation roots, and coherent inspection. In particular, the conditional identity/index composition has no complete variable-only comparison; the known low-sharing gap is unresolved for this representation; and continuing dynamic births need a complete ownership argument and long-run evidence. These are technical work for the architecture assessment, not choices to delegate to the user or reasons to exclude domains.
+
+These issues have concrete alternative designs. Compare conditional representative forests with contextual direct redirection for identity; uniform-region execution with the strongest prepared-plan/reuse engine for alias streams; and root-based collection with explicit retained-context metadata and bounded regeneration for lifetime. Retain an alternative when the evidence favors it. A statement that an optimization can be added later is not a resolution of a known fundamental cost.
+
+Before endorsing a specific implementation policy, confront each issue with its strongest applicable competitor. Reuse existing complete runners where they implement the same semantics. A translation from the term-based experiments must separately establish what remains equivalent; constructor semantics cannot silently enter ordinary relations. Existing numerical results justify candidate mechanisms and challenges, not numerical predictions for this language.
+
+The approval requested eventually is for a concrete architecture with explicit costs and supported obligations. It cannot establish a missing correctness argument or make an unexplained performance pathology acceptable. No language or notebook implementation is authorized by this document.
+
+## Verification performed for this assessment
+
+On 2026-09-12, the following existing test selection completed successfully in CHRLang with `chr-direct-conditional` default features disabled: 37 tests across six integration executables, with no failures.
+
+```sh
+cargo test --locked --offline -p chr-direct-conditional --no-default-features \
+  --test runtime --test matching_resources --test restricted_births \
+  --test composition_progress --test streaming --test equality_oracle
+```
+
+The checks cover source execution and shared consumption; nonbinding matching and resource claims; causal dynamic births; a finite sibling beside continuing work; raw output multiplicity and ownership; and conditional equality against an independent finite-tree oracle. The constructor-specific parts of that oracle do not prove the variable-only language. These reruns establish current prototype behavior on their checked cases; they are neither new performance measurements nor validation of the proposed engine.
