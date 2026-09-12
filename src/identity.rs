@@ -141,6 +141,7 @@ pub enum ResolveStatus {
 }
 #[derive(Clone, Copy)]
 enum ResolvePhase {
+    Uniform,
     Next,
     Novel,
     Remember,
@@ -181,7 +182,7 @@ impl Resolve {
             carry: scope,
             boolean: None,
             partition: None,
-            phase: ResolvePhase::Next,
+            phase: ResolvePhase::Uniform,
             visits: 0,
             discarding: false,
         }
@@ -237,6 +238,40 @@ impl Resolve {
     pub fn tick(&mut self, g: &Graph, a: &mut Arena) -> ResolveStatus {
         assert!(!self.discarding, "identity resolve has been discarded");
         match self.phase {
+            ResolvePhase::Uniform => {
+                let (variable, scope) = self.initial.take().expect("uniform identity frontier");
+                assert!(a.contains(scope), "stale or foreign condition operand");
+                if scope == Condition::FALSE {
+                    self.carry = Condition::FALSE;
+                    self.phase = ResolvePhase::Done;
+                    return ResolveStatus::Done;
+                }
+                let mut cursor = g.index.range(
+                    self.root,
+                    [PARENT, variable, 0, 0],
+                    [PARENT, variable, u64::MAX, 0],
+                );
+                if let Some((key, edge)) = cursor.next(&g.index) {
+                    // Parent partitions are disjoint. An edge covering the
+                    // whole scope certifies one hop in every projected forest.
+                    // The pinned root keeps that certificate valid while paused.
+                    if edge == Condition::TRUE || edge == scope {
+                        self.visits += 1;
+                        self.initial = Some((key[2], scope));
+                    } else {
+                        self.initial = Some((variable, scope));
+                        self.phase = ResolvePhase::Next;
+                    }
+                    return ResolveStatus::Pending;
+                }
+                self.visits += 1;
+                self.carry = Condition::FALSE;
+                self.phase = ResolvePhase::Done;
+                return ResolveStatus::Found {
+                    variable,
+                    support: scope,
+                };
+            }
             ResolvePhase::Next => {
                 let next = self.initial.take().or_else(|| {
                     self.queue

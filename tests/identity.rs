@@ -23,6 +23,84 @@ fn equal(g: &Graph, a: &mut Arena, root: Root, x: u64, y: u64, c: Condition) -> 
 }
 
 #[test]
+fn uniform_parent_walks_yield_per_edge_and_preserve_conditional_boundaries() {
+    let mut g = Graph::new(&[]);
+    let mut a = Arena::default();
+    let c = a.fresh_choice().1;
+    let empty = g.empty();
+    let mut root = merge(&mut g, &mut a, empty, 0, 1, Condition::TRUE);
+    root = merge(&mut g, &mut a, root, 2, 3, c);
+    root = merge(&mut g, &mut a, root, 4, 5, c);
+    root = merge(&mut g, &mut a, root, 2, 4, c);
+    root = merge(&mut g, &mut a, root, 0, 2, c);
+    // 1 -> 0 holds everywhere; 0 -> 2 holds only under c.
+    for (scope, expected, bound) in [
+        (c, vec![(2, c)], 4),
+        (Condition::TRUE, vec![(0, c.not()), (2, c)], 1000),
+        (c.not(), vec![(0, c.not())], 1000),
+    ] {
+        let mut job = Resolve::new(&g, root, 1, scope);
+        let mut found = Vec::new();
+        let mut done = false;
+        for _ in 0..bound {
+            let mut supports = traced(&job, job.condition_roots());
+            supports.push(c);
+            supports.extend(found.iter().map(|&(_, support)| support));
+            collect_traced(&mut g, &mut a, [root].into_iter(), supports);
+            match job.tick(&g, &mut a) {
+                ResolveStatus::Found { variable, support } => found.push((variable, support)),
+                ResolveStatus::Done => {
+                    done = true;
+                    break;
+                }
+                ResolveStatus::Pending => {}
+            }
+        }
+        assert!(
+            done,
+            "uniform parent chains need only one step per vertex plus completion"
+        );
+        found.sort_by_key(|&(variable, _)| variable);
+        assert_eq!(found, expected);
+    }
+}
+
+#[test]
+fn uniform_resolution_validates_scope_and_releases_discarded_frontiers() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    let mut g = Graph::new(&[]);
+    let mut a = Arena::default();
+    let c = a.fresh_choice().1;
+    let empty = g.empty();
+    let root = merge(&mut g, &mut a, empty, 0, 1, c);
+    for cutoff in 0..=2 {
+        let mut job = Resolve::new(&g, root, 1, c);
+        for _ in 0..cutoff {
+            job.tick(&g, &mut a);
+        }
+        assert!(job.discard_tick());
+        assert!(job.condition_roots().all(Condition::is_terminal));
+        assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&g, &mut a))).is_err());
+    }
+    let mut foreign = Arena::default();
+    let foreign_scope = foreign.fresh_choice().1;
+    let mut isolated = Resolve::new(&g, root, 99, foreign_scope);
+    assert!(catch_unwind(AssertUnwindSafe(|| isolated.tick(&g, &mut a))).is_err());
+    let mut isolated = Resolve::new(&g, root, 99, c);
+    assert_eq!(
+        isolated.tick(&g, &mut a),
+        ResolveStatus::Found {
+            variable: 99,
+            support: c
+        }
+    );
+    assert_eq!(isolated.tick(&g, &mut a), ResolveStatus::Done);
+    assert!(isolated.condition_roots().all(Condition::is_terminal));
+    let mut empty_scope = Resolve::new(&g, root, 1, Condition::FALSE);
+    assert_eq!(empty_scope.tick(&g, &mut a), ResolveStatus::Done);
+}
+
+#[test]
 fn identity_tests_are_nonbinding_and_merges_are_conditional() {
     let mut g = Graph::new(&[]);
     let mut a = Arena::default();
