@@ -14,7 +14,7 @@ use std::{
 };
 
 type Counts = BTreeMap<String, usize>;
-const CASES: &str = "rewrite sparse dense alias degree common failure distinct cyclic";
+const CASES: &str = "rewrite sparse dense alias degree common common-wide failure distinct cyclic";
 fn counts(items: &[(&str, usize)]) -> Counts {
     items
         .iter()
@@ -80,6 +80,12 @@ fn workload(case: &str, n: usize) -> Result<(String, String, usize, Vec<Counts>)
             2 * n,
             vec![counts(&[("done", n)]); 2],
         ),
+        "common-wide" => (
+            rewrite.into(),
+            format!("({}),{p}", vec!["true"; n].join(";")),
+            2 * n,
+            vec![counts(&[("done", n)]); n],
+        ),
         "failure" => one(
             rewrite,
             format!("(fail;({p}))"),
@@ -140,7 +146,7 @@ fn expected_tuples(
         tuples.entry(relation.into()).or_default().insert(ports);
     };
     match case {
-        "rewrite" | "common" | "failure" | "distinct" => {
+        "rewrite" | "common" | "common-wide" | "failure" | "distinct" => {
             for i in 0..n {
                 let v = var(&format!("V{i}"))?;
                 if case == "distinct" {
@@ -605,5 +611,34 @@ mod tests {
         }
         assert_eq!(reader.answers, 2);
         assert!(expected.is_empty());
+    }
+    #[test]
+    fn wide_common_work_runs_once_and_delivers_every_alternative() {
+        let n = 8;
+        let (program, query, applications, mut expected) = workload("common-wide", n).unwrap();
+        let mut e = Engine::new(Arc::new(
+            prepare(
+                &parse_program(&program).unwrap(),
+                &parse_query(&query).unwrap(),
+            )
+            .unwrap(),
+        ));
+        let mut reader = Reader::default();
+        for _ in 0..1_000_000 {
+            e.advance(1);
+            while let Some(event) = e.take_output() {
+                reader
+                    .push(event, &e, &mut expected, "common-wide", n)
+                    .unwrap();
+            }
+            if e.exhausted() && expected.is_empty() {
+                break;
+            }
+        }
+        assert!(e.exhausted());
+        assert!(expected.is_empty());
+        assert_eq!(reader.answers, n);
+        assert_eq!(e.applications(), applications as u64);
+        assert_eq!(applications, 2 * n);
     }
 }
