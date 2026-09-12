@@ -13,6 +13,8 @@ enum Phase {
     Births,
     Ready,
     Observe,
+    SeedVariables,
+    PruneGraph,
     Graph,
     History,
     Pending,
@@ -22,6 +24,10 @@ pub(super) struct Collection {
     phase: Phase,
     owns_lane: bool,
     prune: Option<history::Prune>,
+    prune_graph: Option<graph::Prune>,
+    variable_groups: BTreeMap<usize, (Arc<Vec<u64>>, Condition)>,
+    seed_job: Option<(usize, Job)>,
+    seed_slot: usize,
     index: usize,
     task_roots: bool,
     after: Option<u64>,
@@ -93,7 +99,8 @@ impl Engine {
             // Semantic pruning reserves the same FIFO lane as rule updates.
             // A held update can first receive physical GC, then finish and hand
             // the lane to pruning; its staged history cannot restore old records.
-            let owns_lane = (self.state.history != self.history.empty()
+            let owns_lane = (self.state.graph != self.graph.empty()
+                || self.state.history != self.history.empty()
                 || self.lane == Some(Owner::Collection))
                 && self.acquire(Owner::Collection);
             let prune = owns_lane.then(|| {
@@ -116,12 +123,27 @@ impl Engine {
                 },
                 owns_lane,
                 prune,
+                prune_graph: owns_lane.then(|| self.graph.prune(self.state.graph, self.active)),
+                variable_groups: if owns_lane {
+                    BTreeMap::from([(
+                        Arc::as_ptr(&self.variables) as usize,
+                        (self.variables.clone(), self.active),
+                    )])
+                } else {
+                    BTreeMap::new()
+                },
+                seed_job: None,
+                seed_slot: 0,
                 index: 0,
                 task_roots: false,
                 after: None,
                 slot: 0,
                 trace: TraceCursor::default(),
-                graph_roots: vec![self.state.graph],
+                graph_roots: if owns_lane {
+                    vec![]
+                } else {
+                    vec![self.state.graph]
+                },
                 history_roots: if owns_lane {
                     vec![]
                 } else {
@@ -164,6 +186,21 @@ impl Engine {
                     if !c.task_roots {
                         match &task.task {
                             Task::Body(b) => {
+                                if c.owns_lane {
+                                    let key = Arc::as_ptr(&b.variables) as usize;
+                                    match c.variable_groups.entry(key) {
+                                        std::collections::btree_map::Entry::Vacant(entry) => {
+                                            entry.insert((b.variables.clone(), b.scope));
+                                        }
+                                        std::collections::btree_map::Entry::Occupied(entry) => {
+                                            c.seed_job = Some((
+                                                key,
+                                                self.arena
+                                                    .start(Operation::Or(entry.get().1, b.scope)),
+                                            ));
+                                        }
+                                    }
+                                }
                                 if let Some(u) = &b.update {
                                     c.graph_roots.extend(u.roots());
                                 }
@@ -183,6 +220,11 @@ impl Engine {
                             Task::Init(_) => {}
                         }
                         c.task_roots = true;
+                    } else if let Some((key, job)) = &mut c.seed_job {
+                        if let Progress::Complete(support) = job.tick(&mut self.arena) {
+                            c.variable_groups.get_mut(key).expect("variable group").1 = support;
+                            c.seed_job = None;
+                        }
                     } else {
                         match task.trace(&mut c.trace) {
                             Step::Root(root) => c.conditions.push(root),
@@ -244,8 +286,36 @@ impl Engine {
                         match observer.trace(&mut c.trace) {
                             Step::Root(root) => c.conditions.push(root),
                             Step::Pending => {}
-                            Step::Done => c.phase = Phase::Graph,
+                            Step::Done => c.phase = Phase::SeedVariables,
                         }
+                    }
+                } else {
+                    c.phase = Phase::SeedVariables;
+                }
+            }
+            Phase::SeedVariables => {
+                if let Some((_, (variables, support))) = c.variable_groups.first_key_value() {
+                    if let Some(&variable) = variables.get(c.seed_slot) {
+                        c.prune_graph
+                            .as_mut()
+                            .expect("graph pruning")
+                            .seed(variable, *support);
+                        c.seed_slot += 1;
+                    } else {
+                        c.variable_groups.pop_first();
+                        c.seed_slot = 0;
+                    }
+                } else {
+                    c.phase = Phase::PruneGraph;
+                }
+            }
+            Phase::PruneGraph => {
+                if let Some(prune) = &mut c.prune_graph {
+                    if let Some(root) = prune.tick(&mut self.graph, &mut self.arena) {
+                        self.state.graph = root;
+                        c.graph_roots.push(root);
+                        c.prune_graph = None;
+                        c.phase = Phase::Graph;
                     }
                 } else {
                     c.phase = Phase::Graph;
@@ -381,6 +451,82 @@ impl Trace for Ready {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn an_unposted_body_local_keeps_its_identity_through_pruning() {
+        let ports = vec!["Y"; 128].join(",");
+        let code = crate::program::prepare(
+            &crate::syntax::parse_program(&format!("start(X) <=> X=Y,final({ports}).")).unwrap(),
+            &crate::syntax::parse_query("start(A)").unwrap(),
+        )
+        .unwrap();
+        let mut e = Engine::new(Arc::new(code));
+        let mut retained = None;
+        for _ in 0..10000 {
+            e.advance(1);
+            if e.lane.is_none() {
+                retained = e.queue.iter().find_map(|task| match &task.task {
+                    Task::Body(body)
+                        if body.variables.len() > 1
+                            && matches!(body.phase, BodyPhase::Arguments) =>
+                    {
+                        let x = body.variables[0];
+                        let y = body.variables[1];
+                        (e.graph
+                            .index
+                            .get(e.state.graph, &[crate::identity::PARENT, y, x, 0])
+                            == Some(Condition::TRUE))
+                        .then_some((x, y))
+                    }
+                    _ => None,
+                });
+                if retained.is_some() {
+                    break;
+                }
+            }
+        }
+        let (x, y) = retained.expect("aliased body local awaiting its first post");
+        assert!(
+            e.graph
+                .relation(e.state.graph, 0)
+                .unwrap()
+                .next(&e.graph)
+                .is_none()
+        );
+        assert!(
+            e.graph
+                .relation(e.state.graph, 1)
+                .unwrap()
+                .next(&e.graph)
+                .is_none()
+        );
+        e.request_collection();
+        for _ in 0..100000 {
+            e.advance(1);
+            if !e.collecting() {
+                break;
+            }
+        }
+        assert!(!e.collecting());
+        assert_eq!(
+            e.graph
+                .index
+                .get(e.state.graph, &[crate::identity::PARENT, y, x, 0]),
+            Some(Condition::TRUE)
+        );
+        let mut ports = 0;
+        for _ in 0..100000 {
+            e.advance(1);
+            if let Some(Output::Port { variable }) = e.take_output() {
+                assert_eq!(variable, x);
+                ports += 1;
+            }
+            if e.delivery_done() {
+                break;
+            }
+        }
+        assert!(e.delivery_done());
+        assert_eq!(ports, 128);
+    }
     #[test]
     fn collection_status_covers_waiting_for_a_history_writer() {
         let code = crate::program::prepare(

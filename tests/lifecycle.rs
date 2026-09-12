@@ -144,3 +144,72 @@ fn history_pruning_does_not_replay_a_live_tuple() {
     assert!(rows.next(e.graph()).is_some());
     assert!(rows.next(e.graph()).is_none());
 }
+
+#[test]
+fn continuing_alias_rewrites_reclaim_unreferenced_identity_members() {
+    let mut e = engine("loop(X) <=> X=Y,loop(Y).", "loop(A)");
+    let mut peak = 0;
+    for _ in 0..1_000_000 {
+        e.advance(1);
+        peak = peak.max(e.memory().graph_nodes);
+    }
+    assert!(!e.exhausted());
+    assert!(e.applications() > 1000, "{} applications", e.applications());
+    assert!(e.collections() > 10);
+    assert!(peak < 16384, "identity storage grew to {peak} nodes");
+    eprintln!(
+        "alias stream: {} applications, {} collections, {peak} peak graph nodes in 1000000 service steps",
+        e.applications(),
+        e.collections()
+    );
+}
+
+#[test]
+fn graph_pruning_preserves_body_locals_stale_candidates_wakes_and_observers() {
+    let cases = [
+        (
+            "start(X) <=> X=Y,(saved(Y);saved(X)),later(Y). saved(X),later(X) ==> found(X).",
+            "start(A)",
+        ),
+        (
+            "p(X),q(X),r(X) ==> witness(X,Z). drop(X) \\ r(X) <=> true. merge(X,Y) <=> X=Y.",
+            "p(A),q(B),r(B),(merge(A,B);drop(B))",
+        ),
+        (
+            "connect(X,Y) <=> X=Y. left(X),right(X) ==> found(X).",
+            "left(A),right(B),(connect(A,B);true),(tag(A);tag(B))",
+        ),
+    ];
+    for (program, query) in cases {
+        let mut base = engine(program, query);
+        let expected = normalized(answers(&mut base, &mut Reader::default()));
+        assert!(!expected.is_empty());
+        for prefix in (0..2000).step_by(11) {
+            let mut e = engine(program, query);
+            let mut reader = Reader::default();
+            let mut seen = vec![];
+            for _ in 0..prefix {
+                e.advance(1);
+                if let Some(answer) = reader.next(&mut e) {
+                    seen.push(answer);
+                }
+            }
+            collect(&mut e);
+            seen.extend(answers(&mut e, &mut reader));
+            assert_eq!(normalized(seen), expected, "{program}, prefix {prefix}");
+        }
+    }
+}
+
+#[test]
+fn delivered_results_do_not_pin_execution_occurrences() {
+    let mut e = engine("edge(X,Y) ==> reverse(Y,X).", "edge(A,B)");
+    let delivered = answers(&mut e, &mut Reader::default());
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0].rows.len(), 2);
+    collect(&mut e);
+    assert_eq!(e.memory().occurrences, 0);
+    assert_eq!(e.memory().graph_nodes, 0);
+    assert_eq!(e.memory().history_records, 0);
+    assert_eq!(delivered[0].rows.len(), 2);
+}

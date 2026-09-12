@@ -12,9 +12,9 @@ use crate::trace::{Cursor as TraceCursor, Step, Trace};
 use std::collections::{BTreeMap, VecDeque};
 use std::ops::Bound::{Excluded, Unbounded};
 
-const PARENT: u64 = 4;
+pub(crate) const PARENT: u64 = 4;
 pub(crate) const CHILD: u64 = 5;
-const RANK: u64 = 6;
+pub(crate) const RANK: u64 = 6;
 
 fn poll(job: &mut Option<Job>, a: &mut Arena) -> Option<Condition> {
     if let Progress::Complete(c) = job.as_mut().expect("condition continuation").tick(a) {

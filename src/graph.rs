@@ -1,5 +1,8 @@
 //! Shared relational occurrence state and ordered-port indexes.
 
+mod prune;
+pub use prune::Prune;
+
 use crate::condition::Condition;
 use crate::program::Signature;
 use crate::store::{self, Key, Root, Store};
