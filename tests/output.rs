@@ -119,3 +119,45 @@ fn output_backpressure_keeps_only_one_scalar_event_and_resumes_wide_ports() {
     let empty = finish(&mut finite);
     assert!(empty.rows.is_empty());
 }
+
+#[test]
+fn wide_shared_answers_finish_within_the_delivery_service_budget() {
+    let n = 32;
+    let query = format!(
+        "({}),{}",
+        vec!["true"; n].join(";"),
+        (0..n)
+            .map(|i| format!("p(V{i})"))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    let mut e = engine("p(X) <=> q(X). q(X) <=> done(X).", &query);
+    let mut reader = Reader::default();
+    let mut answers = 0;
+    for _ in 0..50_000 {
+        e.advance(1);
+        if let Some(a) = reader.next(&mut e) {
+            assert_eq!(a.rows.len(), n);
+            assert_eq!(facts(&e, &a), vec!["done"; n]);
+            let mut ports = a
+                .rows
+                .iter()
+                .map(|r| {
+                    assert_eq!(r.ports.len(), 1);
+                    r.ports[0]
+                })
+                .collect::<Vec<_>>();
+            ports.sort();
+            let mut variables = a.variables.clone();
+            variables.sort();
+            assert_eq!(ports, variables);
+            answers += 1;
+        }
+        if e.delivery_done() {
+            break;
+        }
+    }
+    assert!(e.delivery_done(), "wide delivery spent its service budget");
+    assert_eq!(answers, n);
+    assert_eq!(e.applications(), (2 * n) as u64);
+}

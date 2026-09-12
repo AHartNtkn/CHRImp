@@ -357,8 +357,8 @@ impl Engine {
             } else if self.ticks % 3 == 2 && self.observer.is_some() && self.output.is_none() {
                 self.observation();
             } else {
-                // Keep each runnable class's reserved share; otherwise service
-                // one source continuation instead of spending an idle slot.
+                // Keep each runnable class's reserved share. Fill other slots
+                // with source work first, then completion or observation.
                 if let Some(mut task) = self.queue.pop_front() {
                     if self.task(&mut task) {
                         self.pending_root = self
@@ -373,6 +373,10 @@ impl Engine {
                     } else {
                         self.queue.push_back(task);
                     }
+                } else if self.can_complete() {
+                    self.completion();
+                } else if self.observer.is_some() && self.output.is_none() {
+                    self.observation();
                 }
             }
             self.ticks = self.ticks.wrapping_add(1);
