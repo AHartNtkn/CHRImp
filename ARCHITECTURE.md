@@ -1,8 +1,8 @@
-# CHR architecture assessment and proposal
+# CHR architecture proposal
 
 Recommend one incremental relational engine that represents common state and work once, with explicit conditions for branch-specific differences. Prepare indexed rule plans and keep identity, occurrence ownership, scheduling, and completion in that same engine.
 
-This is a proposal for architectural review. The language and notebook are not implemented or approved for implementation. Existing experiments establish useful mechanisms and substantial counterexamples; they do not validate this exact composition or establish a universal performance winner.
+The experiments support individual mechanisms and expose important adverse cases. The combined engine requires the correctness and performance validation specified below.
 
 ## Agreed language and environment
 
@@ -20,7 +20,7 @@ Synthesis examples are validation cases, not the domain boundary. The architectu
 
 ## Evidence that changes the architectural decision
 
-The evidence repository is `/home/ahart/Documents/CHRLang`. Reports below describe their registered experiments, not new measurements. Source inspection included working-tree files; the repository also contains ongoing work. The review observed HEAD `4ed9c045dc4eccfca58fb25e39a4f13f46a1a223`. Historical reports must be interpreted using their own frozen inputs.
+The measurements below come from the registered experiments in [CHRLang](/home/ahart/Documents/CHRLang). Each report specifies its source, configuration, and measurement boundaries.
 
 | Area | Finding and boundary | Consequence |
 |---|---|---|
@@ -29,10 +29,10 @@ The evidence repository is `/home/ahart/Documents/CHRLang`. Reports below descri
 | Common work and adverse ordinary work | [S10 arrival lifecycle](/home/ahart/Documents/CHRLang/docs/experiments/results/S10-arrival-lifecycle.md) reports 3.84 ms conditional versus 53.95 ms inferred specialization on one substantive choice/check case, but 352.74 ms versus 5.83 ms on its alias stream. These are exploratory medians in matched cells. | Neither unconditional symbolic processing nor repeating execution across explicit states is justified as a universal policy. The adverse conditional case is a design problem to address, not an excluded workload. |
 | Conditional overhead attribution | [S08 support attribution](/home/ahart/Documents/CHRLang/docs/experiments/results/S08-support-allocation-attribution.md) attributes 98.2% of execution allocation in its alias witness to Boolean operations. [Later costs](/home/ahart/Documents/CHRLang/docs/experiments/results/S08-support-lifecycle.md) show that identities and bounded caching help without closing the complete-path gap. | Cheap conditions must stay cheap. A cache alone is not a demonstrated solution. |
 | Representation and output interact | [S08 support order](/home/ahart/Documents/CHRLang/docs/experiments/results/S08-support-order-gate.md) reduces support nodes from 16,986 to 613 with reversed order, while combined-policy engine calls increase because of observation. An opposing arrival witness reverses construction costs. | Do not choose the Boolean representation or its order independently of exact observation and lifetime. |
-| Matching | [S01 partner order](/home/ahart/Documents/CHRLang/docs/experiments/results/S01-partner-order-entry.md) reduces candidate visits from 515 to 7 using an available key. [Intermediate joins](/home/ahart/Documents/CHRLang/docs/experiments/results/S01-intermediate-lifecycle.md) still cost more allocation and peak memory than local scanning in all 48 compared cells. | Prepare useful access plans. Do not automatically retain every partial join or materialize every candidate tuple. |
+| Matching | [S01 partner order](/home/ahart/Documents/CHRLang/docs/experiments/results/S01-partner-order-entry.md) reduces candidate visits from 515 to 7 using an available key. The tested proper-intermediate retention strategy in [S01 lifecycle](/home/ahart/Documents/CHRLang/docs/experiments/results/S01-intermediate-lifecycle.md) uses more allocation and peak memory than local scanning in all 48 matched scenarios. | Prepare useful access plans. Do not automatically retain every partial join or materialize every candidate tuple. |
 | Demand and local graph execution | [S03 demand lifecycle](/home/ahart/Documents/CHRLang/docs/experiments/results/S03-demand-lifecycle.md) shows both favorable opaque work and adverse early discrimination. [Resource support](/home/ahart/Documents/CHRLang/docs/experiments/results/S03-demand-resource.md) has explicit restrictions on writable aliases, resource posts, and propagation. | Demand is a serious competitor, but that implementation does not establish a general CHR foundation. |
 | Why reuse occurs | [S03 matched dependencies](/home/ahart/Documents/CHRLang/docs/experiments/results/S03-match-dependencies.md) equalizes source expansions between ordinary demand and pull-tabbing in 72 cases. | Dependency validity, physical graph rewrites, and storage sharing are different mechanisms. A graph representation by itself does not establish shared execution. |
-| Restoration | [S04 source gate](/home/ahart/Documents/CHRLang/docs/experiments/results/S04-restoration-source-gate.md) validates copying, trails, and replay with fair-service witnesses. [Lifecycle costs](/home/ahart/Documents/CHRLang/docs/experiments/results/S04-lifecycle-pilot.md) give opposing regimes; a matcher defect partly contaminated the comparison. | These are viable state-management choices, not evidence that repeated common execution is preferable. |
+| Restoration | [S04 source gate](/home/ahart/Documents/CHRLang/docs/experiments/results/S04-restoration-source-gate.md) validates copying, trails, and replay with fair-service witnesses. [Lifecycle costs](/home/ahart/Documents/CHRLang/docs/experiments/results/S04-lifecycle-pilot.md) give opposing regimes. A later [matcher correction](/home/ahart/Documents/CHRLang/docs/experiments/results/S04-matcher-copy-gate.md) avoids measured copying work, but that gate does not measure its comparative timing benefit. | These are viable state-management choices, not evidence that repeated common execution is preferable. |
 | Source preparation and compilation | [S05 amortization](/home/ahart/Documents/CHRLang/docs/experiments/results/S05-call-amortization.md) finds no qualified generated gain over prepared data plans plus inference, and 112 compilation-inclusive losses against installed-runtime controls. Reuse remains competitive against generated controls. | Start with prepared executable plans. Native generation and reuse require separate justifications; compilation is not a substitute for avoiding redundant work. |
 | Reuse with effects | [S05 body reuse](/home/ahart/Documents/CHRLang/docs/experiments/results/S05-body-reuse.md) preserves 90,792 checkpoints while matching, freshening, consumption, and propagation remain with the caller. Complete costs are unmeasured. | Never replay effects merely because inputs resemble an earlier call. Sharing between distinct applications needs its own dependency and fresh-identity account. |
 | Direct solving | [S06 repaired projection](/home/ahart/Documents/CHRLang/docs/experiments/results/S06-connected-repair-costs.md) improves its earlier implementation but qualifies faster than enumeration in none of 192 cases. Other finite fragments have favorable regimes. | Direct solving is a source-dependent transformation, not a general replacement justified by compact internal formulas. |
@@ -44,7 +44,7 @@ The large [disposition review](/home/ahart/Documents/CHRLang/docs/experiments/re
 
 ## Complete alternatives
 
-**Incremental execution with persistent state and reusable computations** is the strongest conventional competitor. It combines good access plans, shared immutable storage, isolated updates, fair continuations, and dependency-checked reuse. It can avoid much symbolic-condition overhead. Its weakness is repeated execution across alternatives unless recognition or an existing shared computation catches it; exact recognition, transport, and retained keys have real costs. Comparing against a copying interpreter alone would understate this competitor.
+**Incremental execution with persistent state and reusable computations** is a conventional alternative combining prepared access plans, shared immutable storage, isolated updates, fair continuations, and dependency-checked reuse. It can avoid symbolic-condition work on each ordinary operation. Its weakness is repeated execution across alternatives unless recognition or an existing shared computation catches it; exact recognition, transport, and retained keys have real costs. The experiments do not establish a best conventional combination. Comparing against a copying interpreter alone would understate the alternatives.
 
 **An integrated conditional relational graph** represents occurrence liveness, identities, pending work, and propagation under conditions on explicit choices. It can perform an applicable operation once for many alternatives without first enumerating their states. Its intended capability includes arbitrary multiheaded interactions; that still requires the commitment and indexing protocols below. Its central risks are condition growth, conditional identity lookup, invalidation, and observation overhead. This is the recommended family, subject to the concrete design and outstanding checks below.
 
@@ -108,9 +108,7 @@ Fresh future work must not recreate identity, failure, or publication ambiguitie
 
 Compile rules to reusable data plans first. Infer properties that simplify a plan, such as absence of identity changes, rather than requiring users to declare restrictive language modes. Native generation, region solvers, and parallel workers are additional implementation choices only after their full costs and semantic boundaries qualify. Multiple independent queries can have separate owners; connected parallel commitment is a distinct problem.
 
-## Protocol details required by the review
-
-These specifications make the candidate more concrete. They remain design obligations to verify, rather than properties established by the existing prototypes.
+## Execution protocols
 
 **Uniformity is a property of a particular operation and condition.** Its certificate names the parent links, indexed relation buckets, live occurrence conditions, and propagation entries the operation reads. Every read must have the same interpretation throughout the condition. Each certificate records dependencies and their generations. A conditional update invalidates only the intersecting portion of a certificate, which must be rechecked or partitioned before reuse. Uniformity is not inferred merely from a lack of recent changes. Its discovery and maintenance costs belong in the comparison.
 
@@ -130,11 +128,11 @@ These specifications make the candidate more concrete. They remain design obliga
 
 **Only semantically live roots retain execution state.** Roots are unfinished work and its read dependencies, live residual occurrences for unfinished/completed-undelivered regions, propagation records whose tuples can still be encountered, active projection cursors, selected updates, and explicit user-held snapshots/results. An allocated occurrence or variable is not automatically a root. Causal birth information remains only while it is needed to interpret live contexts or distinguish pending answer events. Collection may reclaim a fact's dead support without reclaiming its live support elsewhere. Reused storage handles carry generations; cached entries cannot mistake new records for old identities.
 
-**Inspection freezes a coherent view only when requested.** Inspection pins an immutable committed root while creating a selected projection, then releases that root unless the user retains the snapshot. Collection cannot invalidate pinned data. Stepping the selected alternative allows one logical source application for that alternative; the UI reports if the same shared event also advances siblings. This does not require copying or unsharing those siblings. Internal preparation steps do not appear as completed rule applications. These are proposed interface semantics for review, not a request to add live program replacement.
+**Inspection freezes a coherent view only when requested.** Inspection pins an immutable committed root while creating a selected projection, then releases that root unless the user retains the snapshot. Collection cannot invalidate pinned data. Stepping the selected alternative allows one logical source application for that alternative; the UI reports if the same shared event also advances siblings. This does not require copying or unsharing those siblings. Internal preparation steps do not appear as completed rule applications.
 
-## Broad challenges and approval boundaries
+## Validation and technical risks
 
-The following matrix is the required architecture challenge, not a claim that these cases have already passed in the proposed engine. Vary each relevant dimension over sizes and interactions; do not combine cells into an invented average workload.
+Validate the engine across the following regimes, varying sizes and interactions. Report each regime separately rather than combining them into an assumed average workload.
 
 | Regime | The design must establish |
 |---|---|
@@ -150,23 +148,12 @@ The following matrix is the required architecture challenge, not a claim that th
 | Stable live state over a long run; then a genuinely growing frontier | Explain memory by live semantic obligations and explicitly retained outputs. Distinguish necessary live growth from accumulated dead records. |
 | Repeated and unique queries, cold and warm preparation | Charge cache keys, misses, transfer, compilation, retained artifacts, eviction, regeneration, and final disposal. |
 | Combined joins, aliases, choices, failure, and observation | The complete engine must qualify; adding isolated component improvements is not proof of an efficient composition. |
+| Text and direct diagram editing | Both editors construct and modify the same executable program. Round trips preserve relation names, ordered ports, variable sharing, rule heads, bodies, and disjunction. |
+| Notebook queries and inspection | Run queries and inspect rule sides, alternatives, intermediate states, and residual answers as colored, port-ordered relational diagrams. Views must reflect actual execution state. |
+| Stepping, continuous execution, pause/resume, and optional history | Verify logical rule-step boundaries, continued results after resumption, and explicit history recording. Ordinary execution retains no past-state trace. |
 
-Architectural endorsement still requires checking conditional identity/index completeness, fragmented application identity and commitment, the low-sharing condition/observation cost, fairness and completion certification, delivery ownership, semantic reclamation roots, and coherent inspection. In particular, the conditional identity/index composition has no complete variable-only comparison; the known low-sharing gap is unresolved for this representation; and continuing dynamic births need a complete ownership argument and long-run evidence. These are technical work for the architecture assessment, not choices to delegate to the user or reasons to exclude domains.
+The principal unresolved technical risks are conditional identity/index completeness, fragmented application identity and commitment, the low-sharing condition/observation cost, fairness and completion certification, delivery ownership, semantic reclamation roots, and coherent inspection. The conditional identity/index composition lacks a complete variable-only comparison; the known low-sharing gap is unresolved for this representation; and continuing dynamic births require an ownership argument and long-run measurements.
 
-These issues have concrete alternative designs. Compare conditional representative forests with contextual direct redirection for identity; uniform-region execution with the strongest prepared-plan/reuse engine for alias streams; and root-based collection with explicit retained-context metadata and bounded regeneration for lifetime. Retain an alternative when the evidence favors it. A statement that an optimization can be added later is not a resolution of a known fundamental cost.
+Compare conditional representative forests with contextual direct redirection for identity; uniform-region execution with prepared-plan and reuse controls for alias streams; and root-based collection with explicit retained-context metadata and bounded regeneration for lifetime. Charge the costs of selection, maintenance, and switching representations alongside execution.
 
-Before endorsing a specific implementation policy, confront each issue with its strongest applicable competitor. Reuse existing complete runners where they implement the same semantics. A translation from the term-based experiments must separately establish what remains equivalent; constructor semantics cannot silently enter ordinary relations. Existing numerical results justify candidate mechanisms and challenges, not numerical predictions for this language.
-
-The approval requested eventually is for a concrete architecture with explicit costs and supported obligations. It cannot establish a missing correctness argument or make an unexplained performance pathology acceptable. No language or notebook implementation is authorized by this document.
-
-## Verification performed for this assessment
-
-On 2026-09-12, the following existing test selection completed successfully in CHRLang with `chr-direct-conditional` default features disabled: 37 tests across six integration executables, with no failures.
-
-```sh
-cargo test --locked --offline -p chr-direct-conditional --no-default-features \
-  --test runtime --test matching_resources --test restricted_births \
-  --test composition_progress --test streaming --test equality_oracle
-```
-
-The checks cover source execution and shared consumption; nonbinding matching and resource claims; causal dynamic births; a finite sibling beside continuing work; raw output multiplicity and ownership; and conditional equality against an independent finite-tree oracle. The constructor-specific parts of that oracle do not prove the variable-only language. These reruns establish current prototype behavior on their checked cases; they are neither new performance measurements nor validation of the proposed engine.
+Use existing complete runners where they implement the same semantics. A translation from the term-based experiments must establish which behavior remains equivalent; constructor semantics cannot silently enter ordinary relations. Existing measurements identify mechanisms and adverse cases to test, rather than predicting this language's performance.
