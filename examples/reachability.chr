@@ -1,0 +1,2 @@
+edge(X,Y) ==> reach(X,Y).
+reach(X,Y), edge(Y,Z) ==> reach(X,Z).

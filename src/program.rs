@@ -3,7 +3,7 @@
 use crate::syntax::{self, Body, ParseError, Program};
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize)]
 pub struct Signature {
     pub name: String,
     pub arity: usize,

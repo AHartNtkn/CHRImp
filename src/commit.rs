@@ -7,6 +7,7 @@ use crate::identity::Equal;
 use crate::matching::Match;
 use crate::program::Prepared;
 use crate::store::Root;
+use crate::trace::{Cursor as TraceCursor, Step, Trace};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -293,5 +294,16 @@ impl Commit {
             Phase::Done => unreachable!(),
         }
         CommitStatus::Pending
+    }
+}
+
+impl Trace for Commit {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.fields(&[self.scope, self.active]),
+            1 => cursor.optional(self.job.as_ref()),
+            2 => cursor.optional(self.equal.as_ref()),
+            _ => Step::Done,
+        }
     }
 }

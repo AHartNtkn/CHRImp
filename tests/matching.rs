@@ -45,7 +45,7 @@ fn selective_join_uses_bound_ports_instead_of_scanning_the_relation() {
     let mut found = Vec::new();
     let mut done = false;
     for _ in 0..20_000 {
-        match matches.tick(&g, &mut a) {
+        match tick_matches(&mut matches, &g, &mut a) {
             MatchStatus::Found(m) => found.push(m),
             MatchStatus::Done => {
                 done = true;
@@ -75,7 +75,7 @@ fn repeated_variables_only_match_identity_that_already_holds() {
     let mut no = Matches::new(&g, root, code.clone(), 0, Condition::TRUE, None).unwrap();
     let before = g.index_node_count();
     loop {
-        match no.tick(&g, &mut a) {
+        match tick_matches(&mut no, &g, &mut a) {
             MatchStatus::Found(_) => panic!("matching must not merge distinct variables"),
             MatchStatus::Done => break,
             MatchStatus::Pending => {}
@@ -91,7 +91,7 @@ fn repeated_variables_only_match_identity_that_already_holds() {
     let mut yes = Matches::new(&g, root, code, 0, Condition::TRUE, None).unwrap();
     let mut found = Vec::new();
     loop {
-        match yes.tick(&g, &mut a) {
+        match tick_matches(&mut yes, &g, &mut a) {
             MatchStatus::Found(m) => found.push(m),
             MatchStatus::Done => break,
             MatchStatus::Pending => {}
@@ -111,7 +111,7 @@ fn equal_rows_still_require_distinct_occurrences_and_preserve_head_order() {
     let (root, one) = post(&mut g, empty, 0, vec![9]);
     let mut no = Matches::new(&g, root, code.clone(), 0, Condition::TRUE, None).unwrap();
     loop {
-        match no.tick(&g, &mut a) {
+        match tick_matches(&mut no, &g, &mut a) {
             MatchStatus::Found(_) => panic!("one occurrence cannot occupy two heads"),
             MatchStatus::Done => break,
             MatchStatus::Pending => {}
@@ -121,7 +121,7 @@ fn equal_rows_still_require_distinct_occurrences_and_preserve_head_order() {
     let mut yes = Matches::new(&g, root, code, 0, Condition::TRUE, None).unwrap();
     let mut tuples = Vec::new();
     loop {
-        match yes.tick(&g, &mut a) {
+        match tick_matches(&mut yes, &g, &mut a) {
             MatchStatus::Found(m) => {
                 assert_eq!(m.bindings, [9, 9]);
                 tuples.push(m.occurrences);
@@ -160,10 +160,14 @@ fn alias_sensitive_cross_predicate_join_retains_its_condition_through_collection
             }
         }
         drop(gc);
-        let mut gc = a.collect(matches.condition_roots().chain(supports));
+        let mut gc = a.collect(
+            traced_roots(&matches, matches.condition_roots())
+                .into_iter()
+                .chain(supports),
+        );
         while !gc.tick(&mut a) {}
         drop(gc);
-        match matches.tick(&g, &mut a) {
+        match tick_matches(&mut matches, &g, &mut a) {
             MatchStatus::Found(m) => found.push(m),
             MatchStatus::Done => break,
             MatchStatus::Pending => {}
@@ -198,7 +202,7 @@ fn indexed_port_does_not_replace_other_repeated_variable_guards() {
     };
     let mut matches = Matches::new(&g, root, code, 0, Condition::TRUE, Some((0, p))).unwrap();
     loop {
-        match matches.tick(&g, &mut a) {
+        match tick_matches(&mut matches, &g, &mut a) {
             MatchStatus::Found(_) => panic!("port guards hold in incompatible alternatives"),
             MatchStatus::Done => break,
             MatchStatus::Pending => {}
@@ -238,7 +242,7 @@ fn three_head_joins_restore_bindings_after_failed_prefixes_and_allow_any_anchor(
         let mut result = Vec::new();
         let mut done = false;
         for _ in 0..100_000 {
-            match matches.tick(&g, &mut a) {
+            match tick_matches(&mut matches, &g, &mut a) {
                 MatchStatus::Found(m) => result.push((m.occurrences, m.bindings)),
                 MatchStatus::Done => {
                     done = true;
@@ -259,4 +263,33 @@ fn three_head_joins_restore_bindings_after_failed_prefixes_and_allow_any_anchor(
         };
         assert_eq!(result, expected, "anchor{anchor:?}");
     }
+}
+
+fn traced_roots(
+    job: &impl chr::trace::Trace,
+    expected: impl Iterator<Item = Condition>,
+) -> Vec<Condition> {
+    use chr::trace::{Cursor, Step};
+    let mut expected: Vec<_> = expected.collect();
+    let mut cursor = Cursor::default();
+    let mut roots = Vec::new();
+    for _ in 0..16 * expected.len() + 256 {
+        match job.trace(&mut cursor) {
+            Step::Root(root) => roots.push(root),
+            Step::Pending => {}
+            Step::Done => {
+                assert_eq!(job.trace(&mut cursor), Step::Done);
+                roots.sort_unstable();
+                expected.sort_unstable();
+                assert_eq!(roots, expected, "incremental trace changed root inventory");
+                return roots;
+            }
+        }
+    }
+    panic!("root walk exceeded its linear step budget");
+}
+
+fn tick_matches(job: &mut Matches, graph: &Graph, arena: &mut Arena) -> MatchStatus {
+    traced_roots(job, job.condition_roots());
+    job.tick(graph, arena)
 }

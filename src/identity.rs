@@ -8,7 +8,8 @@
 use crate::condition::{Arena, Condition, Job, Operation, Progress};
 use crate::graph::Graph;
 use crate::store::{Cursor, Key, Root};
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use crate::trace::{Cursor as TraceCursor, Step, Trace};
+use std::collections::{BTreeMap, VecDeque};
 use std::ops::Bound::{Excluded, Unbounded};
 
 const PARENT: u64 = 4;
@@ -133,15 +134,16 @@ enum ResolvePhase {
     Remember,
     Walk,
     Enqueue,
+    Cleanup,
     Done,
 }
 
 pub struct Resolve {
     root: Root,
     initial: Option<(u64, Condition)>,
-    pending: HashMap<u64, Condition>,
+    pending: BTreeMap<u64, Condition>,
     queue: VecDeque<u64>,
-    visited: HashMap<u64, Condition>,
+    visited: BTreeMap<u64, Condition>,
     variable: u64,
     fresh: Condition,
     parent: u64,
@@ -157,9 +159,9 @@ impl Resolve {
         Self {
             root,
             initial: Some((variable, scope)),
-            pending: HashMap::new(),
+            pending: BTreeMap::new(),
             queue: VecDeque::new(),
-            visited: HashMap::new(),
+            visited: BTreeMap::new(),
             variable,
             fresh: Condition::FALSE,
             parent: variable,
@@ -200,11 +202,7 @@ impl Resolve {
                     self.boolean = Some(a.start(Operation::Difference(c, old)));
                     self.phase = ResolvePhase::Novel;
                 } else {
-                    self.pending = HashMap::new();
-                    self.visited = HashMap::new();
-                    self.queue = VecDeque::new();
-                    self.phase = ResolvePhase::Done;
-                    return ResolveStatus::Done;
+                    self.phase = ResolvePhase::Cleanup;
                 }
             }
             ResolvePhase::Novel => {
@@ -265,6 +263,13 @@ impl Resolve {
                         self.queue.push_back(self.parent);
                     }
                     self.phase = ResolvePhase::Walk;
+                }
+            }
+            ResolvePhase::Cleanup => {
+                if self.pending.pop_first().is_none() && self.visited.pop_first().is_none() {
+                    self.queue = VecDeque::new();
+                    self.phase = ResolvePhase::Done;
+                    return ResolveStatus::Done;
                 }
             }
             ResolvePhase::Done => return ResolveStatus::Done,
@@ -662,5 +667,73 @@ impl Merge {
             MergePhase::Done => return Some(self.staged),
         }
         None
+    }
+}
+
+impl Trace for Partition {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.fields(&[self.remaining, self.edge, self.hit]),
+            1 => cursor.optional(self.boolean.as_ref()),
+            _ => Step::Done,
+        }
+    }
+}
+impl Trace for Resolve {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.fields(&[self.fresh, self.carry]),
+            1 => match self.initial {
+                Some((_, support)) => cursor.fields(&[support]),
+                None => cursor.fields(&[]),
+            },
+            2 => cursor.values(&self.pending),
+            3 => cursor.values(&self.visited),
+            4 => cursor.optional(self.boolean.as_ref()),
+            5 => cursor.optional(self.partition.as_ref()),
+            _ => Step::Done,
+        }
+    }
+}
+impl Trace for Resolved {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.optional(Some(&self.resolve)),
+            1 => cursor.values(&self.map),
+            2 => cursor.fields(&[self.carry]),
+            3 => cursor.optional(self.boolean.as_ref()),
+            _ => Step::Done,
+        }
+    }
+}
+impl Trace for Equal {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.optional(Some(&self.left)),
+            1 => cursor.optional(Some(&self.right)),
+            2 => cursor.fields(&[self.carry, self.result]),
+            3 => cursor.optional(self.boolean.as_ref()),
+            _ => Step::Done,
+        }
+    }
+}
+impl Trace for Merge {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.optional(Some(&self.left)),
+            1 => cursor.optional(Some(&self.right)),
+            2 => cursor.fields(&[self.scope, self.pair, self.changed]),
+            3 => cursor.optional(self.left_rank.as_ref()),
+            4 => cursor.optional(self.right_rank.as_ref()),
+            5 => cursor.optional(self.boolean.as_ref()),
+            6 => cursor.vector(self.edits.len(), |i, child| {
+                if child.phase == 0 {
+                    child.fields(&[self.edits[i].context])
+                } else {
+                    Step::Done
+                }
+            }),
+            _ => Step::Done,
+        }
     }
 }

@@ -41,6 +41,7 @@ fn enumerate(
 ) -> BTreeMap<u64, Condition> {
     let mut found = BTreeMap::new();
     for _ in 0..100_000 {
+        let traced = traced_roots(job, job.condition_roots());
         if collect {
             let mut supports = retained.to_vec();
             let mut gc = g.collect(std::iter::once(job.root()));
@@ -51,7 +52,8 @@ fn enumerate(
             }
             drop(gc);
             let mut gc = a.collect(
-                job.condition_roots()
+                traced
+                    .into_iter()
                     .chain(found.values().copied())
                     .chain(supports),
             );
@@ -266,4 +268,66 @@ fn sparse_class_visits_do_not_scale_with_unrelated_variables() {
         0,
         "uniform enumeration needs no Boolean nodes"
     );
+}
+
+fn traced_roots(
+    job: &impl chr::trace::Trace,
+    expected: impl Iterator<Item = Condition>,
+) -> Vec<Condition> {
+    use chr::trace::{Cursor, Step};
+    let mut expected: Vec<_> = expected.collect();
+    let mut cursor = Cursor::default();
+    let mut roots = Vec::new();
+    for _ in 0..16 * expected.len() + 256 {
+        match job.trace(&mut cursor) {
+            Step::Root(root) => roots.push(root),
+            Step::Pending => {}
+            Step::Done => {
+                assert_eq!(job.trace(&mut cursor), Step::Done);
+                roots.sort_unstable();
+                expected.sort_unstable();
+                assert_eq!(roots, expected, "incremental trace changed root inventory");
+                return roots;
+            }
+        }
+    }
+    panic!("root walk exceeded its linear step budget");
+}
+
+#[test]
+fn completed_enumeration_releases_at_most_one_map_entry_per_tick() {
+    let mut g = Graph::new(&[]);
+    let mut a = Arena::default();
+    let mut root = g.empty();
+    for variable in 1..64 {
+        root = merge(&mut g, &mut a, root, 0, variable, Condition::TRUE);
+    }
+    let mut members = Members::new(&g, root, 0, Condition::TRUE);
+    let mut found = 0;
+    for _ in 0..100_000 {
+        if matches!(members.tick(&g, &mut a), ResolveStatus::Found { .. }) {
+            found += 1;
+            if found == 64 {
+                break;
+            }
+        }
+    }
+    assert_eq!(found, 64);
+    let mut roots = traced_roots(&members, members.condition_roots()).len();
+    assert!(roots >= 64);
+    for _ in 0..1000 {
+        let status = members.tick(&g, &mut a);
+        let next = traced_roots(&members, members.condition_roots()).len();
+        assert!(
+            roots.saturating_sub(next) <= 1,
+            "cleanup bulk-released roots"
+        );
+        roots = next;
+        if status == ResolveStatus::Done {
+            assert_eq!(roots, 1);
+            return;
+        }
+        assert_eq!(status, ResolveStatus::Pending);
+    }
+    panic!("incremental cleanup failed to finish");
 }

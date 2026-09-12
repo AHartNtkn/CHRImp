@@ -356,3 +356,112 @@ fn owned_collection_freezes_choices_and_jobs_until_dropped() {
         }
     }
 }
+
+fn traced_job(job: &chr::condition::Job) -> Vec<Condition> {
+    use chr::trace::{Cursor, Step, Trace};
+    let mut cursor = Cursor::default();
+    let mut roots = Vec::new();
+    let expected = job.roots().count();
+    for _ in 0..(4 * expected + 20) {
+        match job.trace(&mut cursor) {
+            Step::Root(c) => roots.push(c),
+            Step::Pending => {}
+            Step::Done => {
+                assert_eq!(job.trace(&mut cursor), Step::Done);
+                let mut old: Vec<_> = job.roots().collect();
+                old.sort();
+                roots.sort();
+                assert_eq!(
+                    roots, old,
+                    "trace must preserve every legacy root, including duplicates"
+                );
+                return roots;
+            }
+        }
+    }
+    panic!("trace did not yield a bounded sequence of scalar roots");
+}
+
+#[test]
+fn job_trace_matches_inventory_then_gc_and_resume_at_every_phase() {
+    let mut a = Arena::default();
+    let choices: Vec<_> = (0..6).map(|_| a.fresh_choice().1).collect();
+    let mut all = Condition::TRUE;
+    let mut any = Condition::FALSE;
+    for &c in choices.iter().rev() {
+        all = finish(&mut a, Operation::And(c, all));
+        any = finish(&mut a, Operation::Or(c, any));
+    }
+    let mut job = a.start(Operation::Difference(any, all));
+    for _ in 0..10_000 {
+        let roots = traced_job(&job);
+        let mut gc = a.collect(roots.into_iter());
+        while !gc.tick(&mut a) {}
+        drop(gc);
+        if let Progress::Complete(result) = job.tick(&mut a) {
+            traced_job(&job);
+            assert_eq!(job.result(), Some(result));
+            assert_eq!(job.scratch_capacity(), 0);
+            for bits in 0..64 {
+                assert_eq!(
+                    a.evaluate(result, |i| bits & (1 << i) != 0),
+                    bits != 0 && bits != 63
+                );
+            }
+            return;
+        }
+    }
+    panic!("traced job did not finish");
+}
+
+#[test]
+fn large_job_memo_traces_scalars_and_cleans_up_before_completion() {
+    let mut a = Arena::default();
+    let choices: Vec<_> = (0..300).map(|_| a.fresh_choice().1).collect();
+    let mut all = Condition::TRUE;
+    for &c in choices.iter().rev() {
+        all = finish(&mut a, Operation::And(c, all));
+    }
+    let y = a.fresh_choice().1;
+    let mut job = a.start(Operation::And(all, y));
+    let mut peak = 0;
+    let mut traced_large = false;
+    let mut cleanup_ticks = 0;
+    for _ in 0..10_000 {
+        let before = job.roots().count();
+        peak = peak.max(before);
+        if before > 600 && !traced_large {
+            traced_job(&job);
+            traced_large = true;
+        }
+        let work = job.work();
+        let status = job.tick(&mut a);
+        let after = job.roots().count();
+        assert!(
+            before.saturating_sub(after) <= 4,
+            "one tick discarded a wide memo: {before} -> {after}"
+        );
+        if work == job.work() && before > after {
+            cleanup_ticks += 1;
+        }
+        match status {
+            Progress::Pending => assert!(
+                job.result().is_none(),
+                "cleanup cannot advertise a complete result"
+            ),
+            Progress::Complete(result) => {
+                assert!(a.evaluate(result, |_| true));
+                assert!(!a.evaluate(result, |i| i != 300));
+                assert!(!a.evaluate(result, |i| i != 151));
+                assert!(peak > 600 && traced_large);
+                assert!(
+                    cleanup_ticks >= 100,
+                    "memo cleanup must yield between entries"
+                );
+                assert_eq!(job.scratch_capacity(), 0);
+                return;
+            }
+        }
+    }
+    panic!("large memo job did not finish");
+}

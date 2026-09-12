@@ -131,3 +131,44 @@ fn cyclic_multihead_join_checks_every_ordered_port() {
     assert!(triangles.iter().all(|r| !r.ports.contains(&a.variables[3])));
     assert_eq!(e.applications(), 3);
 }
+
+#[test]
+fn high_degree_merge_activates_every_cross_predicate_partner() {
+    for degree in [16, 32, 64, 128] {
+        let mut query = vec!["hub(A)".to_string()];
+        for i in 0..degree {
+            query.push(format!("spoke(B,V{i})"));
+        }
+        query.push("merge(A,B)".into());
+        let mut e = engine(
+            "hub(X),spoke(X,Y) ==> reach(Y). merge(X,Y) <=> X=Y.",
+            &query.join(","),
+        );
+        let mut reader = Reader::default();
+        let mut completed = None;
+        for steps in 1..=500000 {
+            e.advance(1);
+            if let Some(a) = reader.next(&mut e) {
+                completed = Some((a, steps));
+                break;
+            }
+        }
+        let (a, steps) =
+            completed.expect("high-degree activation must complete within its work bound");
+        assert!(
+            steps < degree as usize * 1600,
+            "waiting writers must not be polled repeatedly: {steps}"
+        );
+        let mut reached = a
+            .rows
+            .iter()
+            .filter(|r| e.program().signatures[r.relation].name == "reach")
+            .map(|r| r.ports[0])
+            .collect::<Vec<_>>();
+        reached.sort();
+        let mut expected = a.variables[2..].to_vec();
+        expected.sort();
+        assert_eq!(reached, expected);
+        assert_eq!(e.applications(), degree + 1);
+    }
+}

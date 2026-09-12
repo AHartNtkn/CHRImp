@@ -39,6 +39,7 @@ fn run(
     ids: &mut FreshIds,
 ) -> Option<Committed> {
     for _ in 0..100_000 {
+        traced_roots(j, j.condition_roots());
         match j.tick(g, a, h, ids) {
             CommitStatus::Applied(c) => return Some(c),
             CommitStatus::Rejected => return None,
@@ -258,7 +259,7 @@ fn collection_at_every_commit_boundary_preserves_staged_updates_and_guards() {
         let mut commit = Commit::new(&g, &h, s, p.clone(), 0, candidate, Condition::TRUE).unwrap();
         let mut result = None;
         for _ in 0..10000 {
-            let mut conditions = commit.condition_roots().collect::<Vec<_>>();
+            let mut conditions = traced_roots(&commit, commit.condition_roots());
             let mut gc = g.collect(commit.graph_roots());
             while !gc.done() {
                 if let Some(c) = gc.tick(&mut g) {
@@ -308,4 +309,28 @@ fn collection_at_every_commit_boundary_preserves_staged_updates_and_guards() {
             CommitStatus::Done
         ));
     }
+}
+
+fn traced_roots(
+    job: &impl chr::trace::Trace,
+    expected: impl Iterator<Item = Condition>,
+) -> Vec<Condition> {
+    use chr::trace::{Cursor, Step};
+    let mut expected: Vec<_> = expected.collect();
+    let mut cursor = Cursor::default();
+    let mut roots = Vec::new();
+    for _ in 0..16 * expected.len() + 256 {
+        match job.trace(&mut cursor) {
+            Step::Root(root) => roots.push(root),
+            Step::Pending => {}
+            Step::Done => {
+                assert_eq!(job.trace(&mut cursor), Step::Done);
+                roots.sort_unstable();
+                expected.sort_unstable();
+                assert_eq!(roots, expected, "incremental trace changed root inventory");
+                return roots;
+            }
+        }
+    }
+    panic!("root walk exceeded its linear step budget");
 }

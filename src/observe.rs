@@ -9,6 +9,7 @@ use crate::graph::{Graph, Occurrences};
 use crate::identity::{Resolve, ResolveStatus};
 use crate::program::Prepared;
 use crate::store::Root;
+use crate::trace::{Cursor as TraceCursor, Step, Trace};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::ops::Bound::{Excluded, Included, Unbounded};
@@ -337,5 +338,33 @@ impl Observe {
             Phase::Done => return ObserveStatus::Done,
         }
         ObserveStatus::Pending
+    }
+}
+
+impl Trace for Frame {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.fields(&[self.scope]),
+            _ => Step::Done,
+        }
+    }
+}
+
+impl Trace for Observe {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.fields(&[
+                self.current.scope,
+                self.birth_support,
+                self.decision,
+                self.inactive,
+                self.active,
+                self.left,
+            ]),
+            1 => cursor.vector(self.stack.len(), |i, child| self.stack[i].trace(child)),
+            2 => cursor.optional(self.boolean.as_ref()),
+            3 => cursor.optional(self.resolve.as_ref()),
+            _ => Step::Done,
+        }
     }
 }

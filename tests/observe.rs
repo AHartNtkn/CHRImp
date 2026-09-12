@@ -79,8 +79,8 @@ fn run(
         }
         drop(gc);
         let mut gc = a.collect(
-            observer
-                .condition_roots()
+            traced_roots(observer, observer.condition_roots())
+                .into_iter()
                 .chain(supports)
                 .chain(births.values().flat_map(|b| [b.support, b.decision])),
         );
@@ -361,4 +361,28 @@ fn incomplete_history_cannot_silently_select_one_representative() {
         Arc::new(vec![1]),
     );
     run(&mut g, &mut a, &BTreeMap::new(), &mut observer);
+}
+
+fn traced_roots(
+    job: &impl chr::trace::Trace,
+    expected: impl Iterator<Item = Condition>,
+) -> Vec<Condition> {
+    use chr::trace::{Cursor, Step};
+    let mut expected: Vec<_> = expected.collect();
+    let mut cursor = Cursor::default();
+    let mut roots = Vec::new();
+    for _ in 0..16 * expected.len() + 256 {
+        match job.trace(&mut cursor) {
+            Step::Root(root) => roots.push(root),
+            Step::Pending => {}
+            Step::Done => {
+                assert_eq!(job.trace(&mut cursor), Step::Done);
+                roots.sort_unstable();
+                expected.sort_unstable();
+                assert_eq!(roots, expected, "incremental trace changed root inventory");
+                return roots;
+            }
+        }
+    }
+    panic!("root walk exceeded its linear step budget");
 }

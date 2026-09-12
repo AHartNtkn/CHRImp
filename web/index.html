@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>CHR · Language notebook</title>
+  <link rel="stylesheet" href="notebook.css">
+  <script type="module" src="notebook.mjs"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="wordmark"><span class="mark" aria-hidden="true">⋈</span><h1>CHR <span>language notebook</span></h1></div>
+    <div class="runtime"><span class="status-dot" aria-hidden="true"></span><span id="run-status" role="status">idle</span><span id="applications">0 applications</span></div>
+  </header>
+  <nav class="runbar" aria-label="Execution controls">
+    <div class="button-group"><button id="run" class="primary">▶ Run</button><button id="step">Step</button><button id="pause" disabled>Pause</button><button id="resume" disabled>Resume</button><button id="cancel" disabled>Cancel</button></div>
+    <label class="check"><input id="history" type="checkbox"> Record history <span>next run</span></label>
+  </nav>
+  <p id="message" class="message" role="status" aria-live="polite">Write a query or add a relation to begin.</p>
+  <main>
+    <section class="notebook" aria-label="Notebook editor">
+      <aside class="source-panel">
+        <div class="section-heading"><h2>Source</h2><button id="sync">Sync text</button></div>
+        <label for="program">Program <span>ordered rules</span></label>
+        <textarea id="program" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="source-help" placeholder="join @ p(X), q(X) &lt;=&gt; r(X)."></textarea>
+        <label for="query">Query</label>
+        <textarea id="query" spellcheck="false" autocapitalize="off" autocomplete="off">true</textarea>
+        <p id="source-help" class="hint">Relations use ordered ports. Shared variable names connect them.<br><code>,</code> And &nbsp; <code>;</code> Or &nbsp; <code>=</code> equality</p>
+      </aside>
+      <section class="diagram-panel" aria-labelledby="diagram-title">
+        <div class="section-heading"><h2 id="diagram-title">Diagram</h2><span class="legend"><i class="cyan"></i><i class="ochre"></i><i class="violet"></i> relations</span></div>
+        <fieldset id="graph-tools">
+          <legend class="sr-only">Graph editing controls</legend>
+          <div class="graph-toolbar"><label class="sr-only" for="target">Query or rule</label><select id="target"><option value="query">Query</option></select><button id="add-rule">+ Rule</button><button id="remove-rule" disabled>Remove rule</button><span class="spacer"></span><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button></div>
+          <div id="rule-sides" class="tabs" hidden aria-label="Rule side"><button data-side="kept">Kept</button><button data-side="removed">Removed</button><button data-side="body" aria-pressed="true">Body</button></div>
+          <label id="rule-name" hidden>Rule name <input id="rule-name-input" placeholder="Unnamed rule"></label>
+          <div class="graph-toolbar"><label for="add-kind">Add</label><select id="add-kind"><option value="atom">Relation</option><option value="equal">Equality</option><option value="and">And group</option><option value="or">Or group</option><option value="true">True</option><option value="fail">Fail</option></select><button id="add">+ Add item</button></div>
+        </fieldset>
+        <nav id="breadcrumb" class="breadcrumb" aria-label="Expression location"></nav>
+        <div class="graph-scroll"><svg id="editor-graph" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Editable hypergraph"></svg></div>
+        <div class="paging"><button id="graph-prev" aria-label="Previous diagram page">←</button><span id="graph-page"></span><button id="graph-next" aria-label="Next diagram page">→</button><span class="spacer"></span><button id="graph-port-prev" aria-label="Previous port page">←</button><span id="graph-ports"></span><button id="graph-port-next" aria-label="Next port page">→</button></div>
+      </section>
+      <aside class="inspector-panel">
+        <div class="section-heading"><h2>Selection</h2></div>
+        <fieldset id="inspector"><legend class="sr-only">Selected graph item</legend><div id="selection"><p>Select a relation, group or numbered port.</p></div></fieldset>
+      </aside>
+    </section>
+    <section class="results" aria-labelledby="results-title">
+      <div class="section-heading"><h2 id="results-title">Observation</h2><span id="answer-count">No answers yet</span></div>
+      <div class="result-toolbar"><label for="output-mode">View</label><select id="output-mode"><option value="answers">Answer stream</option><option value="inspect">Inspection</option></select><button id="answer-prev" aria-label="Previous answer" disabled>←</button><label class="sr-only" for="alternatives">Answer alternative</label><select id="alternatives"></select><button id="answer-next" aria-label="Next answer" disabled>→</button></div>
+      <div class="saved-toolbar"><label for="saved-run">Saved answers</label><select id="saved-run"><option value="">Current run</option></select><button id="saved-prev" aria-label="Previous saved answer page" disabled>←</button><label for="saved-page">Page</label><input id="saved-page" type="number" min="1" value="1"><span id="saved-pages">/ 1</span><button id="saved-next" aria-label="Next saved answer page" disabled>→</button><button id="clear-answers" disabled>Clear saved answers…</button></div>
+      <div class="observation-layout">
+        <div class="answer-panel">
+          <div id="bindings" class="bindings" aria-label="Query variable bindings"></div>
+          <div class="binding-paging"><button id="binding-prev" aria-label="Previous bindings">←</button><span id="binding-page">Bindings 1 / 1</span><button id="binding-next" aria-label="Next bindings">→</button></div>
+          <p id="result-empty" class="empty">Run the notebook to observe its answer graphs.</p>
+          <div class="graph-scroll"><svg id="result-graph" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Answer hypergraph" hidden></svg></div>
+          <div class="paging"><button id="result-prev" aria-label="Previous result graph page">←</button><span id="result-page"></span><button id="result-next" aria-label="Next result graph page">→</button><span class="spacer"></span><button id="result-port-prev" aria-label="Previous result port page">←</button><span id="result-ports"></span><button id="result-port-next" aria-label="Next result port page">→</button></div>
+        </div>
+        <aside class="inspection-panel">
+          <h3>Inspect an alternative</h3>
+          <div id="choices" class="choice-selectors" aria-label="Alternative choices"><p>Start a run to inspect its choices.</p></div>
+          <div class="binding-paging"><button id="choice-prev" aria-label="Previous choices" disabled>←</button><span id="choice-page">Choices 1 / 1</span><button id="choice-next" aria-label="Next choices" disabled>→</button></div>
+          <label for="snapshot">Snapshot</label><select id="snapshot" disabled><option value="">Current graph</option></select>
+          <button id="inspect" disabled>Inspect graph →</button>
+        </aside>
+      </div>
+    </section>
+  </main>
+  <footer>Ordered ports · shared variables · conditional alternatives</footer>
+</body>
+</html>

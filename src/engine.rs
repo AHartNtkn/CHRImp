@@ -1,4 +1,7 @@
 //! Cooperative execution of supported bodies, indexed discovery and CHR commits.
+mod collection;
+pub use collection::Memory;
+
 use crate::commit::{Commit, CommitStatus, FreshIds, StateRoot};
 use crate::condition::{Arena, Condition, Job, Operation, Progress};
 use crate::graph::{Graph, Update, UpdateStatus};
@@ -110,7 +113,6 @@ enum ReadyPhase {
 }
 struct Ready {
     cursor: Cursor,
-    pending_count: usize,
     blocked: Condition,
     scope: Condition,
     job: Option<Job>,
@@ -128,20 +130,23 @@ pub struct Engine {
     active: Condition,
     failed: Condition,
     queue: VecDeque<Scheduled>,
+    parked: BTreeMap<u64, Scheduled>,
     next_task: u64,
     lane: Option<Owner>,
     waiting: VecDeque<Owner>,
     requested: BTreeSet<Owner>,
     pending: Store<Condition>,
     pending_root: Root,
-    pending_gc: Option<crate::store::Collector<std::array::IntoIter<Root, 2>>>,
-    pending_collections: u64,
     ready: Option<Ready>,
     output: Option<Output>,
     observer: Option<Observe>,
     births: BTreeMap<u64, Birth>,
     applications: u64,
     ticks: u64,
+    collector: Option<collection::Collection>,
+    collection_requested: bool,
+    collections: u64,
+    collection_limit: usize,
 }
 impl Engine {
     pub fn new(code: Arc<Prepared>) -> Self {
@@ -160,14 +165,13 @@ impl Engine {
             state,
             pending,
             pending_root,
-            pending_gc: None,
-            pending_collections: 0,
             arena: Arena::default(),
             ids: FreshIds::default(),
             variables: Arc::new(vec![]),
             active: Condition::TRUE,
             failed: Condition::FALSE,
             queue: VecDeque::new(),
+            parked: BTreeMap::new(),
             next_task: 0,
             lane: None,
             waiting: VecDeque::new(),
@@ -178,6 +182,10 @@ impl Engine {
             births: BTreeMap::new(),
             applications: 0,
             ticks: 0,
+            collector: None,
+            collection_requested: false,
+            collections: 0,
+            collection_limit: 4096,
         };
         e.spawn(Condition::TRUE, Task::Init(vec![]));
         e
@@ -209,14 +217,8 @@ impl Engine {
     pub fn exhausted(&self) -> bool {
         self.active == Condition::FALSE
     }
-    pub fn pending_index_nodes(&self) -> usize {
-        self.pending.node_count()
-    }
-    pub fn pending_collections(&self) -> u64 {
-        self.pending_collections
-    }
     pub fn pending_tasks(&self) -> usize {
-        self.queue.len()
+        self.queue.len() + self.parked.len()
     }
     /// Output is a stream of owned scalar events; taking an event retains no
     /// execution snapshot. The receiver builds or stores the requested graph.
@@ -256,19 +258,32 @@ impl Engine {
         }
         false
     }
+    fn release_lane(&mut self) {
+        self.lane = self.waiting.pop_front();
+        if let Some(owner) = self.lane {
+            self.requested.remove(&owner);
+            if let Owner::Task(id) = owner {
+                self.queue
+                    .push_back(self.parked.remove(&id).expect("waiting task is suspended"));
+            }
+        }
+    }
     /// A budget counts finite continuation steps, not source answers. Zero is a no-op.
     pub fn advance(&mut self, budget: usize) {
         for _ in 0..budget {
+            if self.collect_heap() {
+                continue;
+            }
             if self.ticks.is_multiple_of(3) {
-                if self.collect_pending() {
-                    // Index writes wait; completion reads and projection still run.
-                } else if let Some(mut task) = self.queue.pop_front() {
+                if let Some(mut task) = self.queue.pop_front() {
                     if self.task(&mut task) {
                         self.pending_root =
                             self.pending.remove(self.pending_root, &[task.id, 0, 0, 0]);
                         if self.lane == Some(Owner::Task(task.id)) {
-                            self.lane = None;
+                            self.release_lane();
                         }
+                    } else if self.requested.contains(&Owner::Task(task.id)) {
+                        self.parked.insert(task.id, task);
                     } else {
                         self.queue.push_back(task);
                     }
@@ -280,34 +295,6 @@ impl Engine {
             }
             self.ticks = self.ticks.wrapping_add(1);
         }
-    }
-    fn collect_pending(&mut self) -> bool {
-        if let Some(gc) = &mut self.pending_gc {
-            gc.tick(&mut self.pending);
-            if gc.done() {
-                self.pending_gc = None;
-                self.pending_collections += 1;
-            }
-            return true;
-        }
-        // Both current tasks and the completion snapshot are live roots. Their
-        // sizes scale the headroom, avoiding repeated scans of retained state.
-        let retained = self
-            .queue
-            .len()
-            .saturating_add(self.ready.as_ref().map_or(0, |r| r.pending_count));
-        if self.pending.node_count() > 1024usize.saturating_add(retained.saturating_mul(16)) {
-            let inspected = self
-                .ready
-                .as_ref()
-                .map_or(self.pending_root, |r| r.cursor.root());
-            self.pending_gc = Some(
-                self.pending
-                    .collect([self.pending_root, inspected].into_iter()),
-            );
-            return true;
-        }
-        false
     }
     fn task(&mut self, s: &mut Scheduled) -> bool {
         match &mut s.task {
@@ -372,11 +359,11 @@ impl Engine {
                             let app = c.application;
                             self.body(app.id, app.body, app.variables, app.support);
                             search.commit = None;
-                            self.lane = None;
+                            self.release_lane();
                         }
                         CommitStatus::Rejected => {
                             search.commit = None;
-                            self.lane = None;
+                            self.release_lane();
                         }
                         CommitStatus::Pending => {}
                         CommitStatus::Done => unreachable!(),
@@ -637,7 +624,6 @@ impl Engine {
         }
         let mut ready = self.ready.take().unwrap_or_else(|| Ready {
             cursor: self.pending.range(self.pending_root, [0; 4], [u64::MAX; 4]),
-            pending_count: self.queue.len(),
             blocked: Condition::FALSE,
             scope: self.active,
             job: None,
@@ -677,7 +663,7 @@ impl Engine {
             ReadyPhase::Filter => {
                 if let Some(c) = poll(&mut ready.job, &mut self.arena) {
                     if c == Condition::FALSE {
-                        self.lane = None;
+                        self.release_lane();
                         return;
                     }
                     ready.scope = c;
@@ -698,7 +684,7 @@ impl Engine {
                         self.code.clone(),
                         self.variables.clone(),
                     ));
-                    self.lane = None;
+                    self.release_lane();
                     return;
                 }
             }

@@ -7,6 +7,7 @@
 //! to the executor, never to Boolean simplification.
 
 use crate::gc::GcLease;
+use crate::trace::{Cursor, Step, Trace};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ops::Bound::{Excluded, Unbounded};
 use std::sync::Arc;
@@ -222,7 +223,7 @@ impl Arena {
                 vec![Frame::Evaluate(pair)]
             },
             last: known,
-            memo: HashMap::new(),
+            memo: BTreeMap::new(),
             work: 0,
         }
     }
@@ -300,24 +301,25 @@ pub struct Job {
     frames: Vec<Frame>,
     last: Option<Condition>,
     // Completed subproblems are semantic work dependencies, not an evicting cache.
-    memo: HashMap<Pair, Condition>,
+    memo: BTreeMap<Pair, Condition>,
     work: u64,
 }
 
 impl Job {
     pub fn result(&self) -> Option<Condition> {
-        if self.frames.is_empty() {
+        if self.frames.is_empty() && self.memo.is_empty() {
             self.last.map(|c| if self.negative { c.not() } else { c })
         } else {
             None
         }
     }
+    /// Boolean evaluation actions, excluding incremental scratch cleanup.
     pub fn work(&self) -> u64 {
         self.work
     }
-    /// Allocated scratch entry capacity, including currently unused slots.
+    /// Frame-vector capacity plus live memo entries (not B-tree allocation bytes).
     pub fn scratch_capacity(&self) -> usize {
-        self.frames.capacity() + self.memo.capacity()
+        self.frames.capacity() + self.memo.len()
     }
 
     pub fn roots(&self) -> impl Iterator<Item = Condition> + '_ {
@@ -357,6 +359,14 @@ impl Job {
         GcLease::assert_mutable(&arena.frozen);
         if let Some(result) = self.result() {
             return Progress::Complete(result);
+        }
+        if self.frames.is_empty() {
+            self.memo.pop_first();
+            if let Some(result) = self.result() {
+                self.frames = Vec::new();
+                return Progress::Complete(result);
+            }
+            return Progress::Pending;
         }
         self.work += 1;
         match self.frames.pop().expect("unfinished condition operation") {
@@ -416,9 +426,6 @@ impl Job {
             }
         }
         if let Some(result) = self.result() {
-            // Keys and values contain only Copy handles: releasing this table
-            // deallocates scratch without recursive graph destruction.
-            self.memo = HashMap::new();
             self.frames = Vec::new();
             Progress::Complete(result)
         } else {
@@ -504,5 +511,34 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
             Phase::Done => return true,
         }
         matches!(self.phase, Phase::Done)
+    }
+}
+
+impl Trace for Frame {
+    fn trace(&self, cursor: &mut Cursor) -> Step {
+        if cursor.phase != 0 {
+            return Step::Done;
+        }
+        match *self {
+            Self::Evaluate((a, b)) => cursor.fields(&[a, b]),
+            Self::AfterLow {
+                pair: (a, b),
+                high: (c, d),
+                ..
+            } => cursor.fields(&[a, b, c, d]),
+            Self::AfterHigh {
+                pair: (a, b), low, ..
+            } => cursor.fields(&[a, b, low]),
+        }
+    }
+}
+impl Trace for Job {
+    fn trace(&self, cursor: &mut Cursor) -> Step {
+        match cursor.phase {
+            0 => cursor.pairs(&self.memo),
+            1 => cursor.fields(self.last.as_slice()),
+            2 => cursor.vector(self.frames.len(), |i, child| self.frames[i].trace(child)),
+            _ => Step::Done,
+        }
     }
 }

@@ -207,3 +207,141 @@ fn staged_union_survives_graph_and_condition_collection_at_every_tick() {
         Condition::TRUE
     );
 }
+
+fn traced<T: chr::trace::Trace>(
+    job: &T,
+    inventory: impl Iterator<Item = Condition>,
+) -> Vec<Condition> {
+    use chr::trace::{Cursor, Step};
+    let mut expected: Vec<_> = inventory.collect();
+    let mut cursor = Cursor::default();
+    let mut roots = Vec::new();
+    for _ in 0..(8 * expected.len() + 200) {
+        match job.trace(&mut cursor) {
+            Step::Root(c) => roots.push(c),
+            Step::Pending => {}
+            Step::Done => {
+                assert_eq!(job.trace(&mut cursor), Step::Done);
+                expected.sort();
+                roots.sort();
+                assert_eq!(roots, expected, "nested trace inventory differs");
+                return roots;
+            }
+        }
+    }
+    panic!("identity trace did not finish in scalar steps");
+}
+fn collect_traced(
+    g: &mut Graph,
+    a: &mut Arena,
+    roots: impl Iterator<Item = Root>,
+    mut supports: Vec<Condition>,
+) {
+    let mut gc = g.collect(roots);
+    while !gc.done() {
+        if let Some(c) = gc.tick(g) {
+            supports.push(c);
+        }
+    }
+    drop(gc);
+    let mut gc = a.collect(supports.into_iter());
+    while !gc.tick(a) {}
+}
+
+#[test]
+fn nested_identity_traces_survive_gc_through_all_merge_equal_and_resolve_phases() {
+    let mut g = Graph::new(&[]);
+    let mut a = Arena::default();
+    let c = a.fresh_choice().1;
+    let d = a.fresh_choice().1;
+    let empty = g.empty();
+    let root = merge(&mut g, &mut a, empty, 0, 2, c);
+    let root = merge(&mut g, &mut a, root, 1, 3, d);
+    let mut merging = Merge::new(&g, root, 0, 1, Condition::TRUE);
+    let root = loop {
+        let mut supports = traced(&merging, merging.condition_roots());
+        supports.extend([c, d]);
+        collect_traced(&mut g, &mut a, merging.roots().into_iter(), supports);
+        if let Some(root) = merging.tick(&mut g, &mut a) {
+            traced(&merging, merging.condition_roots());
+            break root;
+        }
+    };
+    let mut comparing = Equal::new(&g, root, 2, 3, Condition::TRUE);
+    let result = loop {
+        let supports = traced(&comparing, comparing.condition_roots());
+        collect_traced(&mut g, &mut a, [root].into_iter(), supports);
+        if let Some(result) = comparing.tick(&g, &mut a) {
+            traced(&comparing, comparing.condition_roots());
+            break result;
+        }
+    };
+    for bits in 0..4 {
+        assert_eq!(a.evaluate(result, |i| bits & (1 << i) != 0), bits == 3);
+    }
+    let mut resolving = Resolve::new(&g, root, 3, Condition::TRUE);
+    let mut observed = vec![Vec::new(); 4];
+    for _ in 0..10_000 {
+        let supports = traced(&resolving, resolving.condition_roots());
+        collect_traced(&mut g, &mut a, [root].into_iter(), supports);
+        match resolving.tick(&g, &mut a) {
+            ResolveStatus::Found { variable, support } => {
+                for (bits, found) in observed.iter_mut().enumerate() {
+                    if a.evaluate(support, |i| bits & (1 << i) != 0) {
+                        found.push(variable);
+                    }
+                }
+            }
+            ResolveStatus::Pending => {}
+            ResolveStatus::Done => {
+                traced(&resolving, resolving.condition_roots());
+                assert_eq!(observed, [vec![3], vec![3], vec![1], vec![0]]);
+                return;
+            }
+        }
+    }
+    panic!("traced resolution did not finish");
+}
+
+#[test]
+fn resolve_large_visited_map_cleanup_yields_one_record_per_tick() {
+    use chr::condition::{Operation, Progress};
+    let mut g = Graph::new(&[]);
+    let mut a = Arena::default();
+    let choices: Vec<_> = (0..5).map(|_| a.fresh_choice().1).collect();
+    let mut root = g.empty();
+    for bits in 0..32 {
+        let mut support = Condition::TRUE;
+        for (i, &c) in choices.iter().enumerate() {
+            let literal = if bits & (1 << i) != 0 { c } else { c.not() };
+            let mut job = a.start(Operation::And(support, literal));
+            support = loop {
+                if let Progress::Complete(c) = job.tick(&mut a) {
+                    break c;
+                }
+            };
+        }
+        root = merge(&mut g, &mut a, root, 100, bits, support);
+    }
+    let mut resolving = Resolve::new(&g, root, 100, Condition::TRUE);
+    let mut found = 0;
+    for _ in 0..100_000 {
+        let before = resolving.condition_roots().count();
+        traced(&resolving, resolving.condition_roots());
+        let status = resolving.tick(&g, &mut a);
+        let after = resolving.condition_roots().count();
+        assert!(
+            before.saturating_sub(after) <= 8,
+            "one tick discarded many visited roots: {before} -> {after}"
+        );
+        match status {
+            ResolveStatus::Found { .. } => found += 1,
+            ResolveStatus::Pending => {}
+            ResolveStatus::Done => {
+                assert_eq!(found, 32);
+                return;
+            }
+        }
+    }
+    panic!("wide resolution did not finish");
+}

@@ -11,6 +11,7 @@ use crate::identity::{Equal, ResolveStatus};
 use crate::members::Members;
 use crate::program::Prepared;
 use crate::store::Root;
+use crate::trace::{Cursor as TraceCursor, Step, Trace};
 use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -475,5 +476,49 @@ impl Matches {
             Phase::Done => return MatchStatus::Done,
         }
         MatchStatus::Pending
+    }
+}
+
+impl Trace for Source {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        let (members, membership) = match &self.kind {
+            SourceKind::Port {
+                members,
+                membership,
+                ..
+            } => (Some(members.as_ref()), *membership),
+            _ => (None, Condition::FALSE),
+        };
+        match cursor.phase {
+            0 => cursor.fields(&[self.scope, membership]),
+            1 => cursor.optional(self.boolean.as_ref()),
+            2 => cursor.optional(members),
+            _ => Step::Done,
+        }
+    }
+}
+
+impl Trace for Frame {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.fields(&[self.hit]),
+            1 => cursor.optional(Some(&self.source)),
+            _ => Step::Done,
+        }
+    }
+}
+
+impl Trace for Matches {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.fields(&[self.scope, self.current]),
+            1 => cursor.vector(self.frames.len(), |i, child| self.frames[i].trace(child)),
+            2 => cursor.optional(self.equality.as_ref()),
+            3 => match &self.output {
+                Some(output) => cursor.fields(&[output.support]),
+                None => cursor.advance(),
+            },
+            _ => Step::Done,
+        }
     }
 }

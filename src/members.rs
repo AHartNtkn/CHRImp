@@ -8,7 +8,8 @@ use crate::condition::{Arena, Condition, Job, Operation, Progress};
 use crate::graph::Graph;
 use crate::identity::{CHILD, Resolve, ResolveStatus};
 use crate::store::{Cursor, Root};
-use std::collections::{HashMap, VecDeque};
+use crate::trace::{Cursor as TraceCursor, Step, Trace};
+use std::collections::{BTreeMap, VecDeque};
 
 #[derive(Clone, Copy)]
 enum Phase {
@@ -19,6 +20,7 @@ enum Phase {
     Remember,
     Scan,
     Hit,
+    Cleanup,
     Done,
 }
 
@@ -28,9 +30,9 @@ enum Phase {
 pub struct Members {
     root: Root,
     resolver: Option<Resolve>,
-    pending: HashMap<u64, Condition>,
+    pending: BTreeMap<u64, Condition>,
     queue: VecDeque<u64>,
-    visited: HashMap<u64, Condition>,
+    visited: BTreeMap<u64, Condition>,
     variable: u64,
     target: u64,
     fresh: Condition,
@@ -45,9 +47,9 @@ impl Members {
         Self {
             root,
             resolver: Some(Resolve::new(g, root, variable, scope)),
-            pending: HashMap::new(),
+            pending: BTreeMap::new(),
             queue: VecDeque::new(),
-            visited: HashMap::new(),
+            visited: BTreeMap::new(),
             variable,
             target: variable,
             fresh: Condition::FALSE,
@@ -131,13 +133,7 @@ impl Members {
                     self.boolean = Some(a.start(Operation::Difference(carry, old)));
                     self.phase = Phase::Novel;
                 } else {
-                    // Copy-only tables release their storage without walking a graph.
-                    self.pending = HashMap::new();
-                    self.visited = HashMap::new();
-                    self.queue = VecDeque::new();
-                    self.fresh = Condition::FALSE;
-                    self.phase = Phase::Done;
-                    return ResolveStatus::Done;
+                    self.phase = Phase::Cleanup;
                 }
             }
             Phase::Novel => {
@@ -196,8 +192,29 @@ impl Members {
                     }
                 }
             }
+            Phase::Cleanup => {
+                if self.pending.pop_first().is_none() && self.visited.pop_first().is_none() {
+                    self.queue = VecDeque::new();
+                    self.fresh = Condition::FALSE;
+                    self.phase = Phase::Done;
+                    return ResolveStatus::Done;
+                }
+            }
             Phase::Done => return ResolveStatus::Done,
         }
         ResolveStatus::Pending
+    }
+}
+
+impl Trace for Members {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.fields(&[self.fresh]),
+            1 => cursor.values(&self.pending),
+            2 => cursor.values(&self.visited),
+            3 => cursor.optional(self.boolean.as_ref()),
+            4 => cursor.optional(self.resolver.as_ref()),
+            _ => Step::Done,
+        }
     }
 }

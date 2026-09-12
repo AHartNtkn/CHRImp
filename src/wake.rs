@@ -8,6 +8,7 @@ use crate::graph::{Graph, Occurrences};
 use crate::identity::ResolveStatus;
 use crate::members::Members;
 use crate::store::Root;
+use crate::trace::{Cursor as TraceCursor, Step, Trace};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -153,5 +154,17 @@ impl Wake {
             Phase::Done => return WakeStatus::Done,
         }
         WakeStatus::Pending
+    }
+}
+
+impl Trace for Wake {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.optional(Some(&self.members)),
+            1 => cursor.fields(&[self.member_support, self.fresh]),
+            2 => cursor.values(&self.seen),
+            3 => cursor.optional(self.boolean.as_ref()),
+            _ => Step::Done,
+        }
     }
 }

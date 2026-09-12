@@ -66,6 +66,7 @@ fn run(
 ) -> (BTreeMap<u64, Condition>, usize) {
     let mut found = BTreeMap::new();
     for ticks in 1..100_000 {
+        let traced = traced_roots(wake, wake.condition_roots());
         if gc {
             let mut roots = Vec::new();
             let mut collector = g.collect(std::iter::once(wake.root()));
@@ -76,7 +77,8 @@ fn run(
             }
             drop(collector);
             let mut collector = a.collect(
-                wake.condition_roots()
+                traced
+                    .into_iter()
                     .chain(found.values().copied())
                     .chain(roots),
             );
@@ -197,4 +199,28 @@ fn unrelated_occurrences_do_not_add_wake_work() {
     );
     let mut empty_wake = Wake::new(&g, root, u64::MAX, Condition::TRUE);
     assert!(run(&mut g, &mut a, &mut empty_wake, false).0.is_empty());
+}
+
+fn traced_roots(
+    job: &impl chr::trace::Trace,
+    expected: impl Iterator<Item = Condition>,
+) -> Vec<Condition> {
+    use chr::trace::{Cursor, Step};
+    let mut expected: Vec<_> = expected.collect();
+    let mut cursor = Cursor::default();
+    let mut roots = Vec::new();
+    for _ in 0..16 * expected.len() + 256 {
+        match job.trace(&mut cursor) {
+            Step::Root(root) => roots.push(root),
+            Step::Pending => {}
+            Step::Done => {
+                assert_eq!(job.trace(&mut cursor), Step::Done);
+                roots.sort_unstable();
+                expected.sort_unstable();
+                assert_eq!(roots, expected, "incremental trace changed root inventory");
+                return roots;
+            }
+        }
+    }
+    panic!("root walk exceeded its linear step budget");
 }

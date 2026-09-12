@@ -12,4 +12,5 @@ pub mod observe;
 pub mod program;
 pub mod store;
 pub mod syntax;
+pub mod trace;
 pub mod wake;
