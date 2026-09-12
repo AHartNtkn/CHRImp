@@ -6,12 +6,17 @@ const before = structuredClone(model);
 const scene = diagramScene(model,['program','rules',0,'body']);
 const layout = layoutScene(scene);
 assert.deepEqual(model,before);
-assert.deepEqual(layout.items.filter(n=>n.type==='boundary').map(n=>n.label).filter(n=>['Kept','Removed','Body','Or','And'].includes(n)),['Kept','Removed','Body','Or','And']);
+assert.deepEqual(layout.items.filter(n=>n.type==='boundary').map(n=>n.label).filter(n=>['Kept','Removed','Body','Or','And'].includes(n)),['Kept','Removed','Body','Or']);
 assert.equal(layout.items.filter(n=>n.type==='node').length,5);
 assert.equal(layout.items.find(n=>n.type==='node'&&n.kind==='equal').label,'=');
 assert.equal(layout.items.filter(n=>n.type==='junction'&&n.name==='X').length,1);
 assert.equal(layout.items.filter(n=>n.type==='wire'&&n.name==='X').length,3);
 assert.equal(layout.items.filter(n=>n.type==='wire'&&n.name==='Z').length,3);
+const disjunction=layout.items.find(n=>n.type==='boundary'&&n.kind==='or');
+const sections=layout.items.filter(n=>n.type==='boundary'&&n.kind==='branch');
+assert.ok(sections.every(s=>s.x===disjunction.x&&s.width===disjunction.width));
+assert.equal(sections[0].y+sections[0].height,sections[1].y);
+assert.equal(sections.at(-1).y+sections.at(-1).height,disjunction.y+disjunction.height);
 const port=layout.items.find(n=>n.type==='port'&&n.relation==='right'&&n.port===1);
 const edited=applyEdit(model,{type:'set-port',path:port.path,index:port.port,variable:'Y'});
 assert.deepEqual(edited.program.rules[0].body.items[1].items[0].atom.args,['X','Y']);
@@ -21,6 +26,15 @@ const movedNode=moved.items.find(n=>n.type==='node'&&n.relation==='right');
 const alternative=moved.items.find(n=>n.type==='boundary'&&n.label==='Alternative 2');
 assert.ok(movedNode.x+movedNode.width<=alternative.x+alternative.width);
 assert.ok(movedNode.y+movedNode.height<=alternative.y+alternative.height);
+for(const delta of [{x:300,y:200},{x:-100,y:-150}]) {
+  const changed=layoutScene(scene,new Map([[JSON.stringify(port.path),delta]]));
+  const box=changed.items.find(n=>n.type==='boundary'&&n.kind==='or');
+  const parts=changed.items.filter(n=>n.type==='boundary'&&n.kind==='branch');
+  assert.ok(parts.every(p=>p.x===box.x&&p.width===box.width));
+  assert.equal(parts[0].y,box.y+38);
+  assert.equal(parts[0].y+parts[0].height,parts[1].y);
+  assert.equal(parts.at(-1).y+parts.at(-1).height,box.y+box.height);
+}
 const bodyWires=layout.items.filter(n=>n.type==='wire'&&['left','right'].includes(n.relation));
 const rails=new Map();for(const wire of bodyWires){if(rails.has(wire.points[4]))assert.equal(rails.get(wire.points[4]),wire.name);rails.set(wire.points[4],wire.name);}
 const wide=layoutScene(diagramScene({query:atom('wide',...Array.from({length:30},(_,i)=>`V${i}`))},['query']));

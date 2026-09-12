@@ -33,22 +33,22 @@
         <div class="section-heading"><h2 id="diagram-title">Diagram</h2><span class="legend"><i class="cyan"></i><i class="ochre"></i><i class="violet"></i> relations</span></div>
         <fieldset id="graph-tools">
           <legend class="sr-only">Graph editing controls</legend>
-          <div class="graph-toolbar"><label class="sr-only" for="target">Query or rule</label><select id="target"><option value="query">Query</option></select><button id="add-rule">+ Rule</button><button id="remove-rule" disabled>Remove rule</button><span class="spacer"></span><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button></div>
+          <div class="graph-toolbar"><label class="sr-only" for="target">Query or rule</label><select id="target"><option value="query">Query</option></select><button id="add-rule">+ Rule</button><span class="spacer"></span><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button></div>
           <div id="rule-sides" class="tabs" hidden aria-label="Add to rule side"><button data-side="kept">Add to kept</button><button data-side="removed">Add to removed</button><button data-side="body" aria-pressed="true">Add to body</button></div>
-          <label id="rule-name" hidden>Rule name <input id="rule-name-input" placeholder="Unnamed rule"></label>
+          <details class="rule-settings"><summary>Rule settings</summary><label id="rule-name" hidden>Rule name <input id="rule-name-input" placeholder="Unnamed rule"></label><button id="remove-rule" disabled>Remove rule</button></details>
           <div class="graph-toolbar"><label for="add-kind">Add</label><select id="add-kind"><option value="atom">Relation</option><option value="equal">Equality</option><option value="and">And group</option><option value="or">Or group</option><option value="true">True</option><option value="fail">Fail</option></select><button id="add">+ Add item</button></div>
         </fieldset>
         <nav id="breadcrumb" class="breadcrumb" aria-label="Expression location"></nav>
         <div class="graph-scroll"><svg id="editor-graph" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Editable hypergraph"></svg></div>
         <div class="canvas-tools" aria-label="Diagram navigation"><button data-diagram="editor-graph" data-action="out">−</button><button data-diagram="editor-graph" data-action="in">+</button><button data-diagram="editor-graph" data-action="fit">Fit</button><button data-diagram="editor-graph" data-action="layout">Arrange</button><button data-diagram="editor-graph" data-action="expand">Expand</button><span>Drag to move · scroll to zoom · drag a port to connect</span></div>
       </section>
-      <aside class="inspector-panel">
-        <div class="section-heading"><h2>Selection</h2></div>
+      <aside class="inspector-panel" id="selection-panel" hidden>
+        <div class="section-heading"><h2>Selection</h2><button id="close-selection" aria-label="Close selection">×</button></div>
         <fieldset id="inspector"><legend class="sr-only">Selected graph item</legend><div id="selection"><p>Select a relation, group or numbered port.</p></div></fieldset>
       </aside>
     </section>
-    <section class="results" aria-labelledby="results-title">
-      <div class="section-heading"><h2 id="results-title">Observation</h2><span id="answer-count">No answers yet</span></div>
+    <details class="results" id="observations">
+      <summary class="section-heading"><h2 id="results-title">Observation</h2><span id="answer-count">No answers yet</span></summary>
       <div class="result-toolbar"><label for="output-mode">View</label><select id="output-mode"><option value="answers">Answer stream</option><option value="inspect">Inspection</option></select><button id="answer-prev" aria-label="Previous answer" disabled>←</button><label class="sr-only" for="alternatives">Answer alternative</label><select id="alternatives"></select><button id="answer-next" aria-label="Next answer" disabled>→</button></div>
       <div class="saved-toolbar"><label for="saved-run">Saved answers</label><select id="saved-run"><option value="">Current run</option></select><button id="collections-prev" aria-label="Newer saved runs" disabled>↑</button><button id="collections-next" aria-label="Older saved runs" disabled>↓</button><button id="saved-prev" aria-label="Previous saved answer page" disabled>←</button><label for="saved-page">Page</label><input id="saved-page" type="number" min="1" value="1"><span id="saved-pages">/ 1</span><button id="saved-next" aria-label="Next saved answer page" disabled>→</button><button id="clear-answers" disabled>Clear saved answers…</button></div>
       <div class="observation-layout">
@@ -75,7 +75,7 @@
           <button id="inspect" disabled>Inspect graph →</button>
         </aside>
       </div>
-    </section>
+    </details>
   </main>
   <footer>Ordered ports · shared variables · conditional alternatives</footer>
 </body>

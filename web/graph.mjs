@@ -170,28 +170,31 @@ function connectedOrder(children) {
 }
 export function layoutScene(scene, positions = new Map()) {
   function measure(node) {
-    const sourceChildren=node.kind==='or' ? node.children.map((child,i)=>({kind:'branch',path:child.path,label:`Alternative ${i+1}`,children:[child]})) : node.children;
-    let children=(sourceChildren??[]).map(measure);
+    let children=(node.children??[]).map(child=>measure(node.kind==='or'&&child.kind==='and'?{...child,compact:true}:child));
     const names=new Set(node.args??[]);
     children.forEach(c=>c.names.forEach(n=>names.add(n)));
     if(node.kind==='and')children=connectedOrder(children);
-    if(!node.children)return {...node,names,width:Math.max(166,(node.args?.length??0)*28+24),height:86};
-    const columns=node.kind==='rule'?2:node.kind==='or'?1:Math.min(4,Math.max(1,children.length));
+    if(!node.children)return {...node,names,width:Math.max(node.kind==='atom'?166:92,(node.args?.length??0)*28+24,(node.relation?.length??0)*9+48),height:86};
+    if(node.kind==='or') {
+      const width=children.reduce((width,child)=>Math.max(width,child.width+48),190);let y=38;
+      children=children.map((child,i)=>{child.dx=24;child.dy=32;const section={kind:'branch',path:child.path,label:`Alternative ${i+1}`,names:child.names,children:[child],dx:0,dy:y,width,height:child.height+54};y+=section.height;return section;});
+      return {...node,children,names,width,height:y};
+    }
+    const columns=node.kind==='rule'?3:Math.min(4,Math.max(1,children.length));
     if(node.kind==='rule') {
-      const headWidth=Math.max(children[0].width,children[1].width);
-      children[0].dx=28;children[0].dy=48;children[1].dx=28;children[1].dy=48+children[0].height+32;
-      children[2].dx=headWidth+72;children[2].dy=48;
-      return {...node,children,names,width:headWidth+children[2].width+100,height:Math.max(children[0].height+children[1].height+32,children[2].height)+100};
+      let x=0;children.forEach(child=>{child.dx=x;child.dy=0;x+=child.width+34;});
+      return {...node,children,names,width:x-34,height:Math.max(...children.map(c=>c.height))};
     }
     const widths=Array(columns).fill(0), heights=[];
     children.forEach((c,i)=>{widths[i%columns]=Math.max(widths[i%columns],c.width);heights[Math.floor(i/columns)]=Math.max(heights[Math.floor(i/columns)]??0,c.height);});
-    let y=48;
+    const padding=node.compact?0:node.label?14:24,top=node.compact?0:node.label?38:40;
+    let y=top;
     children.forEach((c,i)=>{
       const row=Math.floor(i/columns),col=i%columns;
-      if(col===0&&row)y+=heights[row-1]+72;
-      c.dx=28+widths.slice(0,col).reduce((sum,w)=>sum+w+44,0);c.dy=y;
+      if(col===0&&row)y+=heights[row-1]+52;
+      c.dx=padding+widths.slice(0,col).reduce((sum,w)=>sum+w+44,0);c.dy=y;
     });
-    return {...node,children,names,width:Math.max(190,56+widths.reduce((s,w)=>s+w,0)+44*(columns-1)),height:Math.max(134,y+(heights.at(-1)??0)+60)};
+    return {...node,children,names,width:Math.max(166,2*padding+widths.reduce((s,w)=>s+w,0)+44*(columns-1)),height:Math.max(86,y+(heights.at(-1)??0)+(node.compact?0:22))};
   }
   const root=measure(scene),items=[],ports=new Map();
   const add=item=>{item.order=items.length;items.push(item);return item;};
@@ -199,12 +202,29 @@ export function layoutScene(scene, positions = new Map()) {
     const id=keyOf(node.path),offset=positions.get(id)??{x:0,y:0};
     x+=offset.x;y+=offset.y;
     if(node.children) {
+      if(node.compact){node.children.forEach(c=>place(c,x+c.dx,y+c.dy,depth,ancestors));return;}
       const label=node.label??(node.kind==='or'?'Or':node.kind==='rule'?'Rule':'And');
-      const boundary=add({type:'boundary',kind:node.kind,path:node.path,id,x,y,width:node.width,height:node.height,label,depth});
-      node.children.forEach(c=>place(c,x+c.dx,y+c.dy,depth+1,[...ancestors,boundary]));
+      const boundary=add({type:'boundary',kind:node.kind,path:node.path,id,x,y,width:node.width,height:node.height,label,depth,region:!!node.label&&node.kind!=='branch'});
+      if(node.kind==='or') {
+        const sections=[];let bottom=y+38;
+        for(const child of node.children) {
+          const start=items.length;
+          place(child,x,bottom,depth+1,[...ancestors,boundary]);
+          const section=items[start];
+          // Keep every alternative inside its own contiguous compartment after a drag.
+          const shift=bottom-section.y;
+          for(let i=start;i<items.length;i++)items[i].y+=shift;
+          bottom+=section.height;sections.push(section);
+        }
+        const left=sections.reduce((min,s)=>Math.min(min,s.x),x);
+        const right=sections.reduce((max,s)=>Math.max(max,s.x+s.width),x+node.width);
+        Object.assign(boundary,{x:left,y,width:right-left,height:bottom-y});
+        sections.forEach(section=>Object.assign(section,{x:left,width:right-left}));
+        for(const parent of ancestors){parent.width=Math.max(parent.x+parent.width,right)-Math.min(parent.x,left);parent.x=Math.min(parent.x,left);parent.height=Math.max(parent.height,bottom-parent.y);}
+      } else node.children.forEach(c=>place(c,x+c.dx,y+c.dy,depth+1,[...ancestors,boundary]));
       return;
     }
-    for(const boundary of ancestors){const right=Math.max(boundary.x+boundary.width,x+node.width+28),bottom=Math.max(boundary.y+boundary.height,y+node.height+28);boundary.x=Math.min(boundary.x,x-28);boundary.y=Math.min(boundary.y,y-48);boundary.width=right-boundary.x;boundary.height=bottom-boundary.y;}
+    for(const boundary of ancestors){if(!positions.size)continue;const right=Math.max(boundary.x+boundary.width,x+node.width+28),bottom=Math.max(boundary.y+boundary.height,y+node.height+28);boundary.x=Math.min(boundary.x,x-28);boundary.y=Math.min(boundary.y,y-48);boundary.width=right-boundary.x;boundary.height=bottom-boundary.y;}
     const label=node.kind==='atom'?`${node.relation} / ${node.args.length}`:node.kind==='equal'?'=':node.kind;
     add({type:'node',...node,id,x,y,width:node.width,height:62,label});
     (node.args??[]).forEach((name,port)=>{
@@ -308,7 +328,7 @@ export function renderGraph(svg,model,path,options={}) {
 export function renderScene(svg,scene,options={}) {
   let state=canvases.get(svg);
   const key=options.key??'scene';
-  if(!state){state={svg,id:++nextCanvas,positions:new Map(),camera:null};canvases.set(svg,state);state.resize=new ResizeObserver(()=>{if(state.layout&&!state.loading)drawScene(svg,state);});state.resize.observe(svg);}
+  if(!state){state={svg,id:++nextCanvas,positions:new Map(),camera:null};canvases.set(svg,state);state.resize=new ResizeObserver(()=>{if(state.layout&&!state.loading){state.camera=null;drawScene(svg,state);}});state.resize.observe(svg);}
   if(state.key!==key){state.positions.clear();state.camera=null;state.key=key;}
   const changed=state.scene!==scene;
   state.options=options;state.scene=scene;
@@ -338,8 +358,10 @@ function drawScene(svg,state) {
       const group=svgNode('g',{'data-item':item.id,'data-type':item.type,...(item.name?{'data-variable':item.name}:{})});
       if(item.name)group.append(svgNode('title',{},item.name));
       if(item.type==='boundary') {
-        group.setAttribute('class',`diagram-boundary ${item.kind}${selected?' selected':''}`);
-        group.append(svgNode('rect',{x,y,width,height,rx:10}),svgNode('text',{x:x+14,y:y+25,class:'boundary-label'},item.label));
+        group.setAttribute('class',`diagram-boundary ${item.kind}${item.region?' region':''}${selected?' selected':''}`);
+        if(item.kind==='branch')group.append(svgNode('line',{x1:x,y1:y,x2:x+width,y2:y,class:'branch-divider'}));
+        else group.append(svgNode('rect',{x,y,width,height,rx:10}));
+        group.append(svgNode('text',{x:x+14,y:y+23,class:'boundary-label'},item.label));
         if(!options.readonly)interactive(group,`Select ${item.label}`,()=>options.onSelect?.({path:item.path}));
         boundaries.append(group);continue;
       }

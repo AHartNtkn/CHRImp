@@ -710,6 +710,7 @@ function mountNotebook() {
     renderInspector();
   }
   function renderInspector() {
+    $('selection-panel').hidden = !selected;
     const panel = $('selection'); panel.replaceChildren();
     if (!selected) { panel.append(el('p', 'Select a relation, group or numbered port.')); return; }
     let node;
@@ -832,6 +833,7 @@ function mountNotebook() {
     let answer = answers.find(answer => answer.number === answerNumber) ?? answers.at(-1);
     // A loading render has no authority to replace the restored answer locator.
     if (stream) answerNumber = answer?.number ?? null;
+    if (answer) $('observations').open = true;
     $('alternatives').replaceChildren(...answers.map(answer => el('option', `Answer ${answer.number} · completion ${answer.completion} / alternative ${answer.alternative}`, { value: answer.number })));
     $('alternatives').value = answerNumber ?? '';
     $('answer-count').textContent = stream ? `${stream.total} saved · ${answers.length} on this page${session.stream?.current && outputMode === 'answers' && !savedSelection ? ' · receiving an alternative…' : ''}` : 'No answers yet';
@@ -1037,6 +1039,7 @@ function mountNotebook() {
     debounce = setTimeout(() => safe(syncSource), 650);
   });
   for (const control of document.querySelectorAll('[data-diagram]')) control.onclick = () => diagramControl($(control.dataset.diagram),control.dataset.action);
+  $('close-selection').onclick = () => select(null);
   $('sync').onclick = () => safe(syncSource);
   $('target').onchange = () => navigate($('target').value === 'query' ? ['query'] : ['program', 'rules', Number($('target').value), 'body']);
   for (const control of $('rule-sides').querySelectorAll('[data-side]')) control.onclick = () => navigate(['program', 'rules', Number($('target').value), control.dataset.side]);
