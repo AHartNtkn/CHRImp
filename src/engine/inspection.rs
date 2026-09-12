@@ -39,6 +39,7 @@ pub struct SnapshotInfo {
 pub(super) struct Snapshot {
     pub info: SnapshotInfo,
     pub graph: Root,
+    pub obligations: Root,
     pub scope: Condition,
     variables: Arc<Vec<u64>>,
 }
@@ -81,6 +82,7 @@ enum Phase {
     Support,
     Decision,
     Project,
+    Pending,
     Discard,
     Done,
 }
@@ -92,6 +94,8 @@ pub(super) struct Inspection {
     decision: Condition,
     job: Option<Job>,
     observer: Option<Observe>,
+    pending: Option<obligations::Projection>,
+    alternative_scope: Condition,
     output: Option<Output>,
     phase: Phase,
     canceled: bool,
@@ -108,6 +112,8 @@ impl Inspection {
             decision: Condition::FALSE,
             job: None,
             observer: None,
+            pending: None,
+            alternative_scope: Condition::FALSE,
             output: None,
             phase: Phase::Select,
             canceled: false,
@@ -118,6 +124,7 @@ impl Inspection {
     fn finish(&mut self) {
         self.snapshot = None;
         self.scope = Condition::FALSE;
+        self.alternative_scope = Condition::FALSE;
         self.decision = Condition::FALSE;
         self.selections = VecDeque::new();
         self.phase = Phase::Done;
@@ -136,6 +143,10 @@ impl Inspection {
         if let Some(job) = &mut self.job {
             if job.discard_tick() {
                 self.job = None;
+            }
+        } else if let Some(pending) = &mut self.pending {
+            if pending.discard_tick() {
+                self.pending = None;
             }
         } else if let Some(observer) = &mut self.observer {
             if observer.discard_tick() {
@@ -157,6 +168,7 @@ impl Inspection {
         arena: &mut Arena,
         births: &BTreeMap<u64, Birth>,
         code: &Arc<Prepared>,
+        obligations: &obligations::Obligations,
     ) {
         if self.output.is_some() {
             return;
@@ -214,12 +226,43 @@ impl Inspection {
             }
             Phase::Project => match self.observer.as_mut().unwrap().tick(graph, arena, births) {
                 ObserveStatus::Pending => {}
-                ObserveStatus::Event(output) => self.output = Some(output),
+                ObserveStatus::Event(Output::End) => {
+                    self.pending = Some(obligations::Projection::new(
+                        obligations,
+                        self.snapshot.as_ref().unwrap().obligations,
+                        self.alternative_scope,
+                    ));
+                    self.phase = Phase::Pending;
+                }
+                ObserveStatus::Event(output) => {
+                    if matches!(output, Output::Begin { .. }) {
+                        self.alternative_scope = self.observer.as_ref().unwrap().current_scope();
+                    }
+                    self.output = Some(output);
+                }
                 ObserveStatus::Done => {
                     self.observer = None;
                     self.finish();
                 }
             },
+            Phase::Pending => {
+                match self.pending.as_mut().unwrap().tick(
+                    obligations,
+                    graph,
+                    self.snapshot.as_ref().unwrap().graph,
+                    arena,
+                    code,
+                ) {
+                    ObserveStatus::Pending => {}
+                    ObserveStatus::Event(output) => self.output = Some(output),
+                    ObserveStatus::Done => {
+                        self.pending = None;
+                        self.alternative_scope = Condition::FALSE;
+                        self.output = Some(Output::End);
+                        self.phase = Phase::Project;
+                    }
+                }
+            }
             Phase::Discard => {
                 self.drain_tick();
             }
@@ -239,11 +282,13 @@ impl Trace for Inspection {
         match c.phase {
             0 => c.fields(&[
                 self.scope,
+                self.alternative_scope,
                 self.decision,
                 self.snapshot.as_ref().map_or(Condition::FALSE, |s| s.scope),
             ]),
             1 => c.optional(self.job.as_ref()),
             2 => c.optional(self.observer.as_ref()),
+            3 => c.optional(self.pending.as_ref()),
             _ => Step::Done,
         }
     }
@@ -258,7 +303,10 @@ impl Engine {
         }
         Ok(())
     }
-    fn snapshot(&self, kind: SnapshotKind, scope: Condition) -> Snapshot {
+    fn snapshot(&mut self, kind: SnapshotKind, scope: Condition) -> Snapshot {
+        // Every new syntax view freezes the current descriptor epoch. Reusing
+        // an existing Snapshot only shares its already-frozen ownership root.
+        self.obligations.freeze_syntax();
         Snapshot {
             info: SnapshotInfo {
                 id: next_id(),
@@ -267,6 +315,7 @@ impl Engine {
                 last_choice: self.births.last_key_value().map(|(&id, _)| id),
             },
             graph: self.state.graph,
+            obligations: self.pending_root,
             scope,
             variables: self.variables.clone(),
         }
@@ -316,6 +365,22 @@ impl Engine {
             _ => (Included(0), Excluded(0)),
         };
         self.births.range(bounds)
+    }
+    pub fn snapshots_before(&self, before: ViewId) -> impl Iterator<Item = SnapshotInfo> + '_ {
+        self.snapshots.range(..before.0).rev().map(|(_, s)| s.info)
+    }
+    pub fn choices_before(
+        &self,
+        before: u64,
+        through: Option<u64>,
+    ) -> impl Iterator<Item = (&u64, &Birth)> {
+        use std::ops::Bound::{Excluded, Included};
+        let end = match through {
+            Some(last) if last < before => Included(last),
+            Some(_) => Excluded(before),
+            None => Excluded(0),
+        };
+        self.births.range((Included(0), end)).rev()
     }
     pub fn release_snapshot(&mut self, id: ViewId) -> Result<(), InspectionError> {
         if self.collector.is_some() {
@@ -460,6 +525,7 @@ impl Engine {
             &mut self.arena,
             &self.births,
             &self.code,
+            &self.obligations,
         );
     }
     pub(super) fn service_inspection(&mut self) {

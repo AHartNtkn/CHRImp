@@ -220,8 +220,10 @@ impl Engine {
                                 if let Some(c) = poll(&mut probe.job, &mut self.arena) {
                                     probe.blocked = c;
                                 }
-                            } else if let Some((_, c)) = probe.cursor.next(&self.pending) {
-                                probe.job = Some(self.arena.start(Operation::Or(probe.blocked, c)));
+                            } else if let Some((_, c)) = probe.cursor.next(&self.obligations.index)
+                            {
+                                probe.job =
+                                    Some(self.arena.start(Operation::Or(probe.blocked, c.scope)));
                             } else {
                                 probe.job =
                                     Some(self.arena.start(Operation::And(step.scope, self.active)));
@@ -246,7 +248,11 @@ impl Engine {
                     }
                 } else {
                     step.probe = Some(Probe {
-                        cursor: self.pending.range(self.pending_root, [0; 4], [u64::MAX; 4]),
+                        cursor: self.obligations.index.range(
+                            self.pending_root,
+                            [0; 4],
+                            [u64::MAX; 4],
+                        ),
                         blocked: Condition::FALSE,
                         job: None,
                         phase: ProbePhase::Scan,

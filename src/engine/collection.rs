@@ -1,10 +1,16 @@
 //! Incremental root gathering and collection at a frozen execution boundary.
 use super::*;
 use crate::trace::{Cursor as TraceCursor, Step, Trace};
-use crate::{condition, graph, history, store};
+use crate::{condition, graph, history};
 use std::ops::Bound::{Excluded, Unbounded};
 
 type Roots = std::vec::IntoIter<Root>;
+fn retain_condition(roots: &mut Vec<Condition>, root: Condition) {
+    // Terminals own no arena nodes and need no later collection visit.
+    if !root.is_terminal() {
+        roots.push(root);
+    }
+}
 #[derive(Clone, Copy)]
 enum Phase {
     Prune,
@@ -44,7 +50,7 @@ pub(super) struct Collection {
     conditions: Vec<Condition>,
     graph: Option<graph::Collector<Roots>>,
     history: Option<history::Collector<Roots>>,
-    pending: Option<store::Collector<Roots>>,
+    pending: Option<obligations::Collector>,
     arena: Option<condition::Collector<std::vec::IntoIter<Condition>>>,
 }
 #[derive(Debug, Clone, Copy, serde::Serialize)]
@@ -55,6 +61,7 @@ pub struct Memory {
     pub history_nodes: usize,
     pub history_records: usize,
     pub pending_nodes: usize,
+    pub obligation_descriptors: usize,
     pub choices: usize,
     pub snapshots: usize,
     pub inspections: usize,
@@ -67,6 +74,7 @@ impl Memory {
             .saturating_add(self.history_nodes)
             .saturating_add(self.history_records)
             .saturating_add(self.pending_nodes)
+            .saturating_add(self.obligation_descriptors)
             .saturating_add(self.choices)
             .saturating_add(self.snapshots)
             .saturating_add(self.inspections)
@@ -80,7 +88,8 @@ impl Engine {
             conditions: self.arena.node_count(),
             history_nodes: self.history.node_count(),
             history_records: self.history.record_count(),
-            pending_nodes: self.pending.node_count(),
+            pending_nodes: self.obligations.index.node_count(),
+            obligation_descriptors: self.obligations.descriptor_count(),
             choices: self.births.len(),
             snapshots: self.snapshots.len(),
             inspections: self.inspections.len(),
@@ -103,22 +112,36 @@ impl Engine {
     }
     pub(super) fn collect_heap_mode(&mut self, semantic: bool) -> bool {
         if self.collector.is_none() {
-            if !self.collection_requested
-                && self.memory().total() <= self.collection_limit
+            let memory = self.memory().total();
+            let explicit = self.collection_requested;
+            if !explicit
+                && memory <= self.collection_limit
                 && (self.lane != Some(Owner::Collection) || self.canceled() || !semantic)
             {
                 return false;
             }
-            self.collection_requested = false;
-            // Semantic pruning reserves the same FIFO lane as rule updates.
-            // A held update can first receive physical GC, then finish and hand
-            // the lane to pruning; its staged history cannot restore old records.
+            // Routine pressure reserves the FIFO maintenance lane. Let finite
+            // earlier writers finish rather than automatically paying for both
+            // a physical pass and a semantic pass over nearly the same heap.
+            // Explicit requests remain immediate. If waiting consumes another
+            // soft-limit-sized allowance, physical GC interrupts the writer;
+            // allocation can exceed this watermark by at most one source tick.
             let owns_lane = semantic
                 && !self.canceled()
                 && (self.state.graph != self.graph.empty()
                     || self.state.history != self.history.empty()
                     || self.lane == Some(Owner::Collection))
                 && self.acquire(Owner::Collection);
+            if !owns_lane
+                && semantic
+                && !self.canceled()
+                && !explicit
+                && self.requested.contains(&Owner::Collection)
+                && memory < self.collection_limit.saturating_mul(2)
+            {
+                return false;
+            }
+            self.collection_requested = false;
             let prune = owns_lane.then(|| {
                 self.history.prune(
                     &self.graph,
@@ -170,7 +193,10 @@ impl Engine {
                     vec![self.state.history]
                 },
                 pending_roots,
-                conditions: vec![self.active, self.failed],
+                conditions: [self.active, self.failed]
+                    .into_iter()
+                    .filter(|root| !root.is_terminal())
+                    .collect(),
                 graph: None,
                 history: None,
                 pending: None,
@@ -247,7 +273,7 @@ impl Engine {
                         }
                     } else {
                         match task.trace(&mut c.trace) {
-                            Step::Root(root) => c.conditions.push(root),
+                            Step::Root(root) => retain_condition(&mut c.conditions, root),
                             Step::Pending => {}
                             Step::Done => {
                                 if matches!(c.phase, Phase::Tasks) {
@@ -282,8 +308,10 @@ impl Engine {
                     None => self.births.first_key_value(),
                 };
                 if let Some((&id, b)) = next {
-                    c.conditions
-                        .push(if c.slot == 0 { b.support } else { b.decision });
+                    retain_condition(
+                        &mut c.conditions,
+                        if c.slot == 0 { b.support } else { b.decision },
+                    );
                     c.slot += 1;
                     if c.slot == 2 {
                         c.slot = 0;
@@ -295,7 +323,7 @@ impl Engine {
             }
             Phase::Ready => {
                 match c.trace.optional(self.ready.as_ref()) {
-                    Step::Root(root) => c.conditions.push(root),
+                    Step::Root(root) => retain_condition(&mut c.conditions, root),
                     Step::Pending => {}
                     Step::Done => unreachable!(),
                 }
@@ -311,7 +339,7 @@ impl Engine {
                         c.slot = 1;
                     } else {
                         match observer.trace(&mut c.trace) {
-                            Step::Root(root) => c.conditions.push(root),
+                            Step::Root(root) => retain_condition(&mut c.conditions, root),
                             Step::Pending => {}
                             Step::Done => {
                                 c.phase = Phase::Snapshots;
@@ -335,8 +363,9 @@ impl Engine {
                 };
                 if let Some((&id, snapshot)) = next {
                     c.graph_roots.push(snapshot.graph);
+                    c.pending_roots.push(snapshot.obligations);
                     c.retain_choice = c.retain_choice.max(snapshot.info.last_choice);
-                    c.conditions.push(snapshot.scope);
+                    retain_condition(&mut c.conditions, snapshot.scope);
                     c.after = Some(id);
                 } else {
                     c.phase = Phase::Inspections;
@@ -352,12 +381,13 @@ impl Engine {
                     if c.slot == 0 {
                         if let Some(snapshot) = &inspection.snapshot {
                             c.graph_roots.push(snapshot.graph);
+                            c.pending_roots.push(snapshot.obligations);
                             c.retain_choice = c.retain_choice.max(snapshot.info.last_choice);
                         }
                         c.slot = 1;
                     } else {
                         match inspection.trace(&mut c.trace) {
-                            Step::Root(root) => c.conditions.push(root),
+                            Step::Root(root) => retain_condition(&mut c.conditions, root),
                             Step::Pending => {}
                             Step::Done => {
                                 c.after = Some(id);
@@ -372,7 +402,7 @@ impl Engine {
             }
             Phase::RuleStep => {
                 match c.trace.optional(self.rule_step.as_ref()) {
-                    Step::Root(root) => c.conditions.push(root),
+                    Step::Root(root) => retain_condition(&mut c.conditions, root),
                     Step::Pending => {}
                     Step::Done => unreachable!(),
                 }
@@ -394,11 +424,14 @@ impl Engine {
                 };
                 if let Some((&id, birth)) = next {
                     if c.retain_choice.is_some_and(|last| id <= last) {
-                        c.conditions.push(if c.slot == 0 {
-                            birth.support
-                        } else {
-                            birth.decision
-                        });
+                        retain_condition(
+                            &mut c.conditions,
+                            if c.slot == 0 {
+                                birth.support
+                            } else {
+                                birth.decision
+                            },
+                        );
                         c.slot += 1;
                         if c.slot == 2 {
                             c.slot = 0;
@@ -443,7 +476,7 @@ impl Engine {
             Phase::Graph => {
                 if let Some(gc) = &mut c.graph {
                     if let Some(root) = gc.tick(&mut self.graph) {
-                        c.conditions.push(root);
+                        retain_condition(&mut c.conditions, root);
                     }
                     if gc.done() {
                         c.graph = None;
@@ -459,7 +492,7 @@ impl Engine {
             Phase::History => {
                 if let Some(gc) = &mut c.history {
                     if let Some(root) = gc.tick(&mut self.history) {
-                        c.conditions.push(root);
+                        retain_condition(&mut c.conditions, root);
                     }
                     if gc.done() {
                         c.history = None;
@@ -474,8 +507,9 @@ impl Engine {
             }
             Phase::Pending => {
                 if let Some(gc) = &mut c.pending {
-                    if let Some((_, root)) = gc.tick(&mut self.pending) {
-                        c.conditions.push(root);
+                    if let Some(roots) = gc.tick(&mut self.obligations) {
+                        c.conditions
+                            .extend(roots.into_iter().filter(|root| !root.is_terminal()));
                     }
                     if gc.done() {
                         c.pending = None;
@@ -483,7 +517,7 @@ impl Engine {
                     }
                 } else {
                     c.pending = Some(
-                        self.pending
+                        self.obligations
                             .collect(std::mem::take(&mut c.pending_roots).into_iter()),
                     );
                 }
@@ -687,5 +721,100 @@ mod tests {
         assert!(!e.collecting());
         assert!(e.collections() > before);
         assert!(!e.requested.contains(&Owner::Collection));
+    }
+    #[test]
+    fn routine_pressure_preserves_fifo_and_emergency_or_explicit_gc_bounds_writer_growth() {
+        for explicit in [false, true] {
+            let ports = vec!["A"; 2048].join(",");
+            let code = crate::program::prepare(
+                &crate::syntax::parse_program("").unwrap(),
+                &crate::syntax::parse_query(&format!("seed(A),wide({ports})")).unwrap(),
+            )
+            .unwrap();
+            let mut e = Engine::new(Arc::new(code));
+            let mut deferred = false;
+            let mut forced = false;
+            let mut physical = 0;
+            let mut writer = None;
+            let mut handed_off = false;
+            let mut peak = 0;
+            let mut max_growth = 0;
+            let mut deferred_ticks = 0;
+            for _ in 0..300000 {
+                let before = e.memory().total();
+                let emergency = e.collection_limit.saturating_mul(2);
+                let collecting = e.collector.is_some();
+                let requested = e.collection_requested;
+                let ticks = e.ticks;
+                let lane = e.lane;
+                e.advance(1);
+                let memory = e.memory().total();
+                peak = peak.max(memory);
+                if requested && !collecting {
+                    assert!(matches!(lane, Some(Owner::Task(_))));
+                    assert!(
+                        e.collector.as_ref().is_some_and(|gc| !gc.owns_lane),
+                        "an explicit request must start physical GC on this advance"
+                    );
+                    assert_eq!(e.ticks, ticks);
+                    assert!(e.lane == lane);
+                }
+                if !collecting {
+                    max_growth = max_growth.max(memory.saturating_sub(before));
+                    if let Some(gc) = &e.collector {
+                        if !gc.owns_lane {
+                            physical += 1;
+                            assert!(
+                                requested || before >= emergency,
+                                "routine pressure must wait for its FIFO owner: {before}/{emergency}"
+                            );
+                            assert_eq!(
+                                e.ticks, ticks,
+                                "a physical pass starts before another writer step"
+                            );
+                            assert!(e.lane == lane);
+                        }
+                    } else if e.requested.contains(&Owner::Collection) {
+                        assert!(before < emergency);
+                        assert!(memory <= emergency.saturating_add(max_growth));
+                        assert_eq!(
+                            e.waiting
+                                .iter()
+                                .filter(|owner| **owner == Owner::Collection)
+                                .count(),
+                            1
+                        );
+                        if matches!(e.lane, Some(Owner::Task(_))) {
+                            writer.get_or_insert(e.lane.unwrap());
+                            deferred = true;
+                            deferred_ticks += usize::from(e.ticks != ticks);
+                            if explicit && !forced {
+                                e.request_collection();
+                                forced = true;
+                            }
+                        }
+                    }
+                }
+                if writer.is_some() && e.lane == Some(Owner::Collection) {
+                    handed_off = true;
+                }
+                e.take_output();
+                if e.delivery_done() && !e.collecting() {
+                    break;
+                }
+            }
+            assert!(deferred && deferred_ticks > 0);
+            assert!(physical > 0, "wide writer must exercise the emergency path");
+            assert!(
+                handed_off && e.delivery_done(),
+                "finite writer must reach its queued maintenance owner"
+            );
+            if explicit {
+                assert!(forced);
+            }
+            eprintln!(
+                "pressure explicit={explicit}: peak={peak}, physical={physical}, deferred_ticks={deferred_ticks}, max_source_growth={max_growth}"
+            );
+        }
     }
 }

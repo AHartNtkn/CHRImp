@@ -23,7 +23,22 @@ pub enum Output {
     Fact { occurrence: u64, relation: usize },
     Port { variable: u64 },
     EndFact,
+    PendingBegin { event: u64 },
+    Expression { operator: ExpressionKind },
+    ExpressionRelation { relation: usize },
+    ExpressionVariable { variable: u64 },
+    ExpressionEnd,
+    PendingEnd,
     End,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpressionKind {
+    And,
+    Or,
+    Equal,
+    True,
+    Fail,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub enum ObserveStatus {
@@ -127,6 +142,9 @@ impl Observe {
     }
     pub fn graph_root(&self) -> Root {
         self.root
+    }
+    pub(crate) fn current_scope(&self) -> Condition {
+        self.current.scope
     }
     pub fn completion_id(&self) -> u64 {
         self.completion

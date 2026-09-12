@@ -58,12 +58,20 @@
           <p id="result-empty" class="empty">Run the notebook to observe its answer graphs.</p>
           <div class="graph-scroll"><svg id="result-graph" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Answer hypergraph" hidden></svg></div>
           <div class="paging"><button id="result-prev" aria-label="Previous result graph page">←</button><span id="result-page"></span><button id="result-next" aria-label="Next result graph page">→</button><span class="spacer"></span><button id="result-port-prev" aria-label="Previous result port page">←</button><span id="result-ports"></span><button id="result-port-next" aria-label="Next result port page">→</button></div>
+          <section id="pending-bodies" hidden aria-label="Pending rule bodies">
+            <h3>Pending bodies</h3>
+            <div class="binding-paging"><button id="pending-body-prev" aria-label="Previous pending body">←</button><label>Body <input id="pending-body-number" type="number" min="1" value="1"></label><span id="pending-body-count"></span><button id="pending-body-next" aria-label="Next pending body">→</button></div>
+            <nav id="pending-location" aria-label="Pending expression location"></nav>
+            <div class="graph-scroll"><svg id="pending-graph" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Pending body graph"></svg></div>
+            <div class="paging"><button id="pending-prev" aria-label="Previous pending graph page">←</button><span id="pending-page"></span><button id="pending-next" aria-label="Next pending graph page">→</button><span class="spacer"></span><button id="pending-port-prev" aria-label="Previous pending port page">←</button><span id="pending-ports"></span><button id="pending-port-next" aria-label="Next pending port page">→</button></div>
+          </section>
         </div>
         <aside class="inspection-panel">
           <h3>Inspect an alternative</h3>
           <div id="choices" class="choice-selectors" aria-label="Alternative choices"><p>Start a run to inspect its choices.</p></div>
           <div class="binding-paging"><button id="choice-prev" aria-label="Previous choices" disabled>←</button><span id="choice-page">Choices 1 / 1</span><button id="choice-next" aria-label="Next choices" disabled>→</button></div>
           <label for="snapshot">Snapshot</label><select id="snapshot" disabled><option value="">Current graph</option></select>
+          <div class="binding-paging"><button id="snapshot-prev" aria-label="Previous states" disabled>←</button><span id="snapshot-page">0 states on this page</span><button id="snapshot-next" aria-label="Next states" disabled>→</button></div>
           <button id="inspect" disabled>Inspect graph →</button>
         </aside>
       </div>

@@ -230,3 +230,71 @@ assert.equal(switchedRecovery.ack, 1);
 assert.equal(switchedRecovery.stream.total, 1);
 await switchedRecovery.cancel();
 assert.equal(switchedRecovery.stream.total, 1);
+
+const pagedSelection = new InspectionSelection();
+let pageRequests = 0;
+const metadataApi = async (route, payload) => {
+  assert.equal(route, 'views'); pageRequests++;
+  const page = (kind, noun) => {
+    const start = payload[`before_${kind}`] ? Number(payload[`before_${kind}`]) - 64 : payload[`after_${kind}`] ? Number(payload[`after_${kind}`]) + 1 : 1;
+    return Array.from({length:64}, (_, i) => ({id:String(start+i), label:`${noun} ${start+i}`}));
+  };
+  const choices = page('choice', 'Choice'), snapshots = page('snapshot', 'State');
+  return {choices, snapshots, next_choice:choices.at(-1).id, next_snapshot:snapshots.at(-1).id,
+    prev_choice:choices[0].id === '1' ? null : choices[0].id, prev_snapshot:snapshots[0].id === '1' ? null : snapshots[0].id};
+};
+await pagedSelection.page(metadataApi, 1);
+pagedSelection.choose('1', 'first'); await pagedSelection.selectSnapshot(metadataApi, 1, '1'); pagedSelection.choose('1', 'first');
+for (let i = 0; i < 20; i++) {
+  await pagedSelection.page(metadataApi, 1, 'choice', 'next');
+  await pagedSelection.page(metadataApi, 1, 'snapshot', 'next');
+  assert.equal(pagedSelection.choices.length, 64); assert.equal(pagedSelection.snapshots.length, 64);
+}
+assert.equal(pageRequests, 42);
+assert.deepEqual(pagedSelection.payload(1), {run:1, choices:{1:true}, snapshot:'1'});
+assert.equal(pagedSelection.selectedSnapshot.label, 'State 1');
+await pagedSelection.page(metadataApi, 1, 'choice', 'prev');
+assert.equal(pagedSelection.choices[0].id, '1217');
+assert.equal(pagedSelection.snapshots[0].id, '1281');
+await pagedSelection.selectSnapshot(metadataApi, 1, '');
+assert.deepEqual(pagedSelection.payload(1), {run:1, choices:{}});
+const priorCursors = {...pagedSelection.cursors};
+await assert.rejects(pagedSelection.page(async () => { throw new Error('Disconnected'); }, 1, 'snapshot', 'prev'), /Disconnected/);
+assert.deepEqual(pagedSelection.cursors, priorCursors);
+assert.equal(pagedSelection.loading, false);
+
+// A failed or overlapping state change cannot install another state's choices.
+pagedSelection.choose(pagedSelection.choices[0].id, 'second');
+const coherentPayload = pagedSelection.payload(1), coherentChoices = pagedSelection.choices;
+await assert.rejects(pagedSelection.selectSnapshot(async () => { throw new Error('Disconnected'); }, 1, pagedSelection.snapshots[0].id), /Disconnected/);
+assert.deepEqual(pagedSelection.payload(1), coherentPayload);
+assert.equal(pagedSelection.choices, coherentChoices);
+let completePage;
+const loadingPage = pagedSelection.page((...args) => new Promise(resolve => { completePage = async () => resolve(await metadataApi(...args)); }), 1, 'choice', 'next');
+await assert.rejects(pagedSelection.selectSnapshot(metadataApi, 1, pagedSelection.snapshots[0].id), /already loading/);
+assert.deepEqual(pagedSelection.payload(1), coherentPayload);
+await completePage(); await loadingPage;
+assert.equal(pagedSelection.snapshot, '');
+
+const pendingStream = new OutputAssembler(tables, 1);
+const pendingEvents = [
+  ...answer(9).slice(0,3),
+  {kind:'pending_begin', event:'19'}, {kind:'expression', operator:'and'},
+  {kind:'expression_relation', relation:1}, {kind:'expression_variable', variable:'7'}, {kind:'expression_variable', variable:'8'}, {kind:'expression_end'},
+  {kind:'expression', operator:'or'},
+  {kind:'expression', operator:'equal'}, {kind:'expression_variable', variable:'7'}, {kind:'expression_variable', variable:'8'}, {kind:'expression_end'},
+  {kind:'expression', operator:'fail'}, {kind:'expression_end'},
+  {kind:'expression_end'}, {kind:'expression_end'}, {kind:'pending_end'}, {kind:'end'},
+];
+pendingEvents.forEach(event => pendingStream.push(event)); pendingStream.finish();
+assert.deepEqual(pendingStream.answers[0].pending, [{event:'19', body:{kind:'and', items:[
+  atom('p', 'V7', 'V8'), {kind:'or', items:[{kind:'equal',left:'V7',right:'V8'},{kind:'fail'}]},
+]}}]);
+assert.deepEqual(pendingStream.answers[0].facts, []);
+const unfinishedPending = new OutputAssembler(tables);
+pendingEvents.slice(0,6).forEach(event => unfinishedPending.push(event));
+assert.throws(() => unfinishedPending.push({kind:'expression_end'}), /Missing pending ports/);
+assert.throws(() => unfinishedPending.push({kind:'end'}), /pending body/);
+unfinishedPending.discardPartial(); unfinishedPending.finish();
+assert.equal(unfinishedPending.pending, null);
+assert.equal(unfinishedPending.expressions.length, 0);

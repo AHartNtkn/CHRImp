@@ -128,7 +128,7 @@ impl Engine {
                     graph: self.graph.empty(),
                     history: self.history.empty(),
                 };
-                self.pending_root = self.pending.empty();
+                self.pending_root = self.obligations.empty();
                 self.active = Condition::FALSE;
                 self.failed = Condition::FALSE;
                 self.variables = Arc::new(Vec::new());

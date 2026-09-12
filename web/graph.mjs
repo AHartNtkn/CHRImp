@@ -186,6 +186,7 @@ export function renderGraph(svg, model, path, options = {}) {
     if (node.items) group.append(svgNode('text', { x: x + 12, y: y + 49, class: 'node-note' }, 'Select to open group'));
     if (atom && options.occurrences) group.append(svgNode('text', { x: x + 12, y: y + 48, class: 'node-note' }, `occurrence ${options.occurrences[page * pageSize + index]}`));
     if (!options.readonly) interactive(group, `Select ${title}`, () => options.onSelect?.({ path: itemPath }));
+    else if (node.items && options.onOpen) interactive(group, `Open ${title}`, () => options.onOpen(itemPath));
     nodes.append(group);
     const args = atom?.args ?? (node.kind === 'equal' ? [node.left, node.right] : []);
     const start = atom ? portPage * portsPerPage : 0;

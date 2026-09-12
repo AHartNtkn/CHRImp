@@ -67,6 +67,13 @@ impl Reader {
                 .unwrap()
                 .rows
                 .push(self.row.take().unwrap()),
+            // This reader asserts the live graph; pending syntax is tested separately.
+            Output::PendingBegin { .. }
+            | Output::Expression { .. }
+            | Output::ExpressionRelation { .. }
+            | Output::ExpressionVariable { .. }
+            | Output::ExpressionEnd
+            | Output::PendingEnd => {}
             Output::End => {
                 assert!(self.row.is_none());
                 return self.answer.take();

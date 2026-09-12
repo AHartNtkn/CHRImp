@@ -23,7 +23,7 @@ export class OutputAssembler {
     check(tables.variables.every(v => typeof v === 'string'), 'Invalid query variable names in run response.');
     check(limit === Infinity || (Number.isSafeInteger(limit) && limit > 0), 'Answer queue capacity must be positive.');
     this.tables = clone({ signatures: tables.signatures, variables: tables.variables });
-    this.limit = limit; this.answers = []; this.total = 0; this.current = null; this.fact = null;
+    this.limit = limit; this.answers = []; this.total = 0; this.current = null; this.fact = null; this.pending = null; this.expressions = [];
   }
   push(event) {
     const current = this.current;
@@ -35,11 +35,11 @@ export class OutputAssembler {
         this.current = { completion, alternative, variables: [], facts: [] }; break;
       }
       case 'variable':
-        check(current && !this.fact && !current.facts.length, 'Query variables must precede facts.');
+        check(current && !this.fact && !this.pending && !current.pending?.length && !current.facts.length, 'Query variables must precede facts.');
         check(uint(event.slot) === current.variables.length && event.slot < this.tables.variables.length, 'Unexpected query variable slot.');
         current.variables.push(id(event.variable)); break;
       case 'fact': {
-        check(current && !this.fact, 'Expected an alternative without an open fact.');
+        check(current && !this.fact && !this.pending && !current.pending?.length, 'Expected an alternative without an open fact or pending body.');
         check(current.variables.length === this.tables.variables.length, 'Missing query variables.');
         const relation = uint(event.relation), signature = this.tables.signatures[relation];
         check(signature, 'Unknown relation index in output.');
@@ -53,14 +53,55 @@ export class OutputAssembler {
         check(this.fact && current, 'No open fact.');
         check(this.fact.args.length === this.tables.signatures[this.fact.relation].arity, 'Missing fact ports.');
         current.facts.push(this.fact); this.fact = null; break;
+      case 'pending_begin':
+        check(current && !this.fact && !this.pending, 'A pending body needs an open alternative.');
+        check(current.variables.length === this.tables.variables.length, 'Missing query variables.');
+        this.pending = {event:id(event.event), body:null}; break;
+      case 'expression':
+        check(['and', 'or', 'equal', 'true', 'fail'].includes(event.operator), 'Unknown pending expression.');
+        this.expression(event.operator === 'and' || event.operator === 'or' ? {kind:event.operator, items:[]} : {kind:event.operator}); break;
+      case 'expression_relation': {
+        const signature = this.tables.signatures[uint(event.relation)];
+        check(signature, 'Unknown relation index in pending body.');
+        this.expression({kind:'atom', atom:{relation:signature.name, args:[]}}, signature.arity); break;
+      }
+      case 'expression_variable': {
+        const frame = this.expressions.at(-1), variable = `V${id(event.variable)}`;
+        check(frame, 'A pending variable needs an expression.');
+        if (frame.node.kind === 'atom') {
+          check(frame.node.atom.args.length < frame.arity, 'Too many pending ports.'); frame.node.atom.args.push(variable);
+        } else {
+          check(frame.node.kind === 'equal' && frame.node.right === undefined, 'Unexpected pending variable.');
+          if (frame.node.left === undefined) frame.node.left = variable; else frame.node.right = variable;
+        }
+        break;
+      }
+      case 'expression_end': {
+        const frame = this.expressions.at(-1);
+        check(frame, 'No pending expression is open.');
+        if (frame.node.kind === 'atom') check(frame.node.atom.args.length === frame.arity, 'Missing pending ports.');
+        if (frame.node.kind === 'equal') check(frame.node.right !== undefined, 'Missing equality variable.');
+        this.expressions.pop(); break;
+      }
+      case 'pending_end':
+        check(this.pending?.body && !this.expressions.length, 'A pending body must finish its expression.');
+        (current.pending ??= []).push(this.pending); this.pending = null; break;
       case 'end':
-        check(current && !this.fact, 'An alternative must finish its fact first.');
+        check(current && !this.fact && !this.pending, 'An alternative must finish its fact and pending body first.');
         check(current.variables.length === this.tables.variables.length, 'Missing query variables.');
         current.number = ++this.total; this.answers.push(current);
         this.current = null; break;
       default: throw new Error(`Unknown output event: ${event.kind}`);
     }
   }
+  expression(node, arity = 0) {
+    check(this.pending, 'An expression needs a pending body.');
+    const parent = this.expressions.at(-1)?.node;
+    if (parent) { check(parent.items, 'Only a conjunction or disjunction can contain expressions.'); parent.items.push(node); }
+    else { check(!this.pending.body, 'A pending body has one root expression.'); this.pending.body = node; }
+    this.expressions.push({node, arity});
+  }
+  discardPartial() { this.current = null; this.fact = null; this.pending = null; this.expressions = []; }
   finish() { check(!this.current && !this.fact, 'Output delivery ended inside an alternative.'); }
 }
 
@@ -136,8 +177,8 @@ export class IndexedAnswerStore {
 }
 
 export class InspectionSelection {
-  constructor() { this.choices = []; this.snapshots = []; this.assignments = new Map(); this.snapshot = ''; }
-  update(choices, snapshots) {
+  constructor() { this.choices = []; this.snapshots = []; this.assignments = new Map(); this.snapshot = ''; this.selectedSnapshot = null; this.cursors = {}; this.navigation = {}; this.loading = false; }
+  update(choices, snapshots, preserve = false) {
     const descriptors = (items, name) => {
       check(Array.isArray(items), `Inspection response needs ${name} descriptors.`);
       const seen = new Set();
@@ -149,8 +190,41 @@ export class InspectionSelection {
     };
     const nextChoices = descriptors(choices, 'choice'), nextSnapshots = descriptors(snapshots, 'snapshot');
     this.choices = nextChoices; this.snapshots = nextSnapshots;
-    this.assignments = new Map(nextChoices.filter(item => this.assignments.has(item.id)).map(item => [item.id, this.assignments.get(item.id)]));
-    if (!nextSnapshots.some(item => item.id === this.snapshot)) this.snapshot = '';
+    if (!preserve) {
+      this.assignments = new Map(nextChoices.filter(item => this.assignments.has(item.id)).map(item => [item.id, this.assignments.get(item.id)]));
+      if (!nextSnapshots.some(item => item.id === this.snapshot)) { this.snapshot = ''; this.selectedSnapshot = null; }
+    }
+  }
+  selectSnapshot(api, run, key) {
+    const descriptor = this.snapshots.find(item => item.id === key) ?? this.selectedSnapshot;
+    check(key === '' || descriptor?.id === key, 'This snapshot is no longer available.');
+    return this.page(api, run, null, 'refresh', {key, descriptor:key === '' ? null : descriptor});
+  }
+  async page(api, run, kind = null, direction = 'refresh', selection = null) {
+    check(!this.loading, 'A metadata page is already loading.');
+    check(kind === null || ['choice', 'snapshot'].includes(kind), 'Unknown metadata page.');
+    check(['refresh', 'next', 'prev'].includes(direction), 'Unknown page direction.');
+    const cursors = {...this.cursors};
+    if (selection) { delete cursors.after_choice; delete cursors.before_choice; }
+    if (kind && direction !== 'refresh') {
+      const cursor = this.navigation[`${direction}_${kind}`];
+      check(cursor !== null && cursor !== undefined, 'No further metadata page.');
+      delete cursors[`after_${kind}`]; delete cursors[`before_${kind}`];
+      cursors[`${direction === 'next' ? 'after' : 'before'}_${kind}`] = cursor;
+    }
+    this.loading = true;
+    try {
+      const snapshot = selection ? selection.key : this.snapshot;
+      const response = await api('views', {run, ...cursors, ...(snapshot ? {snapshot} : {})});
+      const navigation = {};
+      for (const type of ['choice', 'snapshot']) for (const way of ['next', 'prev']) {
+        const key = `${way}_${type}`;
+        navigation[key] = response[key] == null ? null : id(response[key]);
+      }
+      this.update(response.choices, response.snapshots, true);
+      this.cursors = cursors; this.navigation = navigation;
+      if (selection) { this.snapshot = selection.key; this.selectedSnapshot = selection.descriptor; this.assignments.clear(); }
+    } finally { this.loading = false; }
   }
   choose(key, value) {
     check(this.choices.some(item => item.id === key), 'This choice is no longer available.');
@@ -162,7 +236,7 @@ export class InspectionSelection {
     const choices = Object.fromEntries([...this.assignments].map(([key, value]) => [key, value === 'first']));
     const payload = { run, choices };
     if (this.snapshot !== '') {
-      check(this.snapshots.some(item => item.id === this.snapshot), 'This snapshot is no longer available.');
+      check(this.snapshots.some(item => item.id === this.snapshot) || this.selectedSnapshot?.id === this.snapshot, 'This snapshot is no longer available.');
       payload.snapshot = this.snapshot;
     }
     return payload;
@@ -316,7 +390,7 @@ export class RunSession {
       }
       this.status = this.run === null ? 'idle' : 'canceled'; this.running = false; this.rememberRun(); this.notify();
       await this.deliverPending();
-      if (this.stream) { this.stream.current = null; this.stream.fact = null; }
+      if (this.stream) this.stream.discardPartial();
       this.rememberRun();
     } finally { this.canceling = false; }
   }
@@ -348,7 +422,8 @@ function mountNotebook() {
   const store = new IndexedAnswerStore();
   let savedView = null, savedSelection = '', answerPage = 0, loadRevision = 0, inspectionPending = null, inspecting = false, launching = false;
   let resultPage = 0, resultPortPage = 0, bindingPage = 0;
-  let inspectionSelection = new InspectionSelection(), choicePage = 0, inspectionCanceled = false;
+  let pendingNumber = 0, pendingPath = ['query'], pendingPage = 0, pendingPortPage = 0;
+  let inspectionSelection = new InspectionSelection(), inspectionCanceled = false;
   const session = new RunSession(request, renderRun, store);
   function message(text, error = false) { $('message').textContent = text; $('message').classList.toggle('error', error); }
   async function safe(action) { try { return await action(); } catch (error) { message(error.message, true); } }
@@ -418,7 +493,7 @@ function mountNotebook() {
     for (const [suffix, delta, ports] of [['prev', -1, false], ['next', 1, false], ['port-prev', -1, true], ['port-next', 1, true]]) {
       const current = ports ? info.portPage : info.page, max = ports ? info.portPages : info.pages;
       $(prefix + '-' + suffix).disabled = current + delta < 0 || current + delta >= max;
-      $(prefix + '-' + suffix).onclick = () => { if (prefix === 'graph') { if (ports) portPage += delta; else page += delta; } else { if (ports) resultPortPage += delta; else resultPage += delta; } render(); };
+      $(prefix + '-' + suffix).onclick = () => { if (prefix === 'graph') { if (ports) portPage += delta; else page += delta; } else if (prefix === 'pending') { if (ports) pendingPortPage += delta; else pendingPage += delta; } else { if (ports) resultPortPage += delta; else resultPage += delta; } render(); };
     }
   }
   function renderInspector() {
@@ -471,7 +546,7 @@ function mountNotebook() {
     $('step').disabled = session.status === 'canceled' || session.starting || !!session.inFlight || busy || launching || inspecting;
     $('cancel').disabled = session.run === null || session.starting;
     $('inspect').disabled = (session.run === null && !inspectionPending) || session.starting || inspecting || launching;
-    $('snapshot').disabled = !session.recordHistory || inspecting;
+    $('snapshot').disabled = !session.recordHistory || inspecting || inspectionSelection.loading;
     if (session.error) message(session.error.message, true);
     renderResults(); safe(refreshSaved);
   }
@@ -518,24 +593,36 @@ function mountNotebook() {
     const resultModel = { query: { kind: 'and', items: facts.map(fact => ({ kind: 'atom', atom: { relation: fact.name, args: fact.args.map(v => `V${v}`) } })) } };
     const info = renderGraph($('result-graph'), resultModel, ['query'], { readonly: true, page: resultPage, portPage: resultPortPage, occurrences: facts.map(f => f.occurrence), label: outputMode === 'inspect' ? 'Inspected graph' : 'Answer hypergraph' });
     resultPage = info.page; resultPortPage = info.portPage; pager('result', info, renderResults);
+    renderPending(answer?.pending ?? []);
   }
-  function resetResultPages() { resultPage = resultPortPage = bindingPage = 0; }
+  function renderPending(bodies) {
+    $('pending-bodies').hidden = bodies.length === 0;
+    if (!bodies.length) return;
+    pendingNumber = Math.min(pendingNumber, bodies.length - 1);
+    const body = bodies[pendingNumber], model = {query:body.body};
+    try { at(model, pendingPath); } catch { pendingPath = ['query']; }
+    $('pending-body-number').value = pendingNumber + 1; $('pending-body-number').max = bodies.length;
+    $('pending-body-count').textContent = `/ ${bodies.length} · event ${body.event}`;
+    const choose = number => { pendingNumber = Math.min(uint(number), bodies.length - 1); pendingPath = ['query']; pendingPage = pendingPortPage = 0; renderResults(); };
+    $('pending-body-prev').disabled = pendingNumber === 0; $('pending-body-next').disabled = pendingNumber + 1 === bodies.length;
+    $('pending-body-prev').onclick = () => choose(pendingNumber - 1); $('pending-body-next').onclick = () => choose(pendingNumber + 1);
+    $('pending-body-number').onchange = () => safe(() => choose(Number($('pending-body-number').value) - 1));
+    const open = path => { pendingPath = path; pendingPage = pendingPortPage = 0; renderResults(); };
+    $('pending-location').replaceChildren(button('Body', () => open(['query'])));
+    for (let i = 1; i < pendingPath.length; i += 2) {
+      const prefix = pendingPath.slice(0, i + 2);
+      $('pending-location').append(button(`Item ${Number(pendingPath[i + 1]) + 1}`, () => open(prefix)));
+    }
+    const kind = at(model, pendingPath).kind;
+    $('pending-location').append(el('span', ` · ${{atom:'relation', and:'And conjunction', or:'Or alternatives', equal:'variable equality', true:'true', fail:'fail'}[kind]}`));
+    const info = renderGraph($('pending-graph'), model, pendingPath, {readonly:true, page:pendingPage, portPage:pendingPortPage, onOpen:open, label:'Pending body graph'});
+    pendingPage = info.page; pendingPortPage = info.portPage; pager('pending', info, renderResults);
+  }
+  function resetResultPages() { resultPage = resultPortPage = bindingPage = pendingNumber = pendingPage = pendingPortPage = 0; pendingPath = ['query']; }
   async function inspect() {
     check(!inspecting, 'An inspection is already in progress.');
     inspecting = true; renderRun();
     try { await inspectOnce(); } finally { inspecting = false; renderRun(); }
-  }
-  async function descriptors(run, inspection) {
-    const choices = [], snapshots = [];
-    let after_choice, after_snapshot;
-    do {
-      const page = await request('views', { run, inspection, after_choice, after_snapshot });
-      if (after_choice !== null) choices.push(...page.choices);
-      if (after_snapshot !== null) snapshots.push(...page.snapshots);
-      after_choice = after_choice === null ? null : page.next_choice; after_snapshot = after_snapshot === null ? null : page.next_snapshot;
-      await new Promise(resolve => setTimeout(resolve, 0));
-    } while (after_choice !== null || after_snapshot !== null);
-    return { choices, snapshots };
   }
   async function inspectOnce() {
     if (!inspectionPending) {
@@ -546,8 +633,7 @@ function mountNotebook() {
       check(session.run === run, 'The run changed during inspection.');
       inspectionCanceled = false;
       inspectionPending = { stream: new OutputAssembler(tables, 1), response: null, index: 0, archive: null, run, inspection: response.inspection, ack: null };
-      const views = await descriptors(run, response.inspection);
-      inspectionSelection.update(views.choices, views.snapshots); renderInspectionControls();
+      await inspectionSelection.page(request, run); renderInspectionControls();
     }
     const pending = inspectionPending;
     pending.archive ??= await store.create(pending.stream.tables, `Inspection of run ${pending.run}`);
@@ -586,25 +672,39 @@ function mountNotebook() {
   }
 
   function renderInspectionControls() {
-    const pages = Math.max(1, Math.ceil(inspectionSelection.choices.length / 12));
-    choicePage = Math.min(choicePage, pages - 1);
+    $('snapshot').disabled = !session.recordHistory || inspecting || inspectionSelection.loading;
     $('choices').replaceChildren();
-    if (!inspectionSelection.choices.length) $('choices').append(el('p', session.run === null ? 'Start a run to inspect its choices.' : 'Inspect the graph to refresh available choices.'));
-    inspectionSelection.choices.slice(choicePage * 12, choicePage * 12 + 12).forEach(item => {
+    if (!inspectionSelection.choices.length) $('choices').append(el('p', session.run === null ? 'Start a run to inspect its choices.' : inspectionSelection.navigation.next_choice === undefined ? 'Inspect the graph to load available choices.' : 'No choices in this state.'));
+    inspectionSelection.choices.forEach(item => {
       const label = el('label', item.label), select = el('select');
       select.append(el('option', 'Either', { value: 'either' }), el('option', 'First', { value: 'first' }), el('option', 'Second', { value: 'second' }));
       select.value = inspectionSelection.assignments.get(item.id) ?? 'either';
       select.onchange = () => safe(() => inspectionSelection.choose(item.id, select.value));
       label.append(select); $('choices').append(label);
     });
-    $('choice-page').textContent = `Choices ${choicePage + 1} / ${pages}`;
-    $('choice-prev').disabled = choicePage === 0; $('choice-next').disabled = choicePage + 1 >= pages;
-    $('snapshot').replaceChildren(el('option', 'Current graph', { value: '' }), ...inspectionSelection.snapshots.map(item => el('option', item.label, { value: item.id })));
+    $('choice-page').textContent = `${inspectionSelection.choices.length} choices on this page`;
+    for (const kind of ['choice', 'snapshot']) for (const direction of ['prev', 'next']) {
+      $(`${kind}-${direction}`).disabled = inspectionSelection.loading || !inspectionSelection.navigation[`${direction}_${kind}`];
+    }
+    const snapshots = [...inspectionSelection.snapshots];
+    if (inspectionSelection.selectedSnapshot && !snapshots.some(item => item.id === inspectionSelection.snapshot)) snapshots.unshift(inspectionSelection.selectedSnapshot);
+    $('snapshot').replaceChildren(el('option', 'Current graph', { value: '' }), ...snapshots.map(item => el('option', item.label, { value: item.id })));
+    $('snapshot-page').textContent = `${inspectionSelection.snapshots.length} states on this page`;
     $('snapshot').value = inspectionSelection.snapshot;
   }
-  $('choice-prev').onclick = () => { choicePage--; renderInspectionControls(); };
-  $('choice-next').onclick = () => { choicePage++; renderInspectionControls(); };
-  $('snapshot').onchange = () => { inspectionSelection.snapshot = $('snapshot').value; inspectionSelection.assignments.clear(); renderInspectionControls(); };
+  async function metadataPage(kind, direction) {
+    const pending = inspectionSelection.page(request, session.run, kind, direction);
+    renderInspectionControls();
+    try { await pending; } finally { renderInspectionControls(); }
+  }
+  for (const kind of ['choice', 'snapshot']) for (const direction of ['prev', 'next']) {
+    $(`${kind}-${direction}`).onclick = () => safe(() => metadataPage(kind, direction));
+  }
+  $('snapshot').onchange = () => safe(async () => {
+    const pending = inspectionSelection.selectSnapshot(request, session.run, $('snapshot').value);
+    renderInspectionControls();
+    try { await pending; } finally { renderInspectionControls(); }
+  });
   for (const name of ['program', 'query']) $(name).addEventListener('input', () => {
     revision++; dirty = true; renderWorkspace(); clearTimeout(debounce);
     debounce = setTimeout(() => safe(syncSource), 650);
@@ -626,14 +726,14 @@ function mountNotebook() {
     check(!launching, 'A run is already starting.'); launching = true; renderRun();
     try {
     await syncSource(); inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; resetResultPages();
-    inspectionSelection = new InspectionSelection(); choicePage = 0; renderInspectionControls();
+    inspectionSelection = new InspectionSelection(); renderInspectionControls();
     await session.start(model, $('history').checked); message('Running the submitted notebook.');
     } finally { launching = false; renderRun(); }
   });
   $('step').onclick = () => safe(async () => {
     check(!launching, 'A step is already in progress.'); launching = true; renderRun();
     try {
-    if (session.run === null) { savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; await syncSource(); inspectionSelection = new InspectionSelection(); choicePage = 0; renderInspectionControls(); await session.start(model, $('history').checked, false); }
+    if (session.run === null) { savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; await syncSource(); inspectionSelection = new InspectionSelection(); renderInspectionControls(); await session.start(model, $('history').checked, false); }
     const response = await session.step(inspectionSelection.payload(session.run).choices); await inspect();
     if (response?.step?.event !== null && response?.step?.rule !== undefined) {
       const name = session.submission.program.rules[response.step.rule]?.name ?? `Rule ${response.step.rule + 1}`;
@@ -644,7 +744,7 @@ function mountNotebook() {
   $('execution').onchange = () => safe(async () => {
     if (!$('execution').value) return;
     await session.switchRun(Number($('execution').value));
-    inspectionSelection = new InspectionSelection(); choicePage = 0; inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0;
+    inspectionSelection = new InspectionSelection(); inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0;
     renderInspectionControls(); await refreshSaved();
   });
   $('release-run').onclick = () => safe(async () => {

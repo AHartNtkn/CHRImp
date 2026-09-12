@@ -106,6 +106,10 @@ struct RunRequest {
     after_choice: Option<Id>,
     #[serde(default)]
     after_snapshot: Option<Id>,
+    #[serde(default)]
+    before_choice: Option<Id>,
+    #[serde(default)]
+    before_snapshot: Option<Id>,
 }
 fn budget() -> usize {
     1024
@@ -153,6 +157,16 @@ fn event(output: Output) -> Value {
         } => json!({"kind":"fact", "occurrence":occurrence.to_string(), "relation":relation}),
         Output::Port { variable } => json!({"kind":"port", "variable":variable.to_string()}),
         Output::EndFact => json!({"kind":"end_fact"}),
+        Output::PendingBegin { event } => json!({"kind":"pending_begin","event":event.to_string()}),
+        Output::Expression { operator } => json!({"kind":"expression","operator":operator}),
+        Output::ExpressionRelation { relation } => {
+            json!({"kind":"expression_relation","relation":relation})
+        }
+        Output::ExpressionVariable { variable } => {
+            json!({"kind":"expression_variable","variable":variable.to_string()})
+        }
+        Output::ExpressionEnd => json!({"kind":"expression_end"}),
+        Output::PendingEnd => json!({"kind":"pending_end"}),
         Output::End => json!({"kind":"end"}),
     }
 }
@@ -363,22 +377,64 @@ impl Runtime {
                 } else if let Some(id) = request.snapshot {
                     view_result(e.snapshot_info(id.view()))?.last_choice
                 } else {
-                    e.choices().last().map(|(&id, _)| id)
+                    e.choices().next_back().map(|(&id, _)| id)
                 };
-                let mut choices = e
-                    .choices_after(request.after_choice.map(|id| id.view().0), cutoff)
-                    .take(65)
-                    .map(|(&id, _)| json!({"id":id.to_string(),"label":format!("Choice {}",id+1)}))
-                    .collect::<Vec<_>>();
-                let next_choice = (choices.len() > 64).then(|| choices[63]["id"].clone());
-                choices.truncate(64);
-                let mut snapshots = e.snapshots_after(request.after_snapshot.map(Id::view)).take(65).map(|s| {
+                if (request.after_choice.is_some() && request.before_choice.is_some())
+                    || (request.after_snapshot.is_some() && request.before_snapshot.is_some())
+                {
+                    return Err(Response::error(400, "choose one page direction"));
+                }
+                let choice_rows: Vec<_> = if let Some(before) = request.before_choice {
+                    e.choices_before(before.0, cutoff)
+                        .take(64)
+                        .map(|(&id, _)| id)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect()
+                } else {
+                    e.choices_after(request.after_choice.map(|id| id.0), cutoff)
+                        .take(64)
+                        .map(|(&id, _)| id)
+                        .collect()
+                };
+                let prev_choice = choice_rows
+                    .first()
+                    .filter(|&&id| e.choices_before(id, cutoff).next().is_some())
+                    .map(|id| id.to_string());
+                let next_choice = choice_rows
+                    .last()
+                    .filter(|&&id| e.choices_after(Some(id), cutoff).next().is_some())
+                    .map(|id| id.to_string());
+                let choices: Vec<_> = choice_rows
+                    .into_iter()
+                    .map(|id| json!({"id":id.to_string(),"label":format!("Choice {}",id+1)}))
+                    .collect();
+                let snapshot_rows: Vec<_> = if let Some(before) = request.before_snapshot {
+                    e.snapshots_before(before.view())
+                        .take(64)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect()
+                } else {
+                    e.snapshots_after(request.after_snapshot.map(Id::view))
+                        .take(64)
+                        .collect()
+                };
+                let prev_snapshot = snapshot_rows
+                    .first()
+                    .filter(|s| e.snapshots_before(s.id).next().is_some())
+                    .map(|s| s.id.0.to_string());
+                let next_snapshot = snapshot_rows
+                    .last()
+                    .filter(|s| e.snapshots_after(Some(s.id)).next().is_some())
+                    .map(|s| s.id.0.to_string());
+                let snapshots: Vec<_> = snapshot_rows.into_iter().map(|s| {
                     let action = match s.kind { SnapshotKind::Initial=>"initial query",SnapshotKind::Requested=>"retained view",SnapshotKind::Application{..}=>"rule application",SnapshotKind::Post{..}=>"relation posted",SnapshotKind::Merge=>"variables merged",SnapshotKind::Choice=>"disjunction",SnapshotKind::Failure=>"failure",SnapshotKind::NormalForm=>"normal form" };
                     json!({"id":s.id.0.to_string(),"label":format!("State {} · {action}",s.id.0)})
-                }).collect::<Vec<_>>();
-                let next_snapshot = (snapshots.len() > 64).then(|| snapshots[63]["id"].clone());
-                snapshots.truncate(64);
-                json!({"choices":choices,"snapshots":snapshots,"next_choice":next_choice,"next_snapshot":next_snapshot})
+                }).collect();
+                json!({"choices":choices,"snapshots":snapshots,"next_choice":next_choice,"next_snapshot":next_snapshot,"prev_choice":prev_choice,"prev_snapshot":prev_snapshot})
             }
             "/api/cancel" => {
                 e.cancel();

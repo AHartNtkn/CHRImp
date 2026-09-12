@@ -2,6 +2,7 @@
 mod cancel;
 mod collection;
 mod inspection;
+mod obligations;
 mod step;
 pub use collection::Memory;
 pub use inspection::{InspectionError, InspectionStatus, SnapshotInfo, SnapshotKind, ViewId};
@@ -141,8 +142,8 @@ pub struct Engine {
     lane: Option<Owner>,
     waiting: VecDeque<Owner>,
     requested: BTreeSet<Owner>,
-    pending: Store<Condition>,
     pending_root: Root,
+    obligations: obligations::Obligations,
     ready: Option<Ready>,
     output: Option<Output>,
     observer: Option<Observe>,
@@ -173,15 +174,15 @@ impl Engine {
             graph: graph.empty(),
             history: history.empty(),
         };
-        let pending = Store::default();
-        let pending_root = pending.empty();
+        let obligations = obligations::Obligations::default();
+        let pending_root = obligations.empty();
         let mut e = Self {
             code,
             graph,
             history,
             state,
-            pending,
             pending_root,
+            obligations,
             arena: Arena::default(),
             ids: FreshIds::default(),
             variables: Arc::new(vec![]),
@@ -230,7 +231,7 @@ impl Engine {
     pub fn query_variables(&self) -> &[u64] {
         &self.variables
     }
-    pub fn choices(&self) -> impl Iterator<Item = (&u64, &Birth)> {
+    pub fn choices(&self) -> impl DoubleEndedIterator<Item = (&u64, &Birth)> {
         self.births.iter()
     }
     pub fn applications(&self) -> u64 {
@@ -259,7 +260,12 @@ impl Engine {
         }
         let id = self.next_task;
         self.next_task = id.checked_add(1).expect("task identity exhausted");
-        self.pending_root = self.pending.insert(self.pending_root, [id, 0, 0, 0], scope);
+        let key = [id, 0, 0, 0];
+        let pending = self.pending_task(scope, &task);
+        self.pending_root = self
+            .obligations
+            .index
+            .insert(self.pending_root, key, pending);
         self.queue.push_back(Scheduled { id, scope, task });
     }
     fn body(&mut self, event: u64, instruction: usize, variables: Arc<Vec<u64>>, scope: Condition) {
@@ -313,8 +319,10 @@ impl Engine {
             } else if self.ticks.is_multiple_of(3) {
                 if let Some(mut task) = self.queue.pop_front() {
                     if self.task(&mut task) {
-                        self.pending_root =
-                            self.pending.remove(self.pending_root, &[task.id, 0, 0, 0]);
+                        self.pending_root = self
+                            .obligations
+                            .index
+                            .remove(self.pending_root, &[task.id, 0, 0, 0]);
                         if self.lane == Some(Owner::Task(task.id)) {
                             self.release_lane();
                         }
@@ -340,13 +348,19 @@ impl Engine {
                     false
                 } else {
                     self.variables = Arc::new(std::mem::take(vars));
-                    self.record(SnapshotKind::Initial, self.active);
                     let event = self.ids.event();
                     self.body(event, self.code.query, self.variables.clone(), s.scope);
+                    self.record(SnapshotKind::Initial, self.active);
                     true
                 }
             }
-            Task::Body(b) => self.body_tick(s.id, b),
+            Task::Body(b) => {
+                let done = self.body_tick(s.id, b);
+                if !done {
+                    self.sync_obligation(s.id, b);
+                }
+                done
+            }
             Task::Activate {
                 root,
                 occurrence,
@@ -395,6 +409,7 @@ impl Engine {
                             self.applications += 1;
                             let app = c.application;
                             self.step_application(app.id, search.rule, app.support);
+                            self.body(app.id, app.body, app.variables, app.support);
                             self.record(
                                 SnapshotKind::Application {
                                     rule: search.rule,
@@ -402,7 +417,6 @@ impl Engine {
                                 },
                                 self.active,
                             );
-                            self.body(app.id, app.body, app.variables, app.support);
                             search.commit = None;
                             self.release_lane();
                         }
@@ -550,6 +564,7 @@ impl Engine {
                 if let UpdateStatus::Complete(root) = update.tick(&mut self.graph) {
                     self.state.graph = root;
                     let occurrence = update.occurrence();
+                    self.finish_body_record(id);
                     self.record(SnapshotKind::Post { occurrence }, self.active);
                     self.spawn(
                         b.scope,
@@ -566,8 +581,9 @@ impl Engine {
                 let merge = b.merge.as_mut().unwrap();
                 if let Some(root) = merge.tick(&mut self.graph, &mut self.arena) {
                     self.state.graph = root;
-                    self.record(SnapshotKind::Merge, self.active);
                     let scope = merge.changed_support();
+                    self.finish_body_record(id);
+                    self.record(SnapshotKind::Merge, self.active);
                     let Instruction::Equal(x, _) = self.code.instructions[b.instruction] else {
                         unreachable!()
                     };
@@ -596,6 +612,7 @@ impl Engine {
                 if let Some(c) = poll(&mut b.job, &mut self.arena) {
                     self.active = b.pending_active;
                     self.failed = c;
+                    self.finish_body_record(id);
                     self.record(SnapshotKind::Failure, self.active);
                     return true;
                 }
@@ -621,9 +638,10 @@ impl Engine {
                         decision,
                     },
                 );
-                self.record(SnapshotKind::Choice, self.active);
                 b.job = Some(self.arena.start(Operation::And(b.scope, decision)));
                 b.phase = BodyPhase::Left;
+                self.sync_obligation(id, b);
+                self.record(SnapshotKind::Choice, self.active);
             }
             BodyPhase::Left => {
                 if let Some(c) = poll(&mut b.job, &mut self.arena) {
@@ -672,7 +690,10 @@ impl Engine {
             return;
         }
         let mut ready = self.ready.take().unwrap_or_else(|| Ready {
-            cursor: self.pending.range(self.pending_root, [0; 4], [u64::MAX; 4]),
+            cursor: self
+                .obligations
+                .index
+                .range(self.pending_root, [0; 4], [u64::MAX; 4]),
             blocked: Condition::FALSE,
             scope: self.active,
             job: None,
@@ -682,10 +703,17 @@ impl Engine {
             ReadyPhase::Scan => {
                 if ready.job.is_some() {
                     if let Some(c) = poll(&mut ready.job, &mut self.arena) {
+                        // Once the captured scope is fully blocked, no later
+                        // row can produce a completion from this certificate.
+                        // Release its frozen ownership root and recapture next
+                        // time, so completed bodies do not remain pinned here.
+                        if c == Condition::TRUE || c == ready.scope {
+                            return;
+                        }
                         ready.blocked = c;
                     }
-                } else if let Some((_, c)) = ready.cursor.next(&self.pending) {
-                    ready.job = Some(self.arena.start(Operation::Or(ready.blocked, c)));
+                } else if let Some((_, c)) = ready.cursor.next(&self.obligations.index) {
+                    ready.job = Some(self.arena.start(Operation::Or(ready.blocked, c.scope)));
                 } else {
                     ready.job = Some(
                         self.arena

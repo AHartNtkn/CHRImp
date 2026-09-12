@@ -308,7 +308,14 @@ fn releasing_a_recorded_execution_reclaims_its_run_without_losing_other_runs() {
 #[test]
 fn deep_containers_are_rejected_as_ids_without_recursive_buffering() {
     let runtime = Runtime::default();
-    for field in ["snapshot", "inspection", "after_snapshot", "after_choice"] {
+    for field in [
+        "snapshot",
+        "inspection",
+        "after_snapshot",
+        "after_choice",
+        "before_snapshot",
+        "before_choice",
+    ] {
         let source = format!(
             "{{\"run\":1,\"{field}\":{}0{}}}",
             "[".repeat(30000),
@@ -450,4 +457,114 @@ fn closing_discards_inspections_created_after_source_cancellation() {
         }
     }
     panic!("closing must discard inspections admitted after cancellation");
+}
+
+#[test]
+fn metadata_pages_round_trip_without_replaying_prefixes() {
+    let runtime = Runtime::default();
+    let query = std::iter::repeat_n("(true;true)", 70)
+        .collect::<Vec<_>>()
+        .join(",");
+    let run = start(&runtime, "", &query, true)["run"].clone();
+    let mut ack = None;
+    let mut first = Value::Null;
+    for _ in 0..100 {
+        next(
+            &runtime,
+            "/api/advance",
+            json!({"run":run,"budget":4096}),
+            &mut ack,
+        );
+        first = ok(&runtime, "/api/views", json!({"run":run}));
+        if !first["next_choice"].is_null() && !first["next_snapshot"].is_null() {
+            break;
+        }
+    }
+    for kind in ["choice", "snapshot"] {
+        let plural = if kind == "choice" {
+            "choices"
+        } else {
+            "snapshots"
+        };
+        let after = format!("after_{kind}");
+        let before = format!("before_{kind}");
+        assert!(!first[format!("next_{kind}")].is_null());
+        assert_eq!(first[plural].as_array().unwrap().len(), 64);
+        let mut request = json!({"run":run});
+        request[&after] = first[format!("next_{kind}")].clone();
+        let second = ok(&runtime, "/api/views", request.clone());
+        assert!(second[plural].as_array().unwrap().len() <= 64);
+        assert_ne!(second[plural][0], first[plural][0]);
+        let mut back = json!({"run":run});
+        back[&before] = second[format!("prev_{kind}")].clone();
+        assert_eq!(ok(&runtime, "/api/views", back)[plural], first[plural]);
+        request[&before] = json!("1");
+        assert_eq!(
+            runtime.request("/api/views", &request.to_string()).status,
+            400
+        );
+    }
+    ok(&runtime, "/api/cancel", json!({"run":run}));
+}
+
+#[test]
+fn logical_step_inspection_streams_the_pending_rhs_with_string_variable_ids() {
+    let runtime = Runtime::default();
+    let run = start(&runtime, "p(X) <=> q(X). q(X) <=> r(X).", "p(A)", false)["run"].clone();
+    retry(&runtime, "/api/step", json!({"run":run}));
+    let mut ack = None;
+    let mut event = Value::Null;
+    for _ in 0..100 {
+        let batch = next(
+            &runtime,
+            "/api/advance",
+            json!({"run":run,"budget":4096}),
+            &mut ack,
+        );
+        if batch["step"]["done"] == true {
+            event = batch["step"]["event"].clone();
+            break;
+        }
+    }
+    assert!(!event.is_null());
+    let inspection = retry(&runtime, "/api/inspect", json!({"run":run}))["inspection"].clone();
+    let mut events = vec![];
+    let mut ack = None;
+    for _ in 0..1000 {
+        let batch = next(
+            &runtime,
+            "/api/inspect_advance",
+            json!({"run":run,"inspection":inspection,"budget":1}),
+            &mut ack,
+        );
+        assert!(batch["events"].as_array().unwrap().len() <= 1);
+        events.extend(batch["events"].as_array().unwrap().clone());
+        if batch["done"] == true {
+            break;
+        }
+    }
+    assert_eq!(
+        events
+            .iter()
+            .map(|e| e["kind"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        [
+            "begin",
+            "variable",
+            "pending_begin",
+            "expression_relation",
+            "expression_variable",
+            "expression_end",
+            "pending_end",
+            "end"
+        ]
+    );
+    assert_eq!(events[2]["event"], event.to_string());
+    assert_eq!(events[3]["relation"], 1);
+    assert_eq!(events[4]["variable"], "0");
+    retry(
+        &runtime,
+        "/api/inspect_release",
+        json!({"run":run,"inspection":inspection}),
+    );
 }
