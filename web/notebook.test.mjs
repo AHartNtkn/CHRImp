@@ -1013,7 +1013,7 @@ function createContext(values) {
   const context = rawCreateContext({connected:true, restoring:false, connection:{state:null}, check:assert.ok, store,
     runNotice:null, displayWriting:null,displayDirty:false,displayStamp:null,message(){},async saveDisplay(){},
     inspected:null,outputMode:'answers',savedSelection:'',answerNumber:null,answerPage:0,
-    resultPage:0,resultPortPage:0,bindingPage:0,pendingNumber:0,pendingPage:0,pendingPortPage:0,pendingPath:[], session:values.session ?? {run:null},
+    bindingPage:0,pendingNumber:0, session:values.session ?? {run:null},
     request:values.request ?? Object.assign(api ?? (()=>{}), {checkpoint:action => action()}), async saveEditor() {}, async restoreInspection() {}, async finishInspection() {}, ...values,
     ...(api ? {liveRequest:api} : {})});
   runInContext(productionSection('function attachBatch(', '// A cached response'),context);
@@ -1060,12 +1060,11 @@ function renderingHarness() {
     renderInspectionControls() {}, async refreshSaved() {}, async finishInspection() {},
     savedView:{id:'first',page:0,total:1,answers:[{number:1,completion:'1',alternative:'0'}]},
     savedSelection:'', inspected:null, outputMode:'answers', answerNumber:1, answerPage:0,
-    page:0, portPage:0, resultPage:1, resultPortPage:1, bindingPage:1,
-    pendingNumber:1, pendingPath:[42,43], pendingPage:1, pendingPortPage:1,
+    page:0, portPage:0,   bindingPage:1,
+    pendingNumber:1,
     sceneLoading:false, desiredScene:null, loadedSceneKey:null,
   });
-  runInContext(productionSection('  function pager(', '  function renderInspector(')
-    + productionSection('  function renderResults()', '  async function inspect()')
+  runInContext(productionSection('  function renderResults()', '  async function inspect()')
     + productionSection("  $('execution').onchange", "  $('release-run').onclick"), context);
   const scene = () => ({bindings:[],bindingPage:1,bindingPages:3,
     facts:{entries:[],page:1,pages:3,portPage:1,portPages:3,count:54},
@@ -1078,8 +1077,7 @@ function renderingHarness() {
   };
 }
 for (const [control, field] of [
-  ['result','page'], ['result-port','portPage'], ['binding','bindingPage'],
-  ['pending','pendingPage'], ['pending-port','pendingPortPage'], ['pending-body','pendingNumber'],
+  ['binding','bindingPage'], ['pending-body','pendingNumber'],
 ]) for (const [direction, expected] of [['prev',0], ['next',2]]) {
   await test(`production ${control} ${direction}: rapid clicks target the displayed page`, async () => {
     const h = renderingHarness(); await h.start(); await h.paint();
@@ -1089,7 +1087,7 @@ for (const [control, field] of [
     controlElement.onclick(); await Promise.resolve();
     assert.equal(h.reads.length, 2, 'only one additional scene read is in flight');
     assert.equal(h.context.desiredScene.options[field], expected, 'both clicks request the same adjacent page');
-    assert.ok(Object.entries(h.context.desiredScene.options).every(([key,value]) => key === 'pendingPath' || value >= 0));
+    assert.ok(Object.entries(h.context.desiredScene.options).every(([key,value]) => value >= 0));
     h.reads[1].resolve(h.scene()); await Promise.all(h.tasks);
     assert.equal(h.errors.length, 0);
     assert.equal(h.reads.length, 2, 'rapid clicks do not schedule a further page');
@@ -1099,11 +1097,10 @@ await test('production execution switch resets navigation and rejects an outstan
   const h = renderingHarness(); await h.start();
   h.$('execution').value = '2';
   await h.$('execution').onchange();
-  for (const field of ['answerPage','resultPage','resultPortPage','bindingPage','pendingNumber','pendingPage','pendingPortPage']) {
+  for (const field of ['answerPage','bindingPage','pendingNumber']) {
     assert.equal(h.context[field], 0, `${field} resets for the new execution`);
   }
   assert.equal(h.context.answerNumber, null);
-  assert.equal(h.context.pendingPath.length, 0);
   assert.equal(h.context.desiredScene, null, 'the old scene request is invalidated before loading new summaries');
   h.reads[0].resolve(h.scene()); await Promise.all(h.tasks);
   assert.equal(h.paints.length, 0, 'a late old-execution scene cannot paint');
@@ -1747,7 +1744,7 @@ await test('reload restores the inspected archive and pending navigation through
     catalog:{records:[],next:null,prev:null},catalogCursor:null,catalogDirection:'next',catalogDirty:true,catalogStamp:'',
     refreshing:null,refreshAgain:false,inspectionPending:null,renderWorkspace(){},renderRun(){},message:text=>messages.push(text)});
   const display={mode:'inspect',inspectionArchive:'inspection',savedArchive:'',sourceArchive:'source',
-    answerNumber:1,answerPage:0,resultPage:1,resultPortPage:1,bindingPage:1,pendingNumber:1,pendingPage:1,pendingPortPage:1,pendingPath:[42,43]};
+    answerNumber:1,answerPage:0,bindingPage:1,pendingNumber:1,};
   await store.saveRecovery('display',display);
   await store.saveRecovery('editor',{model:untouched,program:'p(X) <=> (q(X); r(X)).',query:'p(A)',dirty:false,history:false,run:1,boot:'a'.repeat(32)});
   store.list=async()=>({records:[],next:null,prev:null});
@@ -1758,15 +1755,15 @@ await test('reload restores the inspected archive and pending navigation through
     +productionSection('  function refreshSaved()', '  function renderResults()'),c);
   await c.initialize();
   assert.equal(c.outputMode,'inspect');assert.equal(c.inspected.archive,'inspection');
-  assert.deepEqual([...c.pendingPath],[42,43]);assert.equal(c.answerNumber,1);
+  assert.equal(c.answerNumber,1);
   assert.deepEqual(pageReads,[{archive:'inspection',page:0}]);
   assert.equal(h.reads.length,1);assert.equal(h.reads[0].collection,'inspection');
-  assert.deepEqual([...h.reads[0].options.pendingPath],[42,43]);
+  assert.equal(h.reads[0].options.pendingNumber,1);
   h.reads[0].resolve(h.scene());await Promise.all(h.tasks);
   assert.equal(h.errors.length,0);assert.equal(h.$('pending-bodies').hidden,false);
   assert.match(messages.at(-1),/restored paused at 1 applications.*Showing saved inspection/);
   const persisted=await store.recovery('display');
-  assert.equal(persisted.inspectionArchive,'inspection');assert.equal(persisted.pendingPath.length,2);
+  assert.equal(persisted.inspectionArchive,'inspection');assert.equal(persisted.pendingNumber,1);
   assert.equal('facts' in persisted,false);assert.equal('events' in persisted,false);
 });
 await test('inspection display ownership persists before release and retries without reprojection',async()=>{
@@ -1846,7 +1843,7 @@ for (const [inspection, mode, live] of [['present','inspect',false], ['missing',
     refreshing:null,refreshAgain:false,inspectionPending:null,inspecting:false,launching:false,busy:false,
     renderWorkspace(){},message:text=>messages.push(text)});
   const display = {mode,inspectionArchive:'old-inspection',savedArchive:'',sourceArchive:'old-source',
-    answerNumber:1,answerPage:0,resultPage:0,resultPortPage:0,bindingPage:0,pendingNumber:0,pendingPage:0,pendingPortPage:0,pendingPath:[]};
+    answerNumber:1,answerPage:0,bindingPage:0,pendingNumber:0,};
   await store.saveRecovery('display',display);
   await store.saveRecovery('editor',{model:untouched,program:'p(X) <=> (q(X); r(X)).',query:'p(A)',dirty:false,history:false,run:1,boot:oldBoot});
   // A different archive can have the same label. It is not the saved locator.

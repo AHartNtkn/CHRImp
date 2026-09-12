@@ -34,13 +34,13 @@
         <fieldset id="graph-tools">
           <legend class="sr-only">Graph editing controls</legend>
           <div class="graph-toolbar"><label class="sr-only" for="target">Query or rule</label><select id="target"><option value="query">Query</option></select><button id="add-rule">+ Rule</button><button id="remove-rule" disabled>Remove rule</button><span class="spacer"></span><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button></div>
-          <div id="rule-sides" class="tabs" hidden aria-label="Rule side"><button data-side="kept">Kept</button><button data-side="removed">Removed</button><button data-side="body" aria-pressed="true">Body</button></div>
+          <div id="rule-sides" class="tabs" hidden aria-label="Add to rule side"><button data-side="kept">Add to kept</button><button data-side="removed">Add to removed</button><button data-side="body" aria-pressed="true">Add to body</button></div>
           <label id="rule-name" hidden>Rule name <input id="rule-name-input" placeholder="Unnamed rule"></label>
           <div class="graph-toolbar"><label for="add-kind">Add</label><select id="add-kind"><option value="atom">Relation</option><option value="equal">Equality</option><option value="and">And group</option><option value="or">Or group</option><option value="true">True</option><option value="fail">Fail</option></select><button id="add">+ Add item</button></div>
         </fieldset>
         <nav id="breadcrumb" class="breadcrumb" aria-label="Expression location"></nav>
         <div class="graph-scroll"><svg id="editor-graph" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Editable hypergraph"></svg></div>
-        <div class="paging"><button id="graph-prev" aria-label="Previous diagram page">←</button><span id="graph-page"></span><button id="graph-next" aria-label="Next diagram page">→</button><span class="spacer"></span><button id="graph-port-prev" aria-label="Previous port page">←</button><span id="graph-ports"></span><button id="graph-port-next" aria-label="Next port page">→</button></div>
+        <div class="canvas-tools" aria-label="Diagram navigation"><button data-diagram="editor-graph" data-action="out">−</button><button data-diagram="editor-graph" data-action="in">+</button><button data-diagram="editor-graph" data-action="fit">Fit</button><button data-diagram="editor-graph" data-action="layout">Arrange</button><button data-diagram="editor-graph" data-action="expand">Expand</button><span>Drag to move · scroll to zoom · drag a port to connect</span></div>
       </section>
       <aside class="inspector-panel">
         <div class="section-heading"><h2>Selection</h2></div>
@@ -57,13 +57,13 @@
           <div class="binding-paging"><button id="binding-prev" aria-label="Previous bindings">←</button><span id="binding-page">Bindings 1 / 1</span><button id="binding-next" aria-label="Next bindings">→</button></div>
           <p id="result-empty" class="empty">Run the notebook to observe its answer graphs.</p>
           <div class="graph-scroll"><svg id="result-graph" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Answer hypergraph" hidden></svg></div>
-          <div class="paging"><button id="result-prev" aria-label="Previous result graph page">←</button><span id="result-page"></span><button id="result-next" aria-label="Next result graph page">→</button><span class="spacer"></span><button id="result-port-prev" aria-label="Previous result port page">←</button><span id="result-ports"></span><button id="result-port-next" aria-label="Next result port page">→</button></div>
+          <div class="canvas-tools" aria-label="Diagram navigation"><button data-diagram="result-graph" data-action="out">−</button><button data-diagram="result-graph" data-action="in">+</button><button data-diagram="result-graph" data-action="fit">Fit</button><button data-diagram="result-graph" data-action="layout">Arrange</button><button data-diagram="result-graph" data-action="expand">Expand</button><span>Drag to move · scroll to zoom</span></div>
           <section id="pending-bodies" hidden aria-label="Pending rule bodies">
             <h3>Pending bodies</h3>
             <div class="binding-paging"><button id="pending-body-prev" aria-label="Previous pending body">←</button><label>Body <input id="pending-body-number" type="number" min="1" value="1"></label><span id="pending-body-count"></span><button id="pending-body-next" aria-label="Next pending body">→</button></div>
             <nav id="pending-location" aria-label="Pending expression location"></nav>
             <div class="graph-scroll"><svg id="pending-graph" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Pending body graph"></svg></div>
-            <div class="paging"><button id="pending-prev" aria-label="Previous pending graph page">←</button><span id="pending-page"></span><button id="pending-next" aria-label="Next pending graph page">→</button><span class="spacer"></span><button id="pending-port-prev" aria-label="Previous pending port page">←</button><span id="pending-ports"></span><button id="pending-port-next" aria-label="Next pending port page">→</button></div>
+            <div class="canvas-tools" aria-label="Diagram navigation"><button data-diagram="pending-graph" data-action="out">−</button><button data-diagram="pending-graph" data-action="in">+</button><button data-diagram="pending-graph" data-action="fit">Fit</button><button data-diagram="pending-graph" data-action="layout">Arrange</button><button data-diagram="pending-graph" data-action="expand">Expand</button><span>Drag to move · scroll to zoom</span></div>
           </section>
         </div>
         <aside class="inspection-panel">

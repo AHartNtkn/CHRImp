@@ -1,130 +1,36 @@
 import assert from 'node:assert/strict';
-import {renderGraph, renderScene, relationColor} from './graph.mjs';
-
-// Minimal SVG DOM: render and dispatch real renderer callbacks without a browser.
-class Element {
-  constructor(tag) { this.tag = tag; this.attributes = {}; this.children = []; this.listeners = {}; this.textContent = ''; }
-  setAttribute(key, value) { this.attributes[key] = String(value); }
-  append(...children) { this.children.push(...children); }
-  replaceChildren(...children) { this.children = children; }
-  addEventListener(type, action) { this.listeners[type] = action; }
-  fire(type, key) {
-    const event = {key, stopped:false, prevented:false, stopPropagation() { this.stopped = true; }, preventDefault() { this.prevented = true; }};
-    this.listeners[type]?.(event); return event;
-  }
-}
-globalThis.document = {createElementNS(_namespace, tag) { return new Element(tag); }};
-const all = element => [element, ...element.children.flatMap(all)];
-const withClass = (svg, name) => all(svg).filter(e => e.attributes.class?.split(' ').includes(name));
-const texts = svg => all(svg).filter(e => e.tag === 'text').map(e => String(e.textContent));
-
-// Indexed proxies reject off-window reads, including Array.map/reduce scans.
-function windowed(length, start, end, value) {
-  let reads = 0;
-  const array = new Proxy(new Array(length), {
-    get(target, property, receiver) {
-      if (/^(0|[1-9][0-9]*)$/.test(String(property))) {
-        const index = Number(property);
-        assert.ok(index >= start && index < end, `off-window read ${index} outside ${start}..${end}`);
-        reads++; return value(index);
-      }
-      return Reflect.get(target, property, receiver);
-    },
-    has(target, property) { return /^(0|[1-9][0-9]*)$/.test(String(property)) || Reflect.has(target, property); },
-  });
-  return {array, reads:() => reads};
-}
-
-const svg = new Element('svg');
-const chosen = [], connected = [];
-const ports = windowed(100_000, 24, 32, i => `V${i}`);
-const nodes = windowed(1_000_000, 18 * 100, 18 * 101, () => ({kind:'atom', atom:{relation:'edge', args:ports.array}}));
-const info = renderGraph(svg, {query:{kind:'and', items:nodes.array}}, ['query'], {
-  page:100, portPage:3, selected:{path:['query','items',1800],port:24},
-  onSelect:selection => chosen.push(selection), onConnect:name => connected.push(name),
-});
-assert.deepEqual(info, {page:100,pages:55556,portPage:3,portPages:12500,count:1_000_000});
-assert.equal(nodes.reads(), 18); assert.equal(ports.reads(), 18 * 8);
-assert.equal(withClass(svg,'relation-node').length, 18);
-assert.equal(withClass(svg,'port').length, 144);
-assert.ok(texts(svg).includes('edge / 100000'));
-assert.ok(texts(svg).includes('ports 25–32 of 100000'));
-assert.equal(svg.attributes.role, 'group');
-const firstPort = withClass(svg,'port')[0];
-assert.equal(firstPort.attributes.role, 'button');
-assert.equal(firstPort.attributes.tabindex, '0');
-assert.ok(firstPort.attributes.class.includes('selected'));
-const key = firstPort.fire('keydown', 'Enter');
-assert.ok(key.prevented && key.stopped);
-assert.deepEqual(chosen.pop(), {path:['query','items',1800],port:24});
-withClass(svg,'relation-node')[0].fire('click');
-assert.deepEqual(chosen.pop(), {path:['query','items',1800]});
-withClass(svg,'junction')[0].fire('keydown', ' ');
-assert.equal(connected.pop(), 'V24');
-
-// A normalized saved window has no complete AST or complete argument arrays.
-const scene = {
-  entries:[
-    {kind:'atom', relation:'edge', arity:100_000, args:['V24','V25'], portStart:24, path:['saved',5], occurrence:'9007199254740993'},
-    {kind:'or', args:[], portStart:0, count:400_000, path:['saved',6]},
-    {kind:'equal', args:['V24','V25'], portStart:0, path:['saved',7]},
-  ], page:999,pages:1000,portPage:3,portPages:12500,count:17985,
-};
-const original = structuredClone(scene), opened = [];
-assert.deepEqual(renderScene(svg, scene, {readonly:true,onOpen:path => opened.push(path),label:'Pending graph'}),
-  {page:999,pages:1000,portPage:3,portPages:12500,count:17985});
-assert.deepEqual(scene, original);
-assert.equal(svg.attributes['aria-label'], 'Pending graph');
-assert.equal(svg.attributes.role, 'group');
-assert.ok(withClass(svg,'relation-node')[0].attributes.class.includes(relationColor('edge')));
-assert.ok(texts(svg).includes('occurrence 9007199254740993'));
-assert.ok(texts(svg).includes('ports 25–26 of 100000'));
-assert.ok(texts(svg).includes('V24 = V25'));
-assert.deepEqual(withClass(svg,'port').map(p => p.children[1].textContent).map(String), ['25','26','1','2']);
-const group = withClass(svg,'relation-node')[1];
-assert.equal(group.attributes['aria-label'], 'Open Or · 400000 branches');
-group.fire('keydown', ' ');
-assert.deepEqual(opened, [['saved',6]]);
-assert.ok(!withClass(svg,'relation-node')[0].listeners.click);
-assert.ok(withClass(svg,'port').every(p => !p.listeners.click));
-assert.ok(withClass(svg,'junction').every(p => !p.listeners.click));
-
-// AST group cards read only child count; opening them reads only their window.
-const nestedChildren = windowed(100_000, 0, 18, i => ({kind:'atom',atom:{relation:`branch${i}`,args:['X']}}));
-const nested = {query:{kind:'and',items:[{kind:'true'}, {kind:'or',items:nestedChildren.array}, {kind:'fail'}]}};
-let nestedPath;
-renderGraph(svg, nested, ['query'], {readonly:true,onOpen:path => { nestedPath = path; }});
-assert.equal(nestedChildren.reads(), 0);
-assert.ok(texts(svg).includes('true')); assert.ok(texts(svg).includes('fail'));
-withClass(svg,'relation-node')[1].fire('click');
-assert.deepEqual(nestedPath, ['query','items',1]);
-assert.equal(renderGraph(svg, nested, nestedPath, {readonly:true}).count, 100_000);
-assert.equal(nestedChildren.reads(), 18);
-assert.ok(texts(svg).includes('branch0 / 1'));
-assert.equal(svg.attributes.role, 'img');
-
-// Heads use plain atoms and absolute source indexes, including the last page.
-const heads = Array.from({length:19}, (_, i) => ({relation:`p${i}`,args:['X']}));
-const headInfo = renderGraph(svg, {heads}, ['heads'], {page:999, portPage:99});
-assert.deepEqual(headInfo, {page:1,pages:2,portPage:0,portPages:1,count:19});
-assert.ok(texts(svg).includes('p18 / 1'));
-
-// A huge unseen arity must not affect the selected node window's port pages.
-Object.defineProperty(heads[0], 'args', {get() { throw new Error('read hidden arity'); }});
-assert.equal(renderGraph(svg, {heads}, ['heads'], {page:1}).portPages, 1);
-// Mixed arities keep equality ports visible on a later relation-port page.
-renderGraph(svg, {query:{kind:'and',items:[
-  {kind:'atom',atom:{relation:'wide',args:Array.from({length:10},(_,i)=>`V${i}`)}},
-  {kind:'equal',left:'X',right:'Y'},
-  {kind:'atom',atom:{relation:'small',args:['X']}},
-]}}, ['query'], {portPage:1});
-assert.deepEqual(withClass(svg,'port').map(p => String(p.children[1].textContent)), ['9','10','1','2']);
-assert.ok(texts(svg).includes('wide / 10')); assert.ok(texts(svg).includes('small / 1'));
-renderGraph(svg, {query:{kind:'and',items:[]}}, ['query'], {readonly:true});
-assert.equal(svg.attributes.role, 'img');
-assert.ok(texts(svg).includes('No facts in this alternative.'));
-assert.equal(withClass(svg,'relation-node').length, 0);
-
-assert.throws(() => renderScene(svg, {...scene,entries:Array(19).fill(scene.entries[0])}), /18/);
-assert.throws(() => renderScene(svg, {...scene,entries:[{...scene.entries[0],args:Array(9).fill('X')}]}), /8/);
-console.log('Bounded AST and normalized scene windows, absolute ports, shared visuals and keyboard interactions passed.');
+import {diagramScene, layoutScene, visibleItems, applyEdit} from './graph.mjs';
+const atom = (relation, ...args) => ({kind:'atom',atom:{relation,args}});
+const model = {program:{rules:[{name:'rewrite',kept:[{relation:'keep',args:['X']}],removed:[{relation:'take',args:['X','Y']}],body:{kind:'or',items:[atom('left','Y','Z'),{kind:'and',items:[atom('right','X','Z'),{kind:'equal',left:'Y',right:'Z'}]}]}}]},query:{kind:'true'}};
+const before = structuredClone(model);
+const scene = diagramScene(model,['program','rules',0,'body']);
+const layout = layoutScene(scene);
+assert.deepEqual(model,before);
+assert.deepEqual(layout.items.filter(n=>n.type==='boundary').map(n=>n.label).filter(n=>['Kept','Removed','Body','Or','And'].includes(n)),['Kept','Removed','Body','Or','And']);
+assert.equal(layout.items.filter(n=>n.type==='node').length,5);
+assert.equal(layout.items.filter(n=>n.type==='junction'&&n.name==='X').length,1);
+assert.equal(layout.items.filter(n=>n.type==='wire'&&n.name==='X').length,3);
+assert.equal(layout.items.filter(n=>n.type==='wire'&&n.name==='Z').length,3);
+const port=layout.items.find(n=>n.type==='port'&&n.relation==='right'&&n.port===1);
+const edited=applyEdit(model,{type:'set-port',path:port.path,index:port.port,variable:'Y'});
+assert.deepEqual(edited.program.rules[0].body.items[1].items[0].atom.args,['X','Y']);
+assert.deepEqual(model,before);
+const moved=layoutScene(scene,new Map([[JSON.stringify(port.path),{x:300,y:200}]]));
+const movedNode=moved.items.find(n=>n.type==='node'&&n.relation==='right');
+const alternative=moved.items.find(n=>n.type==='boundary'&&n.label==='Alternative 2');
+assert.ok(movedNode.x+movedNode.width<=alternative.x+alternative.width);
+assert.ok(movedNode.y+movedNode.height<=alternative.y+alternative.height);
+const bodyWires=layout.items.filter(n=>n.type==='wire'&&['left','right'].includes(n.relation));
+const rails=new Map();for(const wire of bodyWires){if(rails.has(wire.points[4]))assert.equal(rails.get(wire.points[4]),wire.name);rails.set(wire.points[4],wire.name);}
+const wide=layoutScene(diagramScene({query:atom('wide',...Array.from({length:30},(_,i)=>`V${i}`))},['query']));
+assert.equal(wide.items.filter(n=>n.type==='port').length,30);
+const large=layoutScene(diagramScene({query:{kind:'and',items:Array.from({length:2000},(_,i)=>atom('p',`V${i}`))}},['query']));
+const window={x:0,y:0,width:800,height:500};
+const shown=visibleItems(large,window);
+assert.ok(shown.length<300,`${shown.length} visible objects`);
+assert.ok(large.items.length>6000);
+assert.ok(visibleItems(large,{...window,y:large.height-500}).some(n=>n.type==='node'));
+const related=layoutScene(diagramScene({query:{kind:'and',items:[atom('a','X'),atom('unrelated','U'),atom('b','X')]}},['query']));
+const nodes=related.items.filter(n=>n.type==='node');
+assert.ok(Math.abs(nodes.find(n=>n.relation==='a').x-nodes.find(n=>n.relation==='b').x)<Math.abs(nodes.find(n=>n.relation==='a').x-nodes.find(n=>n.relation==='unrelated').x));
+console.log('Whole rules, nested connections, ordered ports, connectivity layout, source edits and viewport culling passed.');

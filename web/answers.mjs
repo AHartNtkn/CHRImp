@@ -335,60 +335,39 @@ export class IndexedAnswerStore {
   }
   scene(collection, number, options = {}) {
     uint(number);
-    const {page=0, portPage=0, bindingPage=0, pendingNumber=0, pendingPath=[], pendingPage=0, pendingPortPage=0} = options;
-    [page,portPage,bindingPage,pendingNumber,pendingPage,pendingPortPage].forEach(uint);
-    check(Array.isArray(pendingPath), 'Pending path must be node IDs.'); pendingPath.forEach(uint);
+    const {bindingPage=0,pendingNumber=0}=options;
+    [bindingPage,pendingNumber].forEach(uint);
     return this.transaction(['answers','parts','tables'], 'readonly', (tx, result, fail) => {
-      const read = request => new Promise((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
-      const parts = tx.objectStore('parts');
-      const part = (kind,node,slot) => read(parts.get([collection,number,kind,node,slot]));
-      const range = (kind,node,start,size) => read(parts.getAll(this.ranges.bound([collection,number,kind,node,start], [collection,number,kind,node,start+size-1]), size));
-      const paging = (count, requested, size) => { const pages=Math.max(1,Math.ceil(count/size)); return {count,page:Math.min(requested,pages-1),pages}; };
-      const work = async () => {
-        const [summary, record] = await Promise.all([read(tx.objectStore('answers').get([collection,number])),read(tx.objectStore('tables').get(collection))]);
-        if (!summary || !record) { result(null); return; }
-        check(summary.format === 2, 'Answer migration is incomplete.');
-        const tables = record.tables;
-        const entry = async (node, portsPage) => {
-          check(node, 'Missing saved node.');
-          const start = node.kindValue === 'equal' ? 0 : portsPage*8;
-          const ports = node.arity ? await range('port',node.node,start,8) : [];
-          return {path:node.node, kind:node.kindValue, ...(node.relation === undefined ? {} : {relation:tables.signatures[node.relation].name}),
-            ...(node.occurrence === undefined ? {} : {occurrence:node.occurrence}), arity:node.arity, count:node.childcount, portStart:start,
-            args:ports.map(port => `V${port.variable}`)};
-        };
-        const render = async (kind,node,count,requested,requestedPorts,maxArity,single=null) => {
-          const pagingInfo=paging(count,requested,18), portPages=Math.max(1,Math.ceil(maxArity/8)), portPage=Math.min(requestedPorts,portPages-1);
-          const links=single ? [] : await range(kind,node,pagingInfo.page*18,18);
-          const nodes=single ? [single] : await Promise.all(links.map(link => part('node',link.target,0)));
-          return {...pagingInfo,portPage,portPages,entries:await Promise.all(nodes.map(node => entry(node,portPage)))};
-        };
-        const facts=await render('fact',0,summary.facts,page,portPage,summary.maxArity);
-        facts.entries.forEach(entry => { entry.path = [entry.path]; });
-        const bindingInfo=paging(summary.variables,bindingPage,24);
-        const bindings=(await range('binding',0,bindingInfo.page*24,24)).map(row => ({slot:row.slot,name:tables.variables[row.slot],variable:row.variable}));
-        let pending=null;
-        if (summary.pending) {
-          const index=Math.min(pendingNumber,summary.pending-1), link=await part('pending',0,index);
-          check(link, 'Missing saved pending body.');
-          const root=await part('node',link.target,0);
-          const path=[...pendingPath], breadcrumbs=[];
-          let node=root;
-          if (path.length) {
-            check(path[0] === link.target, 'Pending path is outside this body.');
-            breadcrumbs.push({path:[path[0]],label:root.kindValue});
-            for (let depth=1; depth<path.length; depth++) {
-              const child=await part('node',path[depth],0);
-              check(child && child.parent === node.node, 'Pending path is outside this body.');
-              node=child; breadcrumbs.push({path:path.slice(0,depth+1),label:node.kindValue});
-            }
-          }
-          const group=path.length > 0 && ['and','or'].includes(node.kindValue);
-          const scene=await render('child',node.node,group ? node.childcount : 1,pendingPage,pendingPortPage,group ? node.maxChildArity : node.arity,group ? null : node);
-          scene.entries.forEach(entry => { entry.path = group ? [...path,entry.path] : (path.length ? [...path] : [link.target]); });
-          pending={count:summary.pending,index,event:link.event,path,breadcrumbs,scene};
+      const read = request => new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+      const parts=tx.objectStore('parts');
+      const rows=async(kind,visit)=>{
+        let start=[collection,number,kind,0,0],open=false;
+        for(;;){
+          const batch=await read(parts.getAll(this.ranges.bound(start,[collection,number,kind,Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER],open),256));
+          batch.forEach(visit);
+          if(batch.length<256)return;
+          const last=batch.at(-1);start=[collection,number,kind,last.node,last.slot];open=true;
         }
-        result({facts,bindings,bindingPage:bindingInfo.page,bindingPages:bindingInfo.pages,pending});
+      };
+      const work=async()=>{
+        const [summary,record]=await Promise.all([read(tx.objectStore('answers').get([collection,number])),read(tx.objectStore('tables').get(collection))]);
+        if(!summary||!record){result(null);return;}
+        check(summary.format===2,'Answer migration is incomplete.');
+        const nodes=new Map(),facts={kind:'and',path:['facts'],children:[]},bodies=[];
+        await rows('node',row=>nodes.set(row.node,{kind:row.kindValue,path:[row.node],args:[],
+          ...(row.relation===undefined?{}:{relation:record.tables.signatures[row.relation].name}),
+          ...(row.occurrence===undefined?{}:{occurrence:row.occurrence}),
+          ...(['and','or'].includes(row.kindValue)?{children:[]}:{}),arity:row.arity,count:row.childcount}));
+        await rows('port',row=>{const node=nodes.get(row.node);check(node,'Missing saved node.');node.args[row.slot]=`V${row.variable}`;});
+        await rows('child',row=>{const parent=nodes.get(row.node),child=nodes.get(row.target);check(parent?.children&&child,'Missing saved expression.');parent.children[row.slot]=child;});
+        await rows('fact',row=>{const node=nodes.get(row.target);check(node,'Missing saved fact.');facts.children[row.slot]=node;});
+        await rows('pending',row=>{const scene=nodes.get(row.target);check(scene,'Missing saved body.');bodies[row.slot]={scene,event:row.event};});
+        for(const node of nodes.values())check(node.args.length===node.arity&&(!node.children||node.children.length===node.count),'Incomplete saved diagram.');
+        const bindingPages=Math.max(1,Math.ceil(summary.variables/24)),page=Math.min(bindingPage,bindingPages-1);
+        const bindings=await read(parts.getAll(this.ranges.bound([collection,number,'binding',0,page*24],[collection,number,'binding',0,page*24+23]),24));
+        const index=Math.min(pendingNumber,Math.max(0,bodies.length-1));
+        result({facts,bindings:bindings.map(row=>({slot:row.slot,name:record.tables.variables[row.slot],variable:row.variable})),bindingPage:page,bindingPages,
+          pending:bodies.length?{...bodies[index],index,count:bodies.length}:null});
       };
       work().catch(fail);
     });

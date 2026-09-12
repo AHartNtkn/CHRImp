@@ -1,4 +1,4 @@
-import { clone, at, atomOf, applyEdit, validateNotebook, renderGraph, renderScene } from './graph.mjs';
+import { clone, at, atomOf, applyEdit, validateNotebook, renderGraph, renderScene, diagramControl } from './graph.mjs';
 import { OutputAssembler, IndexedAnswerStore } from './answers.mjs';
 import { NotebookConnection } from './connection.mjs';
 
@@ -554,15 +554,15 @@ function mountNotebook() {
     input.onchange = () => safe(() => action(input.value)); wrapper.append(input); return wrapper;
   };
   let model = { program: { rules: [] }, query: { kind: 'true' } };
-  let path = ['query'], selected = null, page = 0, portPage = 0, dirty = false, busy = false, revision = 0;
+  let path = ['query'], selected = null, dirty = false, busy = false, revision = 0;
   let undo = [], redo = [], debounce, inspected = null, outputMode = 'answers', answerNumber = null;
   const store = new IndexedAnswerStore();
   const connection = new NotebookConnection(store), request = connection.request;
   let connected = false, restoring = true, editorWriting = null, editorDirty = false;
   let displayWriting = null, displayDirty = false, displayStamp = null;
   let savedView = null, savedSelection = '', answerPage = 0, inspectionPending = null, inspecting = false, launching = false;
-  let resultPage = 0, resultPortPage = 0, bindingPage = 0;
-  let pendingNumber = 0, pendingPath = [], pendingPage = 0, pendingPortPage = 0;
+  let bindingPage = 0;
+  let pendingNumber = 0;
   let catalog = {records:[], next:null, prev:null}, catalogCursor = null, catalogDirection = 'next', catalogDirty = true, catalogStamp = '';
   let refreshing = null, refreshAgain = false, sceneLoading = false, desiredScene = null, loadedSceneKey = null;
   let inspectionCanceled = false, runNotice = null;
@@ -585,7 +585,7 @@ function mountNotebook() {
   }
   function displayState() {
     return {mode:outputMode,inspectionArchive:inspected?.archive ?? null,savedArchive:savedSelection,sourceArchive:session.archive,
-      answerNumber,answerPage,resultPage,resultPortPage,bindingPage,pendingNumber,pendingPage,pendingPortPage,pendingPath:[...pendingPath]};
+      answerNumber,answerPage,bindingPage,pendingNumber};
   }
   function saveDisplay() {
     if (!connected || restoring) return Promise.resolve();
@@ -611,8 +611,8 @@ function mountNotebook() {
     inspected = saved.inspectionArchive ? {archive:saved.inspectionArchive} : null;
     savedSelection = saved.savedArchive || (saved.sourceArchive !== session.archive ? saved.sourceArchive : '') || '';
     answerNumber = saved.answerNumber; answerPage = saved.answerPage;
-    resultPage = saved.resultPage; resultPortPage = saved.resultPortPage; bindingPage = saved.bindingPage;
-    pendingNumber = saved.pendingNumber; pendingPage = saved.pendingPage; pendingPortPage = saved.pendingPortPage; pendingPath = [...saved.pendingPath];
+    bindingPage = saved.bindingPage;
+    pendingNumber = saved.pendingNumber;
   }
   async function initialize() {
     const editor = await store.recovery('editor'), display = await store.recovery('display');
@@ -678,7 +678,7 @@ function mountNotebook() {
   }
   const edit = op => commit(applyEdit(model, op));
   const select = value => { selected = value; renderWorkspace(); };
-  function navigate(next) { path = next; selected = null; page = portPage = 0; renderWorkspace(); }
+  function navigate(next) { path = next; selected = null; renderWorkspace(); }
   function renderWorkspace() {
     const disabled = !connected || restoring || dirty || busy;
     for (const name of ['program','query','sync','history']) $(name).disabled = !connected || restoring;
@@ -701,33 +701,25 @@ function mountNotebook() {
     }
     const scope = at(model, path);
     if (scope.kind) $('breadcrumb').append(el('span', ` · ${scope.kind === 'or' ? 'Or alternatives' : scope.kind === 'and' ? 'And conjunction' : 'expression'} `), button('Select expression', () => select({ path: [...path] }), disabled));
-    const info = renderGraph($('editor-graph'), model, path, {
-      page, portPage, selected, readonly: disabled, label: 'Editable query or rule hypergraph',
+    renderGraph($('editor-graph'), model, path, {
+      selected, readonly: disabled, label: 'Editable query or whole rule diagram',
       onSelect: select,
       onConnect: variable => safe(() => { check(selected?.port !== undefined, 'Select a numbered relation port first.'); return edit({ type: 'set-port', path: selected.path, index: selected.port, variable }); }),
+      onWire: (port, variable) => safe(() => edit({type:'set-port',path:port.path,index:port.port,variable})),
     });
-    page = info.page; portPage = info.portPage;
-    pager('graph', info, () => renderWorkspace()); renderInspector();
-  }
-  function pager(prefix, info, render) {
-    $(prefix + '-page').textContent = `Page ${info.page + 1} / ${info.pages} · ${info.count} items`;
-    $(prefix + '-ports').textContent = `Port page ${info.portPage + 1} / ${info.portPages}`;
-    for (const [suffix, delta, ports] of [['prev', -1, false], ['next', 1, false], ['port-prev', -1, true], ['port-next', 1, true]]) {
-      const current = ports ? info.portPage : info.page, max = ports ? info.portPages : info.pages;
-      $(prefix + '-' + suffix).disabled = current + delta < 0 || current + delta >= max;
-      $(prefix + '-' + suffix).onclick = () => { if (prefix === 'graph') { if (ports) portPage = current + delta; else page = current + delta; } else if (prefix === 'pending') { if (ports) pendingPortPage = current + delta; else pendingPage = current + delta; } else { if (ports) resultPortPage = current + delta; else resultPage = current + delta; } render(); };
-    }
+    renderInspector();
   }
   function renderInspector() {
     const panel = $('selection'); panel.replaceChildren();
     if (!selected) { panel.append(el('p', 'Select a relation, group or numbered port.')); return; }
     let node;
     try { node = at(model, selected.path); } catch { selected = null; return; }
+    if (node.kept) { panel.append(el('p','Select a head, body, relation or port to edit this rule.')); return; }
     const atom = atomOf(node), target = selected.path;
     panel.append(el('h3', atom ? 'Relation & ordered ports' : 'Expression'));
     if (atom) {
       panel.append(field('Relation', atom.relation, relation => edit({ type: 'rename-relation', path: target, relation })));
-      const start = portPage * 8;
+      const start = Math.floor((selected.port ?? 0) / 8) * 8;
       atom.args.slice(start, start + 8).forEach((variable, offset) => {
         const index = start + offset, row = el('div', undefined, { class: 'port-row' });
         row.append(field(`Port ${index + 1}`, variable, variable => edit({ type: 'set-port', path: target, index, variable })),
@@ -738,12 +730,14 @@ function mountNotebook() {
         row.children[2].setAttribute('aria-label', `Move port ${index + 1} later`);
         row.children[3].setAttribute('aria-label', `Remove port ${index + 1}`); panel.append(row);
       });
+      if (atom.args.length > 8) panel.append(button('Previous ports', () => select({path:target,port:start-8}),start===0),button('Next ports', () => select({path:target,port:start+8}),start+8>=atom.args.length));
       panel.append(button('Add port', () => edit({ type: 'insert-port', path: target, variable: 'X' })));
       panel.append(el('p', selected.port === undefined ? 'Select a port, then a variable junction to connect them.' : `Port ${selected.port + 1} selected. Choose a variable junction.`));
     } else if (node.kind === 'equal') {
       panel.append(field('Left variable', node.left, left => edit({ type: 'equal', path: target, left, right: node.right })), field('Right variable', node.right, right => edit({ type: 'equal', path: target, left: node.left, right })));
     } else if (node.items) {
-      panel.append(button('Open group →', () => navigate(target)), button(node.kind === 'and' ? 'Change to Or' : 'Change to And', () => edit({ type: 'replace', path: target, node: { ...node, kind: node.kind === 'and' ? 'or' : 'and' } })));
+      panel.append(button('Add here', () => navigate(target)), button(node.kind === 'and' ? 'Change to Or' : 'Change to And', () => edit({ type: 'replace', path: target, node: { ...node, kind: node.kind === 'and' ? 'or' : 'and' } })));
+    } else if (Array.isArray(node)) { panel.append(button('Add here', () => navigate(target))); return;
     } else panel.append(button(node.kind === 'true' ? 'Change to fail' : 'Change to true', () => edit({ type: 'replace', path: target, node: { kind: node.kind === 'true' ? 'fail' : 'true' } })));
     if (node.kind) panel.append(button('Wrap in And', () => edit({ type: 'wrap', path: target, kind: 'and' })), button('Wrap in Or', () => edit({ type: 'wrap', path: target, kind: 'or' })));
     const parent = at(model, target.slice(0, -1));
@@ -852,7 +846,7 @@ function mountNotebook() {
       $('bindings').replaceChildren(); $('result-graph').replaceChildren(); $('pending-bodies').hidden = true;
       return;
     }
-    const options = {page:resultPage, portPage:resultPortPage, bindingPage, pendingNumber, pendingPage, pendingPortPage, pendingPath:[...pendingPath]};
+    const options = {bindingPage, pendingNumber};
     const key = JSON.stringify([stream.id, answer.number, options]);
     desiredScene = {key, collection:stream.id, number:answer.number, options};
     if (loadedSceneKey !== key) safe(loadScene);
@@ -875,8 +869,7 @@ function mountNotebook() {
         $('binding-next').disabled = bindingPage + 1 === scene.bindingPages;
         $('binding-prev').onclick = () => { bindingPage = scene.bindingPage - 1; renderResults(); };
         $('binding-next').onclick = () => { bindingPage = scene.bindingPage + 1; renderResults(); };
-        const info = renderScene($('result-graph'), scene.facts, {readonly:true, label:outputMode === 'inspect' ? 'Inspected graph' : 'Answer hypergraph'});
-        resultPage = info.page; resultPortPage = info.portPage; pager('result', info, renderResults);
+        renderScene($('result-graph'), scene.facts, {readonly:true,key:`${request.collection}:${request.number}`, label:outputMode === 'inspect' ? 'Inspected graph' : 'Answer hypergraph'});
         renderPending(scene.pending);
         loadedSceneKey = request.key;
         await saveDisplay();
@@ -886,20 +879,16 @@ function mountNotebook() {
   function renderPending(body) {
     $('pending-bodies').hidden = !body;
     if (!body) return;
-    pendingNumber = body.index; pendingPath = body.path;
+    pendingNumber = body.index;
     $('pending-body-number').value = pendingNumber + 1; $('pending-body-number').max = body.count;
     $('pending-body-count').textContent = `/ ${body.count} · event ${body.event}`;
-    const choose = number => { pendingNumber = Math.min(uint(number), body.count - 1); pendingPath = []; pendingPage = pendingPortPage = 0; renderResults(); };
+    const choose = number => { pendingNumber = Math.min(uint(number), body.count - 1); renderResults(); };
     $('pending-body-prev').disabled = pendingNumber === 0; $('pending-body-next').disabled = pendingNumber + 1 === body.count;
     $('pending-body-prev').onclick = () => choose(body.index - 1); $('pending-body-next').onclick = () => choose(body.index + 1);
     $('pending-body-number').onchange = () => safe(() => choose(Number($('pending-body-number').value) - 1));
-    const open = path => { pendingPath = path; pendingPage = pendingPortPage = 0; renderResults(); };
-    $('pending-location').replaceChildren(button('Body', () => open([])));
-    for (const crumb of body.breadcrumbs) $('pending-location').append(el('span', ' / '), button(crumb.label, () => open(crumb.path)));
-    const info = renderScene($('pending-graph'), body.scene, {readonly:true, onOpen:open, label:'Pending body graph'});
-    pendingPage = info.page; pendingPortPage = info.portPage; pager('pending', info, renderResults);
+    renderScene($('pending-graph'), body.scene, {readonly:true,key:`${desiredScene.collection}:${desiredScene.number}:${body.index}`,label:'Pending body graph'});
   }
-  function resetResultPages() { resultPage = resultPortPage = bindingPage = pendingNumber = pendingPage = pendingPortPage = 0; pendingPath = []; desiredScene = null; loadedSceneKey = null; }
+  function resetResultPages() { bindingPage = pendingNumber = 0; desiredScene = null; loadedSceneKey = null; }
   async function inspect() {
     check(!session.stepOperation, 'Finish or cancel the selected step before inspecting.');
     check(!inspecting, 'An inspection is already in progress.');
@@ -1047,6 +1036,7 @@ function mountNotebook() {
     revision++; dirty = true; renderWorkspace(); safe(saveEditor); clearTimeout(debounce);
     debounce = setTimeout(() => safe(syncSource), 650);
   });
+  for (const control of document.querySelectorAll('[data-diagram]')) control.onclick = () => diagramControl($(control.dataset.diagram),control.dataset.action);
   $('sync').onclick = () => safe(syncSource);
   $('target').onchange = () => navigate($('target').value === 'query' ? ['query'] : ['program', 'rules', Number($('target').value), 'body']);
   for (const control of $('rule-sides').querySelectorAll('[data-side]')) control.onclick = () => navigate(['program', 'rules', Number($('target').value), control.dataset.side]);

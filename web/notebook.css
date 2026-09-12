@@ -5,3 +5,29 @@
 .choice-selectors{font-size:12px;color:var(--muted)}.choice-selectors select{display:block;width:100%;margin-top:5px;color:var(--ink)}.inspection-panel>select{width:100%}
 
 .runbar,.runbar .button-group{flex-wrap:wrap}.choice-selectors{max-height:24rem;overflow:auto}#pending-body-number{width:70px}#pending-location{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+
+/* The canvas is a spatial workspace; source and forms remain close at hand. */
+.graph-scroll{overflow:hidden;position:relative}
+.graph-scroll svg{min-width:0;width:100%;height:520px;max-height:none;touch-action:none;cursor:grab}
+.graph-scroll svg:active{cursor:grabbing}
+.diagram-boundary rect{fill:#f5f9fc;fill-opacity:.55;stroke:#b6c9d5;stroke-width:1;pointer-events:stroke}
+.diagram-boundary.or>rect{stroke:#8570b2;stroke-dasharray:7 4;fill:#f7f3ff}
+.diagram-boundary.rule>rect{fill:none;stroke:#9eafbb}
+.diagram-boundary.selected>rect{stroke:#007b92;stroke-width:2.5}
+.boundary-label{font-size:13px;font-weight:600;fill:#516575;cursor:pointer}
+.canvas-tools{display:flex;align-items:center;gap:6px;margin:8px 0 14px;font-size:11px;color:var(--muted)}
+.canvas-tools span{margin-left:auto;max-width:230px;text-align:right}
+.canvas-tools button{min-width:32px;padding:5px 8px}
+svg .wire{opacity:.7;stroke-width:1.6}
+svg .connection-preview{stroke:#007b92;stroke-width:3;pointer-events:none}
+svg [tabindex]:focus{outline:none;filter:drop-shadow(0 0 3px #007b92)}
+.graph-scroll:focus-within{outline:2px solid #78afc1;outline-offset:2px}
+#selection{max-height:560px;overflow:auto}
+.notebook{grid-template-columns:minmax(190px,20%) minmax(0,1fr) 230px}
+@media(min-width:1650px){.notebook{grid-template-columns:270px minmax(0,1fr) 245px}}
+@media(max-width:1100px){.notebook{grid-template-columns:210px minmax(0,1fr)}}
+@media(max-width:700px){.notebook{display:block}.graph-scroll svg{height:440px}.canvas-tools span{font-size:10px}}
+
+.graph-scroll:fullscreen{background-color:#fff;width:100vw;height:100vh}.graph-scroll:fullscreen svg{height:100vh}
+
+svg[data-highlight] .wire{opacity:.15}svg[data-highlight] .wire.highlight{opacity:1;stroke-width:2.8}.junction.highlight text{font-weight:700}

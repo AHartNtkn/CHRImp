@@ -1,3 +1,4 @@
+import {renderGraph,diagramControl} from '../web/graph.mjs';
 import {OutputAssembler, IndexedAnswerStore} from '../web/answers.mjs';
 const assert=(ok,message)=>{if(!ok)throw new Error(message);};
 const equal=(actual,expected,message)=>assert(JSON.stringify(actual)===JSON.stringify(expected),`${message}: ${JSON.stringify(actual)} != ${JSON.stringify(expected)}`);
@@ -36,6 +37,27 @@ class FaultStore extends IndexedAnswerStore {
     return value;
   }
 }
+async function diagramChecks(log) {
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.style.cssText='width:800px;height:400px';document.body.append(svg);
+  const atom=(relation,...args)=>({kind:'atom',atom:{relation,args}});
+  const model={program:{rules:[{kept:[{relation:'keep',args:['X']}],removed:[{relation:'take',args:['X']}],body:{kind:'or',items:[atom('left','X'),atom('right','X')]}}]}};
+  try {
+    await new Promise((resolve,reject)=>{
+      const timeout=setTimeout(()=>{observer.disconnect();reject(Error('Diagram worker timeout'));},10000);
+      const observer=new MutationObserver(()=>{if(!svg.hasAttribute('aria-busy')){clearTimeout(timeout);observer.disconnect();resolve();}});
+      observer.observe(svg,{attributes:true});renderGraph(svg,model,['program','rules',0,'body']);
+    });
+    equal(svg.querySelectorAll('.relation-node').length,4,'Whole rule rendered by worker');
+    equal(svg.querySelectorAll('.junction').length,1,'Shared variable across all rule sides');
+    equal(svg.querySelectorAll('.wire').length,4,'All connections across alternatives');
+    assert(svg.textContent.includes('Alternative 1')&&svg.textContent.includes('Alternative 2'),'Nested alternatives labeled');
+    const before=svg.getAttribute('viewBox').split(' ').map(Number);diagramControl(svg,'in');
+    const zoomed=svg.getAttribute('viewBox').split(' ').map(Number);assert(zoomed[2]<before[2],'Zoom changes spatial viewport');
+    svg.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight'}));
+    assert(Number(svg.getAttribute('viewBox').split(' ')[0])>zoomed[0],'Keyboard pans canvas');
+    log('Worker layout, whole rules, nested wires, zoom and keyboard pan passed');
+  } finally {svg.remove();}
+}
 export async function runChecks(log=()=>{}) {
   const names=[], dbs=[];
   try {
@@ -47,20 +69,14 @@ export async function runChecks(log=()=>{}) {
     equal(page.total,1,'Completed answer count');assert(!('tables'in page),'Page cannot include tables');
     equal(page.answers[0].facts,40,'Summary facts');equal(page.answers[0].variables,49,'Summary bindings');
     equal(page.answers[0].pending,1,'Summary pending');assert(!Array.isArray(page.answers[0].facts),'No whole answer');
-    const scene=await store.scene(collection,1,{page:1,portPage:63,bindingPage:1});
-    equal(scene.facts.entries.length,18,'Bounded fact page');equal(scene.bindings.length,24,'Bounded bindings');equal(scene.bindings[0],{slot:24,name:'X24',variable:'24'},'Raw binding');
-    equal(scene.facts.entries[0].args,Array.from({length:8},(_,i)=>`V${504+i}`),'Ordered port window');
-    equal(scene.pending.path,[],'Root presentation');equal(scene.pending.scene.entries.length,1,'Single root');
-    equal(scene.pending.scene.entries[0].kind,'and','Root syntax');
-    const rootPath=scene.pending.scene.entries[0].path;
-    const children=await store.scene(collection,1,{pendingPath:rootPath,pendingPage:1});
-    equal(children.pending.scene.entries.length,18,'Bounded children');equal(children.pending.scene.count,40,'Full child count');
-    const childPath=children.pending.scene.entries[0].path;
-    const nested=await store.scene(collection,1,{pendingPath:childPath,pendingPortPage:64});
-    equal(nested.pending.scene.entries[0].args,['V512'],'Nested final port page');
-    equal(nested.pending.breadcrumbs.at(-1).path,childPath,'Breadcrumb ancestry');
-    let invalid=false;try{await store.scene(collection,1,{pendingPath:[999999]});}catch{invalid=true;}assert(invalid,'Invalid ancestry rejected');
-    log('Large scalar answer, bounded scenes and ancestry passed');
+    const scene=await store.scene(collection,1,{bindingPage:1});
+    equal(scene.facts.children.length,40,'Whole fact diagram');equal(scene.bindings.length,24,'Bounded bindings');equal(scene.bindings[0],{slot:24,name:'X24',variable:'24'},'Raw binding');
+    equal(scene.facts.children[0].args,Array.from({length:513},(_,i)=>`V${i}`),'All ordered ports');
+    equal(scene.pending.scene.kind,'and','Root syntax');
+    equal(scene.pending.scene.children.length,40,'Nested children in place');
+    equal(scene.pending.scene.children[0].children[0].args.at(-1),'V512','Nested final port');
+    log('Whole saved diagrams, nested expressions and ordered ports passed');
+    await diagramChecks(log);
     // Flush abort and uncertain commit keep identical retryable write batches.
     stream.push({kind:'begin',completion:'20',alternative:'0'});
     stream.push({kind:'variable',slot:0,variable:'7'});
@@ -98,9 +114,8 @@ export async function runChecks(log=()=>{}) {
     const inspect=interruptedDb.transaction('answers','readonly');equal(await request(inspect.objectStore('answers').get(['legacy',1])),old,'Original remains intact');interruptedDb.close();
     const migrated=new IndexedAnswerStore(factory(legacyName));const migratedDb=await migrated.ready;dbs.push(migratedDb);
     const saved=await migrated.page('legacy');equal(saved.answers[0].format,2,'Summary replaces legacy row');equal(saved.total,1,'Legacy count');
-    const legacyScene=await migrated.scene('legacy',1,{portPage:64});equal(legacyScene.facts.entries[0].args,['V512'],'Migrated fact ports');
-    const oldChildren=await migrated.scene('legacy',1,{pendingPath:legacyScene.pending.scene.entries[0].path});
-    equal(oldChildren.pending.scene.entries.map(e=>[e.kind,e.args]),[['equal',['V7','V8']],['atom',['V9']]],'Migrated pending syntax');
+    const legacyScene=await migrated.scene('legacy',1);equal(legacyScene.facts.children[0].args.at(-1),'V512','Migrated fact ports');
+    equal(legacyScene.pending.scene.children.map(e=>[e.kind,e.args]),[['equal',['V7','V8']],['atom',['V9']]],'Migrated pending syntax');
     equal(await migrated.tables('legacy'),tables,'Migrated tables');
     migratedDb.close();
     let cursors=0;const nativeCursor=IDBObjectStore.prototype.openCursor;
