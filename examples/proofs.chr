@@ -1,0 +1,4 @@
+% Each edge carries a proof variable. A composed proof is another relation.
+% Query: edge(A,B,AB),edge(B,C,BC),edge(A,C,AC)
+edge(X,Y,P) ==> path(X,Y,P).
+path(X,Y,P), edge(Y,Z,Q) ==> path(X,Z,R),compose(P,Q,R).

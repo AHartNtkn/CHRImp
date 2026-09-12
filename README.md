@@ -18,6 +18,20 @@ Run a program with a relational query:
 cargo run --offline -- examples/reachability.chr --query 'edge(A,B),edge(B,C)'
 ```
 
+The proof example keeps both a direct path proof and a composed proof. `compose(AB,BC,R)` connects the two premises to a fresh proof variable `R`:
+
+```sh
+cargo run --offline -- examples/proofs.chr --query 'edge(A,B,AB),edge(B,C,BC),edge(A,C,AC)'
+```
+
+The synthesis example chooses explicitly among identity, negation, and constant Boolean programs. Two input/output examples leave `negate(P)` as the answer. With only `evaluate(P,A,B)`, both negation and constant-one survive as separate answers:
+
+```sh
+cargo run --offline -- examples/synthesis.chr --query 'synthesize(P),zero(A),one(B),evaluate(P,A,B),evaluate(P,B,A)'
+```
+
+These examples define their operations entirely through ordinary relations and rules. Paste the file text and its query into the notebook to inspect their graphs.
+
 Relation arguments are variables. Relations encode structure; `X=Y` explicitly makes two variables the same. A rule head checks existing relationships without changing them.
 
 ```text

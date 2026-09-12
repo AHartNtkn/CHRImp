@@ -1,5 +1,83 @@
 mod support;
 use support::{Reader, engine, facts, finish};
+
+#[test]
+fn proof_example_preserves_direct_and_composed_derivations() {
+    let mut e = engine(
+        include_str!("../examples/proofs.chr"),
+        "edge(A,B,AB),edge(B,C,BC),edge(A,C,AC)",
+    );
+    let answer = finish(&mut e);
+    let [a, b, ab, c, bc, ac] = answer.variables[..] else {
+        panic!("query variables");
+    };
+    let rows = |name: &str| {
+        answer
+            .rows
+            .iter()
+            .filter(|row| e.program().signatures[row.relation].name == name)
+            .map(|row| row.ports.clone())
+            .collect::<Vec<_>>()
+    };
+    let composition = rows("compose");
+    assert_eq!(composition.len(), 1);
+    assert_eq!(&composition[0][..2], &[ab, bc]);
+    let derived = composition[0][2];
+    assert!(!answer.variables.contains(&derived));
+    let mut paths = rows("path");
+    paths.sort();
+    let mut expected = vec![
+        vec![a, b, ab],
+        vec![b, c, bc],
+        vec![a, c, ac],
+        vec![a, c, derived],
+    ];
+    expected.sort();
+    assert_eq!(paths, expected);
+    assert_eq!(rows("edge").len(), 3);
+    assert_eq!(answer.rows.len(), 8);
+}
+
+#[test]
+fn synthesis_example_filters_explicit_program_choices_by_examples() {
+    for (extra, expected) in [
+        ("", vec!["constant", "negate"]),
+        (",evaluate(P,B,A)", vec!["negate"]),
+    ] {
+        let mut e = engine(
+            include_str!("../examples/synthesis.chr"),
+            &format!("synthesize(P),zero(A),one(B),evaluate(P,A,B){extra}"),
+        );
+        let mut reader = Reader::default();
+        let mut programs = Vec::new();
+        for _ in 0..500_000 {
+            e.advance(1);
+            if let Some(answer) = reader.next(&mut e) {
+                let mut selected = 0;
+                for row in &answer.rows {
+                    let name = e.program().signatures[row.relation].name.as_str();
+                    assert!(!["evaluate", "synthesize", "identity"].contains(&name));
+                    if ["constant", "negate"].contains(&name) {
+                        assert_eq!(row.ports[0], answer.variables[0]);
+                        if name == "constant" {
+                            assert_eq!(row.ports[1], answer.variables[2]);
+                        }
+                        programs.push(name.to_owned());
+                        selected += 1;
+                    }
+                }
+                assert_eq!(selected, 1);
+            }
+            if e.delivery_done() {
+                break;
+            }
+        }
+        assert!(e.delivery_done());
+        programs.sort();
+        assert_eq!(programs, expected);
+    }
+}
+
 #[test]
 fn executes_all_head_modes_and_reaches_residual_normal_form() {
     let mut e = engine(

@@ -1,0 +1,10 @@
+% Synthesize a Boolean program from input/output examples.
+% Query: synthesize(P),zero(A),one(B),evaluate(P,A,B),evaluate(P,B,A)
+% All choices are explicit; identity, negate, constant, zero and one are
+% ordinary relations whose meaning is supplied by these rules.
+synthesize(P) <=> (identity(P);negate(P);constant(P,C),(zero(C);one(C))).
+identity(P) \ evaluate(P,X,Y) <=> X=Y.
+negate(P), zero(X) \ evaluate(P,X,Y) <=> one(Y).
+negate(P), one(X) \ evaluate(P,X,Y) <=> zero(Y).
+constant(P,C) \ evaluate(P,X,Y) <=> C=Y.
+zero(X), one(X) <=> fail.
