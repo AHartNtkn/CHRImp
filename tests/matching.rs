@@ -72,7 +72,7 @@ fn repeated_variables_only_match_identity_that_already_holds() {
     let (_, c) = a.fresh_choice();
     let empty = g.empty();
     let (root, p) = post(&mut g, empty, 0, vec![7, 8]);
-    let mut no = Matches::new(&g, root, code.clone(), 0, Condition::TRUE, None).unwrap();
+    let mut no = Matches::new(&g, root.clone(), code.clone(), 0, Condition::TRUE, None).unwrap();
     let before = g.index_node_count();
     loop {
         match tick_matches(&mut no, &g, &mut a) {
@@ -109,7 +109,7 @@ fn equal_rows_still_require_distinct_occurrences_and_preserve_head_order() {
     let mut a = Arena::default();
     let empty = g.empty();
     let (root, one) = post(&mut g, empty, 0, vec![9]);
-    let mut no = Matches::new(&g, root, code.clone(), 0, Condition::TRUE, None).unwrap();
+    let mut no = Matches::new(&g, root.clone(), code.clone(), 0, Condition::TRUE, None).unwrap();
     loop {
         match tick_matches(&mut no, &g, &mut a) {
             MatchStatus::Found(_) => panic!("one occurrence cannot occupy two heads"),
@@ -238,7 +238,8 @@ fn three_head_joins_restore_bindings_after_failed_prefixes_and_allow_any_anchor(
         Some((2, ids[5])),
         Some((1, ids[3])),
     ] {
-        let mut matches = Matches::new(&g, root, code.clone(), 0, Condition::TRUE, anchor).unwrap();
+        let mut matches =
+            Matches::new(&g, root.clone(), code.clone(), 0, Condition::TRUE, anchor).unwrap();
         let mut result = Vec::new();
         let mut done = false;
         for _ in 0..100_000 {

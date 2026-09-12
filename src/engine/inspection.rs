@@ -39,7 +39,7 @@ pub struct SnapshotInfo {
 pub(super) struct Snapshot {
     pub info: SnapshotInfo,
     pub graph: Root,
-    pub obligations: Root,
+    pub obligations: PendingRoot,
     pub scope: Condition,
     variables: Arc<Vec<u64>>,
 }
@@ -200,7 +200,7 @@ impl Inspection {
                             id: self.id.0,
                             support: self.scope,
                             state: StateRoot {
-                                graph: snapshot.graph,
+                                graph: snapshot.graph.clone(),
                                 history: graph.empty(),
                             },
                             last_choice: snapshot.info.last_choice,
@@ -229,7 +229,7 @@ impl Inspection {
                 ObserveStatus::Event(Output::End) => {
                     self.pending = Some(obligations::Projection::new(
                         obligations,
-                        self.snapshot.as_ref().unwrap().obligations,
+                        self.snapshot.as_ref().unwrap().obligations.clone(),
                         self.alternative_scope,
                     ));
                     self.phase = Phase::Pending;
@@ -249,7 +249,7 @@ impl Inspection {
                 match self.pending.as_mut().unwrap().tick(
                     obligations,
                     graph,
-                    self.snapshot.as_ref().unwrap().graph,
+                    self.snapshot.as_ref().unwrap().graph.clone(),
                     arena,
                     code,
                 ) {
@@ -314,8 +314,8 @@ impl Engine {
                 kind,
                 last_choice: self.births.last_key_value().map(|(&id, _)| id),
             },
-            graph: self.state.graph,
-            obligations: self.pending_root,
+            graph: self.state.graph.clone(),
+            obligations: self.pending_root.clone(),
             scope,
             variables: self.variables.clone(),
         }

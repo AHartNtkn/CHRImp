@@ -47,7 +47,7 @@ impl Members {
     pub fn new(g: &Graph, root: Root, variable: u64, scope: Condition) -> Self {
         Self {
             discard: 0,
-            root,
+            root: root.clone(),
             resolver: Some(Resolve::new(g, root, variable, scope)),
             pending: BTreeMap::new(),
             queue: VecDeque::new(),
@@ -71,7 +71,7 @@ impl Members {
         result
     }
     pub fn root(&self) -> Root {
-        self.root
+        self.root.clone()
     }
     /// Resolver variable visits, novel member visits, and reverse-index trie
     /// nodes inspected. Prefix seeking has bounded key-path overhead.
@@ -210,7 +210,7 @@ impl Members {
                     self.visited.insert(self.variable, c);
                     self.visits += 1;
                     self.cursor = Some(g.index.range(
-                        self.root,
+                        self.root.clone(),
                         [CHILD, self.variable, 0, 0],
                         [CHILD, self.variable, u64::MAX, 0],
                     ));

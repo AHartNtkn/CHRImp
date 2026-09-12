@@ -34,7 +34,7 @@ impl FreshIds {
         self.events
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StateRoot {
     pub graph: Root,
     pub history: Root,
@@ -102,7 +102,7 @@ impl Commit {
         candidate: Match,
         active: Condition,
     ) -> Result<Self, CommitError> {
-        if !g.index.contains(state.graph) || !h.contains(state.history) {
+        if !g.index.contains(&state.graph) || !h.contains(state.history.clone()) {
             return Err(CommitError::Root);
         }
         let plan = code.rules.get(rule).ok_or(CommitError::Rule)?;
@@ -113,7 +113,7 @@ impl Commit {
         }
         Ok(Self {
             discard: 0,
-            base: state,
+            base: state.clone(),
             staged: state,
             code,
             rule,
@@ -131,12 +131,12 @@ impl Commit {
         })
     }
     pub fn graph_roots(&self) -> impl Iterator<Item = Root> + '_ {
-        [self.base.graph, self.staged.graph]
+        [self.base.graph.clone(), self.staged.graph.clone()]
             .into_iter()
             .chain(self.update.iter().flat_map(Update::roots))
     }
     pub fn history_roots(&self) -> [Root; 2] {
-        [self.base.history, self.staged.history]
+        [self.base.history.clone(), self.staged.history.clone()]
     }
     pub fn condition_roots(&self) -> impl Iterator<Item = Condition> + '_ {
         [self.scope, self.active]
@@ -223,7 +223,7 @@ impl Commit {
                     self.phase = Phase::History;
                 } else {
                     let id = self.heads[self.head];
-                    let Some(fact) = g.fact(self.base.graph, id) else {
+                    let Some(fact) = g.fact(self.base.graph.clone(), id) else {
                         return self.reject();
                     };
                     let head = &self.code.rules[self.rule].heads[self.head];
@@ -247,7 +247,7 @@ impl Commit {
                     self.phase = Phase::Head;
                 } else {
                     let actual = g
-                        .fact(self.base.graph, self.heads[self.head])
+                        .fact(self.base.graph.clone(), self.heads[self.head])
                         .expect("retained base")
                         .args[self.port];
                     let expected = self.variables[head.args[self.port]];
@@ -255,7 +255,7 @@ impl Commit {
                         self.port += 1;
                     } else {
                         let equal = self.equal.get_or_insert_with(|| {
-                            Equal::new(g, self.base.graph, actual, expected, self.scope)
+                            Equal::new(g, self.base.graph.clone(), actual, expected, self.scope)
                         });
                         if let Some(c) = equal.tick(g, a) {
                             self.scope = c;
@@ -268,7 +268,7 @@ impl Commit {
             Phase::History => {
                 let plan = &self.code.rules[self.rule];
                 if plan.kept == plan.heads.len() {
-                    let old = h.support(self.base.history, self.rule, &self.heads);
+                    let old = h.support(self.base.history.clone(), self.rule, &self.heads);
                     if let Some(c) = self.boolean(a, Operation::Difference(self.scope, old)) {
                         self.scope = c;
                         self.phase = Phase::Record;
@@ -279,10 +279,10 @@ impl Commit {
                 }
             }
             Phase::Record => {
-                let old = h.support(self.base.history, self.rule, &self.heads);
+                let old = h.support(self.base.history.clone(), self.rule, &self.heads);
                 if let Some(c) = self.boolean(a, Operation::Or(old, self.scope)) {
                     self.staged.history =
-                        h.set_support(self.base.history, self.rule, self.heads.clone(), c);
+                        h.set_support(self.base.history.clone(), self.rule, self.heads.clone(), c);
                     self.phase = Phase::Fresh;
                 }
             }
@@ -298,12 +298,12 @@ impl Commit {
                 } else {
                     let id = self.heads[self.head];
                     let old = g
-                        .fact(self.staged.graph, id)
+                        .fact(self.staged.graph.clone(), id)
                         .expect("verified distinct head")
                         .support;
                     if let Some(c) = self.boolean(a, Operation::Difference(old, self.scope)) {
                         self.update = Some(
-                            g.set_liveness(self.staged.graph, id, c)
+                            g.set_liveness(self.staged.graph.clone(), id, c)
                                 .expect("verified head"),
                         );
                     }
@@ -316,7 +316,7 @@ impl Commit {
                 } else {
                     self.phase = Phase::Done;
                     return CommitStatus::Applied(Committed {
-                        state: self.staged,
+                        state: self.staged.clone(),
                         application: Application {
                             id: ids.event(),
                             rule: self.rule,

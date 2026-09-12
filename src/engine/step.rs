@@ -67,7 +67,7 @@ pub(super) enum Gate {
     Stop,
 }
 impl RuleStep {
-    pub(super) fn pending_root(&self) -> Option<Root> {
+    pub(super) fn pending_root(&self) -> Option<PendingRoot> {
         self.probe.as_ref().map(|p| p.cursor.root())
     }
 }
@@ -257,7 +257,7 @@ impl Engine {
                 } else {
                     step.probe = Some(Probe {
                         cursor: self.obligations.index.range(
-                            self.pending_root,
+                            self.pending_root.clone(),
                             [0; 4],
                             [u64::MAX; 4],
                         ),

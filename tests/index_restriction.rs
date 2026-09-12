@@ -29,7 +29,7 @@ fn collect(store: &mut Store<Condition>, a: &mut Arena, job: &Substitution, extr
     assert_eq!(roots, inventory);
     let mut gc = store.collect(
         job.roots()
-            .chain(extra.iter().copied())
+            .chain(extra.iter().cloned())
             .collect::<Vec<_>>()
             .into_iter(),
     );
@@ -58,20 +58,23 @@ fn graph_namespaces_cofactor_preserves_old_snapshot_and_sharing() {
     root = store.insert(root, changed, boolean(&mut a, Operation::And(x, y)));
     root = store.insert(root, removed, x.not());
     // Remove construction garbage so the allocation comparison measures this pass.
-    let mut gc = store.collect(vec![root].into_iter());
+    let mut gc = store.collect(vec![root.clone()].into_iter());
     while !gc.done() {
         gc.tick(&mut store);
     }
     drop(gc);
     let before = store.node_count();
-    let mut job = store.substitute(root, Arc::new(BTreeMap::from([(xid, Condition::TRUE)])));
+    let mut job = store.substitute(
+        root.clone(),
+        Arc::new(BTreeMap::from([(xid, Condition::TRUE)])),
+    );
     let result = (0..10000)
         .find_map(|_| job.tick(&mut store, &mut a))
         .unwrap();
-    assert_eq!(store.get(result, &changed), Some(y));
-    assert_eq!(store.get(result, &removed), None);
-    assert_eq!(store.get(root, &removed), Some(x.not()));
-    assert_ne!(store.get(root, &changed), Some(y));
+    assert_eq!(store.get(&result, &changed), Some(y));
+    assert_eq!(store.get(&result, &removed), None);
+    assert_eq!(store.get(&root, &removed), Some(x.not()));
+    assert_ne!(store.get(&root, &changed), Some(y));
     assert!(
         store.node_count() - before < 20,
         "unchanged namespaces must share their subtrees"
@@ -89,12 +92,12 @@ fn no_op_reuses_the_exact_root_without_allocating() {
     for i in 0..100 {
         root = store.insert(root, [0, i, 0, 0], y);
     }
-    let before = (store.node_count(), a.node_count());
+    let before = (store.allocations(), a.node_count());
     for bindings in [BTreeMap::new(), BTreeMap::from([(xid, Condition::TRUE)])] {
-        let mut job = store.substitute(root, Arc::new(bindings));
+        let mut job = store.substitute(root.clone(), Arc::new(bindings));
         assert_eq!(
             (0..10000).find_map(|_| job.tick(&mut store, &mut a)),
-            Some(root)
+            Some(root.clone())
         );
         assert_eq!((store.node_count(), a.node_count()), before);
     }
@@ -120,21 +123,24 @@ fn broad_rewrite_allocates_at_most_one_node_per_original_node() {
         expected.insert(key, (value, replacement));
         root = store.insert(root, key, value);
     }
-    let mut gc = store.collect(vec![root].into_iter());
+    let mut gc = store.collect(vec![root.clone()].into_iter());
     while !gc.done() {
         gc.tick(&mut store);
     }
     drop(gc);
     let old_nodes = store.node_count();
-    let mut job = store.substitute(root, Arc::new(BTreeMap::from([(xid, Condition::TRUE)])));
+    let mut job = store.substitute(
+        root.clone(),
+        Arc::new(BTreeMap::from([(xid, Condition::TRUE)])),
+    );
     let result = (0..50000)
         .find_map(|_| job.tick(&mut store, &mut a))
         .expect("finite broad rewrite");
     assert!(store.node_count() - old_nodes <= old_nodes);
-    collect(&mut store, &mut a, &job, &[root]);
+    collect(&mut store, &mut a, &job, &[root.clone()]);
     for (key, (original, replacement)) in expected {
-        assert_eq!(store.get(root, &key), Some(original));
-        assert_eq!(store.get(result, &key), replacement);
+        assert_eq!(store.get(&root, &key), Some(original));
+        assert_eq!(store.get(&result, &key), replacement);
     }
 }
 
@@ -164,7 +170,7 @@ fn newly_built_conditions_and_staged_subtrees_survive_every_tick_gc() {
     collect(&mut store, &mut a, &job, &[]);
     let result = result.expect("finite index substitution");
     for i in 0..16 {
-        let value = store.get(result, &[i, u64::MAX, 0, i]).unwrap();
+        let value = store.get(&result, &[i, u64::MAX, 0, i]).unwrap();
         for bits in 0..8 {
             assert_eq!(a.evaluate(value, |v| bits & (1 << v) != 0), bits & 5 != 0);
         }
@@ -248,10 +254,10 @@ fn discard_nested_substitutions_is_traceable_without_finishing_the_index() {
         }
         let mut done = false;
         for _ in 0..100 {
-            let before = (store.node_count(), a.node_count());
+            let before = (store.allocations(), a.node_count());
             done = job.discard_tick();
             assert_eq!(
-                (store.node_count(), a.node_count()),
+                (store.allocations(), a.node_count()),
                 before,
                 "discard must not evaluate or allocate"
             );
@@ -274,7 +280,10 @@ fn owner_and_freeze_checks_precede_any_store_or_arena_mutation() {
     let (choice, x) = a.fresh_choice();
     let mut store = Store::default();
     let root = store.insert(store.empty(), [0; 4], x);
-    let mut job = store.substitute(root, Arc::new(BTreeMap::from([(choice, Condition::TRUE)])));
+    let mut job = store.substitute(
+        root.clone(),
+        Arc::new(BTreeMap::from([(choice, Condition::TRUE)])),
+    );
     let mut other_store = Store::default();
     assert!(catch_unwind(AssertUnwindSafe(|| job.tick(&mut other_store, &mut a))).is_err());
     assert_eq!(other_store.node_count(), 0);
@@ -291,7 +300,7 @@ fn owner_and_freeze_checks_precede_any_store_or_arena_mutation() {
         (1, 1, 0)
     );
     let result = (0..100).find_map(|_| job.tick(&mut store, &mut a)).unwrap();
-    assert_eq!(store.get(result, &[0; 4]), Some(Condition::TRUE));
+    assert_eq!(store.get(&result, &[0; 4]), Some(Condition::TRUE));
     let mut invalid = store.substitute(
         result,
         Arc::new(BTreeMap::from([(choice + 1, Condition::TRUE)])),
@@ -321,9 +330,9 @@ fn functional_images_survive_gc_before_first_leaf_and_while_draining() {
             job.tick(&mut store, &mut arena)
         })
         .expect("finite functional substitution");
-    assert_eq!(store.get(result, &[0; 4]), Some(image));
+    assert_eq!(store.get(&result, &[0; 4]), Some(image));
     collect(&mut store, &mut arena, &job, &[]);
-    assert_eq!(store.get(result, &[0; 4]), Some(image));
+    assert_eq!(store.get(&result, &[0; 4]), Some(image));
 
     let mut discarded = store.substitute(store.empty(), Arc::new(BTreeMap::from([(xid, image)])));
     assert!(!discarded.discard_tick());

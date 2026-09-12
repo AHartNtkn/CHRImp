@@ -142,7 +142,17 @@ fn opposite_conditional_losers_cover_every_new_multihead_match_on_frozen_root() 
     root = merge(&mut g, &mut a, root, 0, 2, c, &keep).0;
     root = merge(&mut g, &mut a, root, 1, 3, c.not(), &keep).0;
     let before: Vec<_> = (0..code.rules.len())
-        .map(|r| matches(&g, &mut a, root, code.clone(), r, None, Condition::TRUE))
+        .map(|r| {
+            matches(
+                &g,
+                &mut a,
+                root.clone(),
+                code.clone(),
+                r,
+                None,
+                Condition::TRUE,
+            )
+        })
         .collect();
     // Keep pre-merge oracle conditions through GC inside Merge.
     let mut held = keep.to_vec();
@@ -157,19 +167,35 @@ fn opposite_conditional_losers_cover_every_new_multihead_match_on_frozen_root() 
     token_roots.extend(trace(&delta));
     gc(&mut g, &mut a, vec![delta.root()], token_roots);
     let after: Vec<_> = (0..code.rules.len())
-        .map(|r| matches(&g, &mut a, frozen, code.clone(), r, None, Condition::TRUE))
+        .map(|r| {
+            matches(
+                &g,
+                &mut a,
+                frozen.clone(),
+                code.clone(),
+                r,
+                None,
+                Condition::TRUE,
+            )
+        })
         .collect();
     held.extend(after.iter().flat_map(|m| m.values().copied()));
     let mut wake = Wake::from_delta(&g, delta);
     assert_eq!(wake.root(), frozen);
     // Mutate a newer root. The delta must continue reading only its frozen root.
-    let newer = post(&mut g, frozen, relation("q"), vec![0], Condition::TRUE);
+    let newer = post(
+        &mut g,
+        frozen.clone(),
+        relation("q"),
+        vec![0],
+        Condition::TRUE,
+    );
     let mut found = BTreeMap::new();
     for tick in 0..100000 {
         let mut roots = held.clone();
         roots.extend(trace(&wake));
         roots.extend(found.values().copied());
-        gc(&mut g, &mut a, vec![frozen, newer], roots);
+        gc(&mut g, &mut a, vec![frozen.clone(), newer.clone()], roots);
         match wake.tick(&g, &mut a) {
             WakeStatus::Found {
                 occurrence,
@@ -191,13 +217,13 @@ fn opposite_conditional_losers_cover_every_new_multihead_match_on_frozen_root() 
     for rule in 0..code.rules.len() {
         let mut covered = Tuples::new();
         for (&id, &scope) in &found {
-            let fact = g.fact(frozen, id).unwrap();
+            let fact = g.fact(frozen.clone(), id).unwrap();
             for (head, atom) in code.rules[rule].heads.iter().enumerate() {
                 if atom.relation == fact.relation {
                     for (tuple, c) in matches(
                         &g,
                         &mut a,
-                        frozen,
+                        frozen.clone(),
                         code.clone(),
                         rule,
                         Some((head, id)),
@@ -244,7 +270,7 @@ fn delta_discard_traces_remaining_supported_seeds_until_released() {
     let mut wake = Wake::from_delta(&g, delta);
     for _ in 0..1000 {
         let roots = trace(&wake);
-        gc(&mut g, &mut a, vec![root], roots);
+        gc(&mut g, &mut a, vec![root.clone()], roots);
         if wake.discard_tick() {
             assert!(wake.condition_roots().all(Condition::is_terminal));
             return;
@@ -277,7 +303,7 @@ fn unchanged_merge_has_no_activation_token() {
     let mut g = Graph::new(&[]);
     let mut a = Arena::default();
     let root = g.empty();
-    let mut merge = Merge::new(&g, root, 0, 0, Condition::TRUE);
+    let mut merge = Merge::new(&g, root.clone(), 0, 0, Condition::TRUE);
     assert_eq!(merge.tick(&mut g, &mut a), Some(root));
     assert!(merge.take_delta().is_none());
 }

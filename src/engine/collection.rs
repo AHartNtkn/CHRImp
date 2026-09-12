@@ -4,6 +4,8 @@ use crate::trace::{Cursor as TraceCursor, Step, Trace};
 use crate::{condition, graph, history};
 use std::ops::Bound::{Excluded, Unbounded};
 
+// The same bounded slack serves physical and semantic cleanup accounting.
+const CLEANUP_ALLOWANCE: usize = 1024;
 type Roots = std::vec::IntoIter<Root>;
 fn retain_condition(roots: &mut Vec<Condition>, root: Condition) {
     // Terminals own no arena nodes and need no later collection visit.
@@ -49,7 +51,7 @@ pub(super) struct Collection {
     trace: TraceCursor,
     graph_roots: Vec<Root>,
     history_roots: Vec<Root>,
-    pending_roots: Vec<Root>,
+    pending_roots: Vec<PendingRoot>,
     conditions: Vec<Condition>,
     graph: Option<graph::Collector<Roots>>,
     history: Option<history::Collector<Roots>>,
@@ -59,6 +61,7 @@ pub(super) struct Collection {
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 pub struct Memory {
     pub graph_nodes: usize,
+    pub release_batches: usize,
     pub occurrences: usize,
     pub conditions: usize,
     pub history_nodes: usize,
@@ -73,6 +76,7 @@ pub struct Memory {
 impl Memory {
     fn total(self) -> usize {
         self.graph_nodes
+            .saturating_add(self.release_batches)
             .saturating_add(self.occurrences)
             .saturating_add(self.conditions)
             .saturating_add(self.history_nodes)
@@ -89,6 +93,9 @@ impl Engine {
     pub fn memory(&self) -> Memory {
         Memory {
             graph_nodes: self.graph.index_node_count(),
+            release_batches: self.graph.index.release_batches()
+                + self.history.index.release_batches()
+                + self.obligations.index.release_batches(),
             occurrences: self.graph.occurrence_count(),
             conditions: self.arena.node_count(),
             history_nodes: self.history.node_count(),
@@ -120,7 +127,27 @@ impl Engine {
         if self.collector.is_none() {
             let memory = self.memory().total();
             let explicit = self.collection_requested;
+            // Semantic obsolescence is independent of physical node churn. Pure
+            // growth earns a larger frontier; invalidations pay for a future pass.
+            let semantic_due = semantic
+                && !self.canceled()
+                && (self.state.graph != self.graph.empty()
+                    || self.state.history != self.history.empty()
+                    || !self.births.is_empty()
+                    || self.lane == Some(Owner::Collection))
+                && (self.semantic_regions
+                    || (self.graph.semantic_debt() > 0
+                        && (self.requested.contains(&Owner::Collection)
+                            || self.lane == Some(Owner::Collection)
+                            || self.graph.semantic_debt()
+                                >= self
+                                    .graph
+                                    .occurrence_frontier(&self.state.graph)
+                                    .saturating_add(self.variables.len())
+                                    .saturating_add(self.pending_tasks())
+                                    .saturating_add(CLEANUP_ALLOWANCE))));
             if !explicit
+                && !semantic_due
                 && memory <= self.collection_limit
                 && (self.lane != Some(Owner::Collection) || self.canceled() || !semantic)
             {
@@ -129,7 +156,8 @@ impl Engine {
             // Routine pressure reserves the FIFO maintenance lane. Let finite
             // earlier writers finish rather than automatically paying for both
             // a physical pass and a semantic pass over nearly the same heap.
-            // Explicit requests remain immediate. If waiting consumes another
+            // Explicit requests bypass the pressure gate; a completed pass still
+            // yields one ordinary advance step. If waiting consumes another
             // soft-limit-sized allowance, physical GC interrupts the writer;
             // allocation can exceed this watermark by at most one source tick.
             let owns_lane = semantic
@@ -149,7 +177,7 @@ impl Engine {
                 return false;
             }
             self.collection_requested = false;
-            let mut pending_roots = vec![self.pending_root];
+            let mut pending_roots = vec![self.pending_root.clone()];
             if let Some(ready) = &self.ready {
                 pending_roots.push(ready.cursor.root());
             }
@@ -178,12 +206,12 @@ impl Engine {
                 graph_roots: if owns_lane {
                     vec![]
                 } else {
-                    vec![self.state.graph]
+                    vec![self.state.graph.clone()]
                 },
                 history_roots: if owns_lane {
                     vec![]
                 } else {
-                    vec![self.state.history]
+                    vec![self.state.history.clone()]
                 },
                 pending_roots,
                 conditions: [self.active]
@@ -204,16 +232,16 @@ impl Engine {
                     c.compact = None;
                     c.prune = Some(self.history.prune(
                         &self.graph,
-                        self.state.graph,
-                        self.state.history,
+                        self.state.graph.clone(),
+                        self.state.history.clone(),
                         self.active,
                     ));
-                    c.prune_graph = Some(self.graph.prune(self.state.graph, self.active));
+                    c.prune_graph = Some(self.graph.prune(self.state.graph.clone(), self.active));
                     c.variable_groups.insert(
                         Arc::as_ptr(&self.variables) as usize,
                         (self.variables.clone(), self.active),
                     );
-                    c.pending_roots[0] = self.pending_root;
+                    c.pending_roots[0] = self.pending_root.clone();
                     c.conditions.clear();
                     retain_condition(&mut c.conditions, self.active);
                     c.phase = Phase::Prune;
@@ -225,7 +253,7 @@ impl Engine {
                     &mut self.history,
                     &mut self.arena,
                 ) {
-                    self.state.history = root;
+                    self.state.history = root.clone();
                     c.history_roots.push(root);
                     c.prune = None;
                     c.phase = Phase::Tasks;
@@ -274,7 +302,7 @@ impl Engine {
                                     c.history_roots.extend(commit.history_roots());
                                 }
                             }
-                            Task::Activate { root, .. } => c.graph_roots.push(*root),
+                            Task::Activate { root, .. } => c.graph_roots.push(root.clone()),
                             Task::Wake(w) => c.graph_roots.push(w.root()),
                             Task::Init(_) => {}
                         }
@@ -383,8 +411,8 @@ impl Engine {
                     None => self.snapshots.first_key_value(),
                 };
                 if let Some((&id, snapshot)) = next {
-                    c.graph_roots.push(snapshot.graph);
-                    c.pending_roots.push(snapshot.obligations);
+                    c.graph_roots.push(snapshot.graph.clone());
+                    c.pending_roots.push(snapshot.obligations.clone());
                     c.retain_choice = c.retain_choice.max(snapshot.info.last_choice);
                     retain_condition(&mut c.conditions, snapshot.scope);
                     c.after = Some(id);
@@ -401,8 +429,8 @@ impl Engine {
                 if let Some((&id, inspection)) = next {
                     if c.slot == 0 {
                         if let Some(snapshot) = &inspection.snapshot {
-                            c.graph_roots.push(snapshot.graph);
-                            c.pending_roots.push(snapshot.obligations);
+                            c.graph_roots.push(snapshot.graph.clone());
+                            c.pending_roots.push(snapshot.obligations.clone());
                             c.retain_choice = c.retain_choice.max(snapshot.info.last_choice);
                         }
                         c.slot = 1;
@@ -485,7 +513,7 @@ impl Engine {
             Phase::PruneGraph => {
                 if let Some(prune) = &mut c.prune_graph {
                     if let Some(root) = prune.tick(&mut self.graph, &mut self.arena) {
-                        self.state.graph = root;
+                        self.state.graph = root.clone();
                         c.graph_roots.push(root);
                         c.prune_graph = None;
                         c.phase = Phase::Graph;
@@ -551,8 +579,18 @@ impl Engine {
                         if c.owns_lane {
                             self.release_lane();
                         }
-                        self.collection_limit =
-                            self.memory().total().saturating_mul(2).saturating_add(1024);
+                        if c.owns_lane {
+                            self.graph.semantic_collected();
+                            self.semantic_regions = false;
+                        }
+                        // A completed finite pass yields to one ordinary service
+                        // step. Repeated requests cannot consume every advance.
+                        self.collection_yield = true;
+                        self.collection_limit = self
+                            .memory()
+                            .total()
+                            .saturating_mul(2)
+                            .saturating_add(CLEANUP_ALLOWANCE);
                         return true;
                     }
                 } else {
@@ -650,7 +688,7 @@ mod tests {
                         let y = body.variables[1];
                         (e.graph
                             .index
-                            .get(e.state.graph, &[crate::identity::PARENT, y, x, 0])
+                            .get(&e.state.graph, &[crate::identity::PARENT, y, x, 0])
                             == Some(Condition::TRUE))
                         .then_some((x, y))
                     }
@@ -664,14 +702,14 @@ mod tests {
         let (x, y) = retained.expect("aliased body local awaiting its first post");
         assert!(
             e.graph
-                .relation(e.state.graph, 0)
+                .relation(e.state.graph.clone(), 0)
                 .unwrap()
                 .next(&e.graph)
                 .is_none()
         );
         assert!(
             e.graph
-                .relation(e.state.graph, 1)
+                .relation(e.state.graph.clone(), 1)
                 .unwrap()
                 .next(&e.graph)
                 .is_none()
@@ -687,7 +725,7 @@ mod tests {
         assert_eq!(
             e.graph
                 .index
-                .get(e.state.graph, &[crate::identity::PARENT, y, x, 0]),
+                .get(&e.state.graph, &[crate::identity::PARENT, y, x, 0]),
             Some(Condition::TRUE)
         );
         let mut ports = 0;
@@ -749,7 +787,7 @@ mod tests {
     #[test]
     fn routine_pressure_preserves_fifo_and_emergency_or_explicit_gc_bounds_writer_growth() {
         for explicit in [false, true] {
-            let ports = vec!["A"; 2048].join(",");
+            let ports = vec!["A"; 8192].join(",");
             let code = crate::program::prepare(
                 &crate::syntax::parse_program("").unwrap(),
                 &crate::syntax::parse_query(&format!("seed(A),wide({ports})")).unwrap(),
@@ -764,7 +802,7 @@ mod tests {
             let mut peak = 0;
             let mut max_growth = 0;
             let mut deferred_ticks = 0;
-            for _ in 0..300000 {
+            for _ in 0..1200000 {
                 let before = e.memory().total();
                 let emergency = e.collection_limit.saturating_mul(2);
                 let collecting = e.collector.is_some();

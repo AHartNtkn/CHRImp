@@ -56,8 +56,8 @@ pub struct Prune {
 impl Graph {
     pub fn prune(&self, root: Root, active: Condition) -> Prune {
         Prune {
-            base: root,
-            staged: root,
+            base: root.clone(),
+            staged: root.clone(),
             active,
             started: false,
             seeds: VecDeque::new(),
@@ -87,7 +87,7 @@ impl Prune {
     }
 
     pub fn graph_roots(&self) -> impl Iterator<Item = Root> + '_ {
-        [self.base, self.staged]
+        [self.base.clone(), self.staged.clone()]
             .into_iter()
             .chain(self.filter.iter().flat_map(Filter::roots))
             .chain(self.cursor.iter().map(Cursor::root))
@@ -158,7 +158,7 @@ impl Prune {
             guard.tick(arena);
             self.arena_guard = Some(guard);
         }
-        assert!(graph.index.contains(self.base), "stale prune graph root");
+        assert!(graph.index.contains(&self.base), "stale prune graph root");
         self.started = true;
         match self.phase {
             Phase::Certificate => {
@@ -169,7 +169,7 @@ impl Prune {
                     && graph
                         .index
                         .range(
-                            self.base,
+                            self.base.clone(),
                             [PARENT, 0, 0, 0],
                             [RANK, u64::MAX, u64::MAX, u64::MAX],
                         )
@@ -254,7 +254,7 @@ impl Prune {
                     self.variable = variable;
                     self.phase = Phase::Novel;
                 } else {
-                    self.filter = Some(graph.index.filter(self.staged));
+                    self.filter = Some(graph.index.filter(self.staged.clone()));
                     self.phase = Phase::Identity;
                 }
             }
@@ -278,7 +278,7 @@ impl Prune {
                 if let Some(c) = self.poll(arena) {
                     self.marked.insert(self.variable, c);
                     self.cursor = Some(graph.index.range(
-                        self.staged,
+                        self.staged.clone(),
                         [PARENT, self.variable, 0, 0],
                         [PARENT, self.variable, u64::MAX, 0],
                     ));
@@ -317,7 +317,7 @@ impl Prune {
                     }
                 }
                 FilterStatus::Complete(root) => {
-                    self.staged = root;
+                    self.staged = root.clone();
                     self.base = root;
                     self.filter = None;
                     self.phase = Phase::Cleanup;
@@ -343,7 +343,7 @@ impl Prune {
                     self.phase = Phase::Done;
                 }
             }
-            Phase::Done => return Some(self.staged),
+            Phase::Done => return Some(self.staged.clone()),
         }
         None
     }
@@ -364,7 +364,7 @@ mod certificate_tests {
             );
         }
         let mut probe = g.index.range(
-            root,
+            root.clone(),
             [PARENT, 0, 0, 0],
             [RANK, u64::MAX, u64::MAX, u64::MAX],
         );

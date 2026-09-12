@@ -18,7 +18,9 @@ use crate::identity::Merge;
 use crate::matching::{Match, MatchStatus, Matches};
 use crate::observe::{Observe, ObserveStatus, Output};
 use crate::program::{Instruction, Prepared};
-use crate::store::{Cursor, Root, Store};
+use crate::store::{Root, Store};
+type PendingRoot = crate::store::Root<obligations::Pending>;
+type Cursor = crate::store::Cursor<obligations::Pending>;
 use crate::wake::{Wake, WakeStatus};
 use coordinates::{Coordinates, Epoch, Transport};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -155,7 +157,8 @@ pub struct Engine {
     lane: Option<Owner>,
     waiting: VecDeque<Owner>,
     requested: BTreeSet<Owner>,
-    pending_root: Root,
+    pending_root: PendingRoot,
+    release_turn: usize,
     obligations: obligations::Obligations,
     ready: Option<Ready>,
     output: Option<Output>,
@@ -168,6 +171,8 @@ pub struct Engine {
     collection_requested: bool,
     collections: u64,
     collection_limit: usize,
+    semantic_regions: bool,
+    collection_yield: bool,
     record_history: bool,
     snapshots: BTreeMap<u64, inspection::Snapshot>,
     inspections: BTreeMap<u64, inspection::Inspection>,
@@ -197,6 +202,7 @@ impl Engine {
             history,
             state,
             pending_root,
+            release_turn: 0,
             obligations,
             arena: Arena::default(),
             ids: FreshIds::default(),
@@ -218,6 +224,8 @@ impl Engine {
             collection_requested: false,
             collections: 0,
             collection_limit: 4096,
+            semantic_regions: false,
+            collection_yield: false,
             record_history,
             snapshots: BTreeMap::new(),
             inspections: BTreeMap::new(),
@@ -230,6 +238,61 @@ impl Engine {
         e.spawn(Condition::TRUE, Task::Init(vec![]));
         e
     }
+    #[inline]
+    fn release_store_tick(&mut self) -> bool {
+        if !self.release_pending() {
+            return false;
+        }
+        self.release_store_tick_ready()
+    }
+    #[inline(never)]
+    fn release_store_tick_ready(&mut self) -> bool {
+        for _ in 0..3 {
+            let turn = self.release_turn;
+            self.release_turn = (turn + 1) % 3;
+            let pending = match turn {
+                0 => self.graph.index.release_pending(),
+                1 => self.history.index.release_pending(),
+                _ => self.obligations.index.release_pending(),
+            };
+            if pending {
+                match turn {
+                    0 => {
+                        self.graph.index.release_tick();
+                    }
+                    1 => {
+                        self.history.index.release_tick();
+                    }
+                    _ => {
+                        self.obligations.index.release_tick();
+                    }
+                }
+                return true;
+            }
+        }
+        false
+    }
+    pub fn release_pending(&self) -> bool {
+        self.graph.index.release_pending()
+            || self.history.index.release_pending()
+            || self.obligations.index.release_pending()
+    }
+    pub fn mutation_counts(&self) -> [(usize, usize); 3] {
+        [
+            self.graph.index.mutation_counts(),
+            self.history.index.mutation_counts(),
+            self.obligations.index.mutation_counts(),
+        ]
+    }
+    pub fn study_status(&self) -> (u64, bool, Option<u8>, bool, usize) {
+        (
+            self.ticks,
+            self.release_pending(),
+            self.ready.as_ref().map(|r| r.phase as u8),
+            self.semantic_regions,
+            self.graph.semantic_debt(),
+        )
+    }
     pub fn program(&self) -> &Prepared {
         &self.code
     }
@@ -240,7 +303,7 @@ impl Engine {
         &self.arena
     }
     pub fn state(&self) -> StateRoot {
-        self.state
+        self.state.clone()
     }
     pub fn query_variables(&self) -> &[u64] {
         &self.variables
@@ -277,10 +340,10 @@ impl Engine {
         self.next_task = id.checked_add(1).expect("task identity exhausted");
         let key = [id, 0, 0, 0];
         let pending = self.pending_task(scope, &task);
-        self.pending_root = self
-            .obligations
-            .index
-            .insert(self.pending_root, key, pending);
+        self.pending_root =
+            self.obligations
+                .index
+                .insert(std::mem::take(&mut self.pending_root), key, pending);
         let epoch = (!matches!(&task, Task::Body(_) | Task::Init(_))).then_some(epoch);
         self.queue.push_back(Scheduled {
             id,
@@ -337,8 +400,13 @@ impl Engine {
     /// A budget counts finite continuation steps, not source answers. Zero is a no-op.
     pub fn advance(&mut self, budget: usize) {
         for _ in 0..budget {
+            if self.release_store_tick() {
+                continue;
+            }
             self.coordinates.cleanup_tick();
-            if self.collect_heap() {
+            let service_due =
+                self.collector.is_none() && std::mem::take(&mut self.collection_yield);
+            if !service_due && self.collect_heap() {
                 continue;
             }
             if !self.canceled() {
@@ -364,7 +432,7 @@ impl Engine {
                         self.pending_root = self
                             .obligations
                             .index
-                            .remove(self.pending_root, &[task.id, 0, 0, 0]);
+                            .remove(std::mem::take(&mut self.pending_root), &[task.id, 0, 0, 0]);
                         if self.lane == Some(Owner::Task(task.id)) {
                             self.release_lane();
                         }
@@ -387,7 +455,11 @@ impl Engine {
         // lane owner's transaction intact; other readers can drain their roots
         // without completing an irrelevant immutable enumeration.
         if s.scope == Condition::FALSE && self.lane != Some(Owner::Task(s.id)) {
-            return s.task.discard_tick();
+            let done = s.task.discard_tick();
+            if done && matches!(&s.task, Task::Body(_)) {
+                self.graph.retire_scope();
+            }
+            return done;
         }
         match &mut s.task {
             Task::Init(vars) => {
@@ -405,6 +477,9 @@ impl Engine {
             Task::Body(b) => {
                 let previous = self.obligation_parts(b);
                 let done = self.body_tick(s.id, b);
+                if done {
+                    self.graph.retire_scope();
+                }
                 if !done && self.obligation_parts(b) != previous {
                     self.sync_obligation(s.id, b);
                 }
@@ -417,7 +492,7 @@ impl Engine {
                 reader_scope,
                 next,
             } => {
-                let Some(fact) = self.graph.fact(*root, *occurrence) else {
+                let Some(fact) = self.graph.fact(root.clone(), *occurrence) else {
                     return true;
                 };
                 let triggers = if *identity_only {
@@ -432,7 +507,7 @@ impl Engine {
                     *next += 1;
                     let matches = Matches::new(
                         &self.graph,
-                        *root,
+                        root.clone(),
                         self.code.clone(),
                         rule,
                         *reader_scope,
@@ -508,7 +583,7 @@ impl Engine {
                             Commit::new(
                                 &self.graph,
                                 &self.history,
-                                self.state,
+                                self.state.clone(),
                                 self.code.clone(),
                                 search.rule,
                                 search.candidate.take().unwrap(),
@@ -612,7 +687,7 @@ impl Engine {
                     b.update = Some(
                         self.graph
                             .post(
-                                self.state.graph,
+                                self.state.graph.clone(),
                                 atom.relation,
                                 std::mem::take(&mut b.args),
                                 b.scope,
@@ -624,7 +699,7 @@ impl Engine {
                 Instruction::Equal(x, y) => {
                     b.merge = Some(Merge::new(
                         &self.graph,
-                        self.state.graph,
+                        self.state.graph.clone(),
                         b.variables[*x],
                         b.variables[*y],
                         b.scope,
@@ -646,7 +721,7 @@ impl Engine {
             BodyPhase::Post => {
                 let update = b.update.as_mut().unwrap();
                 if let UpdateStatus::Complete(root) = update.tick(&mut self.graph) {
-                    self.state.graph = root;
+                    self.state.graph = root.clone();
                     let occurrence = update.occurrence();
                     self.finish_body_record(id);
                     self.record(SnapshotKind::Post { occurrence }, self.active);
@@ -666,7 +741,7 @@ impl Engine {
             BodyPhase::Merge => {
                 let merge = b.merge.as_mut().unwrap();
                 if let Some(root) = merge.tick(&mut self.graph, &mut self.arena) {
-                    self.state.graph = root;
+                    self.state.graph = root.clone();
                     let scope = merge.changed_support();
                     let delta = merge.take_delta();
                     self.finish_body_record(id);
@@ -683,6 +758,7 @@ impl Engine {
             }
             BodyPhase::Fail => {
                 if let Some(active) = poll(&mut b.job, &mut self.arena) {
+                    self.semantic_regions |= self.active != active;
                     self.active = active;
                     self.finish_body_record(id);
                     self.record(SnapshotKind::Failure, b.scope);
@@ -783,7 +859,7 @@ impl Engine {
             cursor: self
                 .obligations
                 .index
-                .range(self.pending_root, [0; 4], [u64::MAX; 4]),
+                .range(self.pending_root.clone(), [0; 4], [u64::MAX; 4]),
             blocked: Condition::FALSE,
             scope: self.active,
             job: None,
@@ -855,12 +931,13 @@ impl Engine {
             ReadyPhase::Publish => {
                 if let Some(c) = poll(&mut ready.job, &mut self.arena) {
                     self.record(SnapshotKind::NormalForm, ready.scope);
+                    self.semantic_regions |= self.active != c;
                     self.active = c;
                     self.observer = Some(Observe::new(
                         Completion {
                             id: self.ids.event(),
                             support: ready.scope,
-                            state: self.state,
+                            state: self.state.clone(),
                             last_choice: self.births.last_key_value().map(|(&id, _)| id),
                         },
                         self.code.clone(),

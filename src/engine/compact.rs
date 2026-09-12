@@ -41,7 +41,7 @@ pub(super) struct Compact {
     index: Option<crate::store::Substitution>,
     pending: Option<obligations::Substitution>,
     state: StateRoot,
-    pending_root: Root,
+    pending_root: PendingRoot,
     task: usize,
     slot: usize,
 }
@@ -65,8 +65,8 @@ impl Compact {
             transform: None,
             index: None,
             pending: None,
-            state: e.state,
-            pending_root: e.pending_root,
+            state: e.state.clone(),
+            pending_root: e.pending_root.clone(),
             task: 0,
             slot: 0,
         }
@@ -123,7 +123,7 @@ impl Compact {
                     self.index = Some(
                         e.graph
                             .index
-                            .substitute(self.state.graph, self.bindings.clone()),
+                            .substitute(self.state.graph.clone(), self.bindings.clone()),
                     );
                     self.phase = Phase::Graph;
                 }
@@ -253,7 +253,7 @@ impl Compact {
                     self.index = Some(
                         e.history
                             .index
-                            .substitute(self.state.history, self.bindings.clone()),
+                            .substitute(self.state.history.clone(), self.bindings.clone()),
                     );
                     self.phase = Phase::History;
                 }
@@ -269,7 +269,7 @@ impl Compact {
                     self.index = None;
                     self.pending = Some(
                         e.obligations
-                            .substitute(self.pending_root, self.bindings.clone()),
+                            .substitute(self.pending_root.clone(), self.bindings.clone()),
                     );
                     self.phase = Phase::Pending;
                 }
@@ -362,9 +362,9 @@ impl Compact {
                 }
             }
             Phase::Publish => {
-                e.state = self.state;
+                e.state = self.state.clone();
                 e.active = self.active;
-                e.pending_root = self.pending_root;
+                e.pending_root = self.pending_root.clone();
                 if !self.bindings.is_empty() {
                     e.coordinates.publish(self.bindings.clone());
                 }

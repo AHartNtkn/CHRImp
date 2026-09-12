@@ -144,7 +144,7 @@ impl Observe {
         self.last_choice
     }
     pub fn graph_root(&self) -> Root {
-        self.root
+        self.root.clone()
     }
     pub(crate) fn current_scope(&self) -> Condition {
         self.current.scope
@@ -188,7 +188,12 @@ impl Observe {
         }
     }
     fn start_resolve(&mut self, g: &Graph, variable: u64, phase: Phase) {
-        self.resolve = Some(Resolve::new(g, self.root, variable, self.current.scope));
+        self.resolve = Some(Resolve::new(
+            g,
+            self.root.clone(),
+            variable,
+            self.current.scope,
+        ));
         self.representative = None;
         self.phase = phase;
     }
@@ -345,7 +350,7 @@ impl Observe {
                     return ObserveStatus::Event(Output::End);
                 }
                 self.rows = Some(
-                    g.relation(self.root, self.relation)
+                    g.relation(self.root.clone(), self.relation)
                         .expect("prepared relation signature"),
                 );
                 self.phase = Phase::Rows;

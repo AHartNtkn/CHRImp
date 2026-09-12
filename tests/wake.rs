@@ -139,7 +139,7 @@ fn repeated_ports_and_overlapping_members_emit_only_novel_contexts() {
     let (root, q) = post(&mut g, root, 1, vec![0], Condition::TRUE);
     let (root, _) = merge(&mut g, &mut a, root, 0, 1, c);
     let (root, _) = merge(&mut g, &mut a, root, 0, 2, d);
-    let mut wake = Wake::new(&g, root, 0, Condition::TRUE);
+    let mut wake = Wake::new(&g, root.clone(), 0, Condition::TRUE);
     let nodes = g.index_node_count();
     let found = run(&mut g, &mut a, &mut wake, false).0;
     assert_eq!(
@@ -167,7 +167,7 @@ fn suspended_wake_keeps_its_frozen_root_and_collects_between_every_tick() {
     let (root, p) = post(&mut g, empty, 0, vec![1, 2, 2], Condition::TRUE);
     let (root, _) = merge(&mut g, &mut a, root, 0, 1, c);
     let (root, _) = merge(&mut g, &mut a, root, 0, 2, c.not());
-    let mut wake = Wake::new(&g, root, 0, Condition::TRUE);
+    let mut wake = Wake::new(&g, root.clone(), 0, Condition::TRUE);
     assert_eq!(wake.root(), root);
     assert_eq!(wake.tick(&g, &mut a), WakeStatus::Pending);
     let (_new_root, _) = post(&mut g, root, 1, vec![0], Condition::TRUE);
@@ -184,13 +184,13 @@ fn unrelated_occurrences_do_not_add_wake_work() {
     let mut a = Arena::default();
     let empty = g.empty();
     let (mut root, p) = post(&mut g, empty, 1, vec![0], Condition::TRUE);
-    let mut wake = Wake::new(&g, root, 0, Condition::TRUE);
+    let mut wake = Wake::new(&g, root.clone(), 0, Condition::TRUE);
     let (found, small_ticks) = run(&mut g, &mut a, &mut wake, false);
     assert_eq!(found, BTreeMap::from([(p, Condition::TRUE)]));
     for variable in 1000..6000 {
         root = post(&mut g, root, 1, vec![variable], Condition::TRUE).0;
     }
-    let mut wake = Wake::new(&g, root, 0, Condition::TRUE);
+    let mut wake = Wake::new(&g, root.clone(), 0, Condition::TRUE);
     let (large, large_ticks) = run(&mut g, &mut a, &mut wake, false);
     assert_eq!(large, found);
     assert_eq!(

@@ -92,7 +92,7 @@ fn uninvolved_variable_is_its_own_member_only_on_scope() {
     let empty = g.empty();
     let root = merge(&mut g, &mut a, empty, 0, 1, c);
     for scope in [Condition::TRUE, c, Condition::FALSE] {
-        let mut job = Members::new(&g, root, u64::MAX, scope);
+        let mut job = Members::new(&g, root.clone(), u64::MAX, scope);
         assert_eq!(job.root(), root);
         let found = enumerate(&mut g, &mut a, &mut job, false, &[]);
         let expected = if scope == Condition::FALSE {
@@ -156,7 +156,7 @@ fn opposite_parent_directions_in_siblings_terminate_without_duplicate_overlap() 
     let root = merge(&mut g, &mut a, root, 1, 3, c.not());
     let root = merge(&mut g, &mut a, root, 0, 1, Condition::TRUE);
     for query in [0, 1] {
-        let mut job = Members::new(&g, root, query, Condition::TRUE);
+        let mut job = Members::new(&g, root.clone(), query, Condition::TRUE);
         assert_eq!(
             enumerate(&mut g, &mut a, &mut job, true, &[c]),
             BTreeMap::from([
@@ -196,13 +196,13 @@ fn membership_matches_equal_on_multiple_scopes_with_collection_every_tick() {
         for scope in scopes {
             let expected: Vec<_> = (0..9)
                 .map(|v| {
-                    let support = equal(&g, &mut a, root, query, v, scope);
+                    let support = equal(&g, &mut a, root.clone(), query, v, scope);
                     (0..8)
                         .map(|bits| a.evaluate(support, |i| bits & (1 << i) != 0))
                         .collect::<Vec<_>>()
                 })
                 .collect();
-            let mut job = Members::new(&g, root, query, scope);
+            let mut job = Members::new(&g, root.clone(), query, scope);
             let retained: Vec<_> = choices.iter().copied().chain(scopes).collect();
             let found = enumerate(&mut g, &mut a, &mut job, true, &retained);
             for v in 0..9 {
@@ -227,12 +227,12 @@ fn frozen_root_survives_later_merges_and_collection() {
     let (_, c) = a.fresh_choice();
     let empty = g.empty();
     let root = merge(&mut g, &mut a, empty, 10, 20, c);
-    let mut job = Members::new(&g, root, 20, Condition::TRUE);
+    let mut job = Members::new(&g, root.clone(), 20, Condition::TRUE);
     // Suspend after some resolver work, then create a newer graph version.
     for _ in 0..3 {
         assert_eq!(job.tick(&g, &mut a), ResolveStatus::Pending);
     }
-    let _later = merge(&mut g, &mut a, root, 20, 30, Condition::TRUE);
+    let _later = merge(&mut g, &mut a, root.clone(), 20, 30, Condition::TRUE);
     assert_eq!(
         enumerate(&mut g, &mut a, &mut job, true, &[c]),
         BTreeMap::from([(10, c), (20, Condition::TRUE)])
@@ -246,7 +246,7 @@ fn sparse_class_visits_do_not_scale_with_unrelated_variables() {
     let mut a = Arena::default();
     let empty = g.empty();
     let mut root = merge(&mut g, &mut a, empty, 0, 1, Condition::TRUE);
-    let mut small = Members::new(&g, root, 1, Condition::TRUE);
+    let mut small = Members::new(&g, root.clone(), 1, Condition::TRUE);
     let expected = enumerate(&mut g, &mut a, &mut small, false, &[]);
     assert_eq!(
         expected,

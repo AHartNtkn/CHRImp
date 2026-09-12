@@ -245,7 +245,7 @@ fn discard_owned<T: chr::trace::Trace>(
             traced, expected,
             "discard trace must include every remaining nested owner"
         );
-        let mut gc = g.collect([root].into_iter());
+        let mut gc = g.collect([root.clone()].into_iter());
         while !gc.done() {
             if let Some(c) = gc.tick(g) {
                 traced.push(c);
@@ -318,7 +318,7 @@ fn wide_wake_and_matching_children_discard_incrementally_and_remain_traceable() 
             }
         };
     }
-    let mut wake = Wake::new(&g, root, 0, Condition::TRUE);
+    let mut wake = Wake::new(&g, root.clone(), 0, Condition::TRUE);
     let mut found = 0;
     for _ in 0..100_000 {
         if matches!(wake.tick(&g, &mut a), WakeStatus::Found { .. }) {
@@ -333,7 +333,7 @@ fn wide_wake_and_matching_children_discard_incrementally_and_remain_traceable() 
         &mut wake,
         &mut g,
         &mut a,
-        root,
+        root.clone(),
         |w| w.condition_roots().collect(),
         Wake::discard_tick,
     );
@@ -343,7 +343,15 @@ fn wide_wake_and_matching_children_discard_incrementally_and_remain_traceable() 
     );
     assert!(wake.condition_roots().all(|c| c.is_terminal()));
     assert!(catch_unwind(AssertUnwindSafe(|| wake.tick(&g, &mut a))).is_err());
-    let mut matches = Matches::new(&g, root, code, 0, Condition::TRUE, Some((0, anchor))).unwrap();
+    let mut matches = Matches::new(
+        &g,
+        root.clone(),
+        code,
+        0,
+        Condition::TRUE,
+        Some((0, anchor)),
+    )
+    .unwrap();
     let mut wide = false;
     for _ in 0..100_000 {
         matches.tick(&g, &mut a);

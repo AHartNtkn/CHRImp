@@ -30,22 +30,28 @@ pub struct History {
 }
 
 impl History {
+    pub fn index_allocations(&self) -> usize {
+        self.index.allocations()
+    }
+    pub fn release_tick(&mut self) -> bool {
+        self.index.release_tick()
+    }
     pub fn empty(&self) -> Root {
         self.index.empty()
     }
     /// Empty roots are universal; nonempty roots must belong to this store.
     pub fn contains(&self, root: Root) -> bool {
-        self.index.contains(root)
+        self.index.contains(&root)
     }
     pub fn support(&self, root: Root, rule: usize, heads: &Arc<Vec<u64>>) -> Condition {
-        assert!(self.contains(root), "stale or foreign history root");
+        assert!(self.contains(root.clone()), "stale or foreign history root");
         let key = Key {
             rule,
             heads: heads.clone(),
         };
         self.lookup
             .get(&key)
-            .and_then(|&id| self.index.get(root, &[id, 0, 0, 0]))
+            .and_then(|&id| self.index.get(&root, &[id, 0, 0, 0]))
             .unwrap_or(Condition::FALSE)
     }
     /// Replace support atomically. An absent FALSE write does not intern a key.
@@ -58,7 +64,7 @@ impl History {
         support: Condition,
     ) -> Root {
         self.index.assert_mutable();
-        assert!(self.contains(root), "stale or foreign history root");
+        assert!(self.contains(root.clone()), "stale or foreign history root");
         let key = Key { rule, heads };
         let id = match self.lookup.get(&key) {
             Some(&id) => id,
@@ -203,7 +209,7 @@ impl History {
         history: Root,
         active: Condition,
     ) -> Prune {
-        assert!(g.index.contains(graph), "stale or foreign graph root");
+        assert!(g.index.contains(&graph), "stale or foreign graph root");
         Prune {
             graph,
             filter: self.index.filter(history),
@@ -217,7 +223,7 @@ impl History {
 }
 impl Prune {
     pub fn graph_root(&self) -> Root {
-        self.graph
+        self.graph.clone()
     }
     pub fn history_roots(&self) -> impl Iterator<Item = Root> + '_ {
         self.filter.roots()
@@ -247,7 +253,7 @@ impl Prune {
                 self.heads = None;
             } else {
                 let live = g
-                    .fact(self.graph, heads[self.head])
+                    .fact(self.graph.clone(), heads[self.head])
                     .map_or(Condition::FALSE, |f| f.support);
                 self.head += 1;
                 self.boolean = Some(a.start(Operation::And(self.remaining, live)));

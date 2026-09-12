@@ -12,7 +12,7 @@ fn code(text: &str) -> Arc<Prepared> {
     Arc::new(prepare(&parse_program(text).unwrap(), &parse_query("true").unwrap()).unwrap())
 }
 fn post(g: &mut Graph, s: &mut StateRoot, args: Vec<u64>) -> u64 {
-    let mut p = g.post(s.graph, 0, args, Condition::TRUE).unwrap();
+    let mut p = g.post(s.graph.clone(), 0, args, Condition::TRUE).unwrap();
     let id = p.occurrence();
     loop {
         if let UpdateStatus::Complete(root) = p.tick(g) {
@@ -63,19 +63,19 @@ fn propagation_records_tuple_once_and_allocates_fresh_locals_only_when_applying(
         history: h.empty(),
     };
     let head = post(&mut g, &mut s, vec![x]);
-    let m = find(&g, &mut a, s, p.clone());
+    let m = find(&g, &mut a, s.clone(), p.clone());
     let mut j = Commit::new(&g, &h, s, p.clone(), 0, m, Condition::TRUE).unwrap();
     let committed = run(&mut j, &mut g, &mut a, &mut h, &mut ids).unwrap();
     s = committed.state;
     assert_eq!(committed.application.variables.as_slice(), &[x, x + 1]);
     assert_eq!(committed.application.heads.as_slice(), &[head]);
     assert_eq!(
-        h.support(s.history, 0, &committed.application.heads),
+        h.support(s.history.clone(), 0, &committed.application.heads),
         Condition::TRUE
     );
-    assert!(g.fact(s.graph, head).is_some());
+    assert!(g.fact(s.graph.clone(), head).is_some());
     let before = (ids.variable_count(), ids.event_count());
-    let m = find(&g, &mut a, s, p.clone());
+    let m = find(&g, &mut a, s.clone(), p.clone());
     let mut repeat = Commit::new(&g, &h, s, p, 0, m, Condition::TRUE).unwrap();
     assert!(run(&mut repeat, &mut g, &mut a, &mut h, &mut ids).is_none());
     assert_eq!((ids.variable_count(), ids.event_count()), before);
@@ -95,11 +95,11 @@ fn additional_support_gets_a_distinct_fresh_event_without_replaying_overlap() {
         history: h.empty(),
     };
     let head = post(&mut g, &mut s, vec![x]);
-    let m = find(&g, &mut a, s, p.clone());
+    let m = find(&g, &mut a, s.clone(), p.clone());
     let mut first = Commit::new(&g, &h, s, p.clone(), 0, m, c).unwrap();
     let one = run(&mut first, &mut g, &mut a, &mut h, &mut ids).unwrap();
     s = one.state;
-    let m = find(&g, &mut a, s, p.clone());
+    let m = find(&g, &mut a, s.clone(), p.clone());
     let mut second = Commit::new(&g, &h, s, p.clone(), 0, m, Condition::TRUE).unwrap();
     let two = run(&mut second, &mut g, &mut a, &mut h, &mut ids).unwrap();
     s = two.state;
@@ -144,8 +144,8 @@ fn stale_kept_heads_shrink_commitment_and_only_removed_heads_are_consumed() {
             break r;
         }
     };
-    let m = find(&g, &mut a, s, p.clone());
-    let original = s;
+    let m = find(&g, &mut a, s.clone(), p.clone());
+    let original = s.clone();
     let mut consume = g.set_liveness(s.graph, kept, c.not()).unwrap();
     s.graph = loop {
         if let UpdateStatus::Complete(r) = consume.tick(&mut g) {
@@ -155,7 +155,10 @@ fn stale_kept_heads_shrink_commitment_and_only_removed_heads_are_consumed() {
     let mut commit = Commit::new(&g, &h, s, p, 0, m, Condition::TRUE).unwrap();
     let result = run(&mut commit, &mut g, &mut a, &mut h, &mut ids).unwrap();
     assert_eq!(result.application.support, c.not());
-    assert_eq!(g.fact(result.state.graph, kept).unwrap().support, c.not());
+    assert_eq!(
+        g.fact(result.state.graph.clone(), kept).unwrap().support,
+        c.not()
+    );
     assert_eq!(g.fact(result.state.graph, removed).unwrap().support, c);
     assert_eq!(
         g.fact(original.graph, removed).unwrap().support,
@@ -190,11 +193,11 @@ fn malformed_identity_claim_cannot_bind_variables_or_consume_facts() {
         bindings: vec![x],
         support: Condition::TRUE,
     };
-    let mut j = Commit::new(&g, &h, s, p, 0, m, Condition::TRUE).unwrap();
+    let mut j = Commit::new(&g, &h, s.clone(), p, 0, m, Condition::TRUE).unwrap();
     let before = g.index_node_count();
     assert!(run(&mut j, &mut g, &mut a, &mut h, &mut ids).is_none());
     assert_eq!(g.index_node_count(), before);
-    assert!(g.fact(s.graph, one).is_some());
+    assert!(g.fact(s.graph.clone(), one).is_some());
     assert!(g.fact(s.graph, two).is_some());
     assert_eq!(ids.event_count(), 0);
 }
@@ -218,7 +221,7 @@ fn duplicate_head_ids_and_failed_regions_cannot_apply() {
             bindings: vec![x, x],
             support: Condition::TRUE,
         };
-        let mut j = Commit::new(&g, &h, s, p.clone(), 0, m, active).unwrap();
+        let mut j = Commit::new(&g, &h, s.clone(), p.clone(), 0, m, active).unwrap();
         assert!(run(&mut j, &mut g, &mut a, &mut h, &mut ids).is_none());
     }
     assert!(g.fact(s.graph, id).is_some());
@@ -256,7 +259,8 @@ fn collection_at_every_commit_boundary_preserves_staged_updates_and_guards() {
             bindings: vec![x],
             support: Condition::TRUE,
         };
-        let mut commit = Commit::new(&g, &h, s, p.clone(), 0, candidate, Condition::TRUE).unwrap();
+        let mut commit =
+            Commit::new(&g, &h, s.clone(), p.clone(), 0, candidate, Condition::TRUE).unwrap();
         let mut result = None;
         for _ in 0..10000 {
             let mut conditions = traced_roots(&commit, commit.condition_roots());
@@ -277,9 +281,12 @@ fn collection_at_every_commit_boundary_preserves_staged_updates_and_guards() {
             let mut gc = a.collect(conditions.into_iter());
             while !gc.tick(&mut a) {}
             drop(gc);
-            assert_eq!(g.fact(s.graph, first).unwrap().support, Condition::TRUE);
             assert_eq!(
-                h.support(s.history, 0, &Arc::new(vec![first, second])),
+                g.fact(s.graph.clone(), first).unwrap().support,
+                Condition::TRUE
+            );
+            assert_eq!(
+                h.support(s.history.clone(), 0, &Arc::new(vec![first, second])),
                 Condition::FALSE
             );
             match commit.tick(&mut g, &mut a, &mut h, &mut ids) {
@@ -296,7 +303,10 @@ fn collection_at_every_commit_boundary_preserves_staged_updates_and_guards() {
         assert_eq!(applied.application.variables.as_slice(), [x, 2]);
         if p.rules[0].kept == 0 {
             for id in [first, second] {
-                assert_eq!(g.fact(applied.state.graph, id).unwrap().support, c.not());
+                assert_eq!(
+                    g.fact(applied.state.graph.clone(), id).unwrap().support,
+                    c.not()
+                );
             }
         } else {
             assert_eq!(

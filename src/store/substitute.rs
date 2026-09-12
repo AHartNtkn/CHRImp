@@ -44,7 +44,7 @@ impl Substitution {
         self.filter
             .iter()
             .flat_map(Filter::roots)
-            .chain(self.result)
+            .chain(self.result.clone())
     }
 
     pub fn condition_roots(&self) -> impl Iterator<Item = Condition> + '_ {
@@ -107,7 +107,7 @@ impl Substitution {
             return None;
         }
         if self.done {
-            return self.result;
+            return self.result.clone();
         }
         if let Some(boolean) = &mut self.boolean {
             if let Progress::Complete(value) = boolean.tick(arena) {
@@ -132,7 +132,7 @@ impl Substitution {
         } else {
             self.done = self.cleanup_tick();
         }
-        self.done.then_some(self.result).flatten()
+        self.done.then_some(self.result.clone()).flatten()
     }
 }
 

@@ -54,6 +54,7 @@ pub struct Fact<'a> {
 /// Immutable occurrence payloads and a persistent supported index. The executor
 /// owns the current root; updates return a new root for atomic publication.
 pub struct Graph {
+    semantic_debt: usize,
     pub(crate) index: Store<Condition>,
     rows: BTreeMap<u64, Row>,
     arities: Vec<usize>,
@@ -76,6 +77,7 @@ impl Graph {
             })
             .collect();
         Self {
+            semantic_debt: 0,
             index: Store::default(),
             rows: BTreeMap::new(),
             arities: signatures.iter().map(|s| s.arity).collect(),
@@ -83,6 +85,26 @@ impl Graph {
             next_occurrence: 0,
             epoch: 0,
         }
+    }
+    pub fn index_allocations(&self) -> usize {
+        self.index.allocations()
+    }
+    pub fn release_tick(&mut self) -> bool {
+        self.index.release_tick()
+    }
+    pub(crate) fn semantic_debt(&self) -> usize {
+        self.semantic_debt
+    }
+    pub(crate) fn retire_scope(&mut self) {
+        self.index.assert_mutable();
+        self.semantic_debt = self.semantic_debt.saturating_add(1);
+    }
+    pub(crate) fn semantic_collected(&mut self) {
+        self.semantic_debt = 0;
+    }
+    pub(crate) fn occurrence_frontier(&self, root: &Root) -> usize {
+        self.index
+            .count(root, [0; 4], [INCIDENCE, u64::MAX, u64::MAX, u64::MAX])
     }
     pub fn empty(&self) -> Root {
         self.index.empty()
@@ -95,14 +117,14 @@ impl Graph {
     }
 
     fn valid_root(&self, root: Root) -> Result<(), GraphError> {
-        if self.index.contains(root) {
+        if self.index.contains(&root) {
             Ok(())
         } else {
             Err(GraphError::InvalidRoot)
         }
     }
     pub fn fact(&self, root: Root, id: u64) -> Option<Fact<'_>> {
-        let support = self.index.get(root, &[FACT, id, 0, 0])?;
+        let support = self.index.get(&root, &[FACT, id, 0, 0])?;
         let row = self.rows.get(&id).expect("live occurrence payload");
         Some(Fact {
             id,
@@ -128,7 +150,7 @@ impl Graph {
         support: Condition,
     ) -> Result<Update, GraphError> {
         self.index.assert_mutable();
-        self.valid_root(root)?;
+        self.valid_root(root.clone())?;
         let &arity = self
             .arities
             .get(relation)
@@ -162,8 +184,8 @@ impl Graph {
         support: Condition,
     ) -> Result<Update, GraphError> {
         self.index.assert_mutable();
-        self.valid_root(root)?;
-        if self.index.get(root, &[FACT, id, 0, 0]).is_none() {
+        self.valid_root(root.clone())?;
+        if self.index.get(&root, &[FACT, id, 0, 0]).is_none() {
             return Err(GraphError::MissingOccurrence);
         }
         let row = self.rows.get(&id).expect("live occurrence");
@@ -182,7 +204,7 @@ impl Graph {
     ) -> Update {
         // Staging the fact root immediately makes a pending new occurrence
         // traceable. All remaining port/index updates yield separately.
-        let staged = self.write(base, [FACT, id, 0, 0], support);
+        let staged = self.write(base.clone(), [FACT, id, 0, 0], support);
         let position = if staged == base {
             2 + 2 * args.len()
         } else {
@@ -201,6 +223,13 @@ impl Graph {
     }
 
     pub(crate) fn write(&mut self, root: Root, key: Key, support: Condition) -> Root {
+        self.index.assert_mutable();
+        let previous = self.index.get(&root, &key);
+        if previous.unwrap_or(Condition::FALSE) != support
+            && (previous.is_some() || key[0] > INCIDENCE)
+        {
+            self.retire_scope();
+        }
         if support == Condition::FALSE {
             self.index.remove(root, &key)
         } else {
@@ -209,7 +238,7 @@ impl Graph {
     }
 
     pub fn relation(&self, root: Root, relation: usize) -> Result<Occurrences, GraphError> {
-        self.valid_root(root)?;
+        self.valid_root(root.clone())?;
         if relation >= self.arities.len() {
             return Err(GraphError::InvalidRelation);
         }
@@ -232,7 +261,7 @@ impl Graph {
         port: usize,
         variable: u64,
     ) -> Result<Occurrences, GraphError> {
-        self.valid_root(root)?;
+        self.valid_root(root.clone())?;
         let &arity = self
             .arities
             .get(relation)
@@ -301,7 +330,7 @@ impl Occurrences {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UpdateStatus {
     Pending,
     Complete(Root),
@@ -324,12 +353,12 @@ impl Update {
         self.id
     }
     pub fn roots(&self) -> [Root; 2] {
-        [self.base, self.staged]
+        [self.base.clone(), self.staged.clone()]
     }
     pub fn tick(&mut self, graph: &mut Graph) -> UpdateStatus {
         graph.index.assert_mutable();
         if self.position >= 2 + 2 * self.args.len() {
-            return UpdateStatus::Complete(self.staged);
+            return UpdateStatus::Complete(self.staged.clone());
         }
         let key = if self.position == 1 {
             [RELATION, self.relation as u64, self.id, 0]
@@ -341,10 +370,10 @@ impl Update {
                 [INCIDENCE, self.args[port], self.id, 0]
             }
         };
-        self.staged = graph.write(self.staged, key, self.support);
+        self.staged = graph.write(std::mem::take(&mut self.staged), key, self.support);
         self.position += 1;
         if self.position == 2 + 2 * self.args.len() {
-            UpdateStatus::Complete(self.staged)
+            UpdateStatus::Complete(self.staged.clone())
         } else {
             UpdateStatus::Pending
         }
@@ -393,5 +422,81 @@ impl<I: Iterator<Item = Root>> Collector<I> {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod pressure_checks {
+    use super::*;
+    fn post(g: &mut Graph, r: Root, n: u64) -> Root {
+        let mut p = g.post(r, 0, vec![n], Condition::TRUE).unwrap();
+        loop {
+            if let UpdateStatus::Complete(r) = p.tick(g) {
+                return r;
+            }
+        }
+    }
+    #[test]
+    fn semantic_debt_counts_support_changes_independently_of_cow() {
+        let sig = [Signature {
+            name: "p".into(),
+            arity: 1,
+        }];
+        let mut a = Graph::new(&sig);
+        let mut b = Graph::new(&sig);
+        let mut ra = a.empty();
+        let mut rb = b.empty();
+        let mut pins = vec![];
+        for i in 0..64 {
+            ra = post(&mut a, ra, i);
+            pins.push(rb.clone());
+            rb = post(&mut b, rb, i);
+        }
+        assert_eq!(a.semantic_debt(), 0);
+        assert_eq!(b.semantic_debt(), 0);
+        assert_eq!(a.occurrence_frontier(&ra), 256);
+        for i in 0..64 {
+            ra = a.write(ra, [4, 1000 + i, 999, 0], Condition::TRUE);
+            pins.push(rb.clone());
+            rb = b.write(rb, [4, 1000 + i, 999, 0], Condition::TRUE);
+        }
+        assert_ne!(a.index.mutation_counts(), b.index.mutation_counts());
+        for id in 0..32 {
+            let mut ua = a.set_liveness(ra, id, Condition::FALSE).unwrap();
+            let mut ub = b.set_liveness(rb, id, Condition::FALSE).unwrap();
+            ra = loop {
+                if let UpdateStatus::Complete(r) = ua.tick(&mut a) {
+                    break r;
+                }
+            };
+            rb = loop {
+                if let UpdateStatus::Complete(r) = ub.tick(&mut b) {
+                    break r;
+                }
+            };
+            pins.push(rb.clone());
+        }
+        assert_eq!(a.semantic_debt(), 192);
+        assert_eq!(a.semantic_debt(), b.semantic_debt());
+        assert_eq!(a.occurrence_frontier(&ra), 128);
+        let debt = a.semantic_debt();
+        let mut gc = a.collect([ra.clone()].into_iter());
+        while !gc.done() {
+            gc.tick(&mut a);
+        }
+        drop(gc);
+        assert_eq!(
+            a.semantic_debt(),
+            debt,
+            "physical tracing cannot discharge semantic obsolescence"
+        );
+        let frozen = a.collect([ra.clone()].into_iter());
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| a.retire_scope())).is_err()
+        );
+        assert_eq!(a.semantic_debt(), debt);
+        drop(frozen);
+        a.semantic_collected();
+        assert_eq!(a.semantic_debt(), 0);
     }
 }

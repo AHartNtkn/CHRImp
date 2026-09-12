@@ -56,7 +56,15 @@ fn compaction_preserves_duplicate_surviving_answers_and_propagation() {
                 break;
             }
         }
-        assert!(e.delivery_done());
+        assert!(
+            e.delivery_done(),
+            "query={query} apps={} answers={} gc={} collecting={} memory={:?}",
+            e.applications(),
+            answers.len(),
+            e.collections(),
+            e.collecting(),
+            e.memory()
+        );
         assert_eq!(answers.len(), 2);
         for answer in &answers {
             assert_eq!(facts(&e, answer), expected);

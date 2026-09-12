@@ -39,14 +39,14 @@ fn uniform_parent_walks_yield_per_edge_and_preserve_conditional_boundaries() {
         (Condition::TRUE, vec![(0, c.not()), (2, c)], 1000),
         (c.not(), vec![(0, c.not())], 1000),
     ] {
-        let mut job = Resolve::new(&g, root, 1, scope);
+        let mut job = Resolve::new(&g, root.clone(), 1, scope);
         let mut found = Vec::new();
         let mut done = false;
         for _ in 0..bound {
             let mut supports = traced(&job, job.condition_roots());
             supports.push(c);
             supports.extend(found.iter().map(|&(_, support)| support));
-            collect_traced(&mut g, &mut a, [root].into_iter(), supports);
+            collect_traced(&mut g, &mut a, [root.clone()].into_iter(), supports);
             match job.tick(&g, &mut a) {
                 ResolveStatus::Found { variable, support } => found.push((variable, support)),
                 ResolveStatus::Done => {
@@ -74,7 +74,7 @@ fn uniform_resolution_validates_scope_and_releases_discarded_frontiers() {
     let empty = g.empty();
     let root = merge(&mut g, &mut a, empty, 0, 1, c);
     for cutoff in 0..=2 {
-        let mut job = Resolve::new(&g, root, 1, c);
+        let mut job = Resolve::new(&g, root.clone(), 1, c);
         for _ in 0..cutoff {
             job.tick(&g, &mut a);
         }
@@ -84,9 +84,9 @@ fn uniform_resolution_validates_scope_and_releases_discarded_frontiers() {
     }
     let mut foreign = Arena::default();
     let foreign_scope = foreign.fresh_choice().1;
-    let mut isolated = Resolve::new(&g, root, 99, foreign_scope);
+    let mut isolated = Resolve::new(&g, root.clone(), 99, foreign_scope);
     assert!(catch_unwind(AssertUnwindSafe(|| isolated.tick(&g, &mut a))).is_err());
-    let mut isolated = Resolve::new(&g, root, 99, c);
+    let mut isolated = Resolve::new(&g, root.clone(), 99, c);
     assert_eq!(
         isolated.tick(&g, &mut a),
         ResolveStatus::Found {
@@ -108,19 +108,22 @@ fn identity_tests_are_nonbinding_and_merges_are_conditional() {
     let empty = g.empty();
     let before = g.index_node_count();
     assert_eq!(
-        equal(&g, &mut a, empty, 1, 2, Condition::TRUE),
+        equal(&g, &mut a, empty.clone(), 1, 2, Condition::TRUE),
         Condition::FALSE
     );
     assert_eq!(g.index_node_count(), before);
-    let root = merge(&mut g, &mut a, empty, 1, 2, c);
-    assert_eq!(equal(&g, &mut a, root, 1, 2, Condition::TRUE), c);
-    assert_eq!(equal(&g, &mut a, root, 1, 2, c.not()), Condition::FALSE);
+    let root = merge(&mut g, &mut a, empty.clone(), 1, 2, c);
+    assert_eq!(equal(&g, &mut a, root.clone(), 1, 2, Condition::TRUE), c);
+    assert_eq!(
+        equal(&g, &mut a, root.clone(), 1, 2, c.not()),
+        Condition::FALSE
+    );
     assert_eq!(
         equal(&g, &mut a, empty, 1, 2, Condition::TRUE),
         Condition::FALSE
     );
     let before = g.index_node_count();
-    let mut repeat = Merge::new(&g, root, 1, 2, c);
+    let mut repeat = Merge::new(&g, root.clone(), 1, 2, c);
     let same = loop {
         if let Some(root) = repeat.tick(&mut g, &mut a) {
             break root;
@@ -141,11 +144,11 @@ fn opposite_parent_directions_in_siblings_do_not_create_a_logical_cycle() {
     let root = merge(&mut g, &mut a, root, 1, 3, c.not());
     let root = merge(&mut g, &mut a, root, 0, 1, Condition::TRUE);
     assert_eq!(
-        equal(&g, &mut a, root, 0, 1, Condition::TRUE),
+        equal(&g, &mut a, root.clone(), 0, 1, Condition::TRUE),
         Condition::TRUE
     );
     assert_eq!(
-        equal(&g, &mut a, root, 2, 3, Condition::TRUE),
+        equal(&g, &mut a, root.clone(), 2, 3, Condition::TRUE),
         Condition::FALSE
     );
     let mut resolve = Resolve::new(&g, root, 0, Condition::TRUE);
@@ -175,7 +178,7 @@ fn rank_prevents_adversarial_descending_alias_chains() {
         root = merge(&mut g, &mut a, root, x, x + 1, Condition::TRUE);
     }
     for x in [0, 1, 127, 255, 510, 511] {
-        let mut resolve = Resolve::new(&g, root, x, Condition::TRUE);
+        let mut resolve = Resolve::new(&g, root.clone(), x, Condition::TRUE);
         let mut found = Vec::new();
         loop {
             match resolve.tick(&g, &mut a) {
@@ -232,7 +235,14 @@ fn projected_equivalence_matches_independent_union_find_oracles() {
         }
         for x in 0..8 {
             for y in 0..8 {
-                let support = equal(&g, &mut a, root, x as u64, y as u64, Condition::TRUE);
+                let support = equal(
+                    &g,
+                    &mut a,
+                    root.clone(),
+                    x as u64,
+                    y as u64,
+                    Condition::TRUE,
+                );
                 for (bits, p) in worlds.iter().enumerate() {
                     assert_eq!(
                         a.evaluate(support, |i| bits & (1 << i) != 0),
@@ -254,7 +264,7 @@ fn staged_union_survives_graph_and_condition_collection_at_every_tick() {
     let empty = g.empty();
     let root = merge(&mut g, &mut a, empty, 0, 2, c);
     let root = merge(&mut g, &mut a, root, 1, 3, d);
-    let mut job = Merge::new(&g, root, 0, 1, Condition::TRUE);
+    let mut job = Merge::new(&g, root.clone(), 0, 1, Condition::TRUE);
     let final_root = loop {
         let mut gc = g.collect(job.roots().into_iter());
         let mut supports = vec![c, d];
@@ -276,7 +286,7 @@ fn staged_union_survives_graph_and_condition_collection_at_every_tick() {
         equal(&g, &mut a, root, 0, 1, Condition::TRUE),
         Condition::FALSE
     );
-    let support = equal(&g, &mut a, final_root, 2, 3, Condition::TRUE);
+    let support = equal(&g, &mut a, final_root.clone(), 2, 3, Condition::TRUE);
     for bits in 0..4 {
         assert_eq!(a.evaluate(support, |i| bits & (1 << i) != 0), bits == 3);
     }
@@ -345,10 +355,10 @@ fn nested_identity_traces_survive_gc_through_all_merge_equal_and_resolve_phases(
             break root;
         }
     };
-    let mut comparing = Equal::new(&g, root, 2, 3, Condition::TRUE);
+    let mut comparing = Equal::new(&g, root.clone(), 2, 3, Condition::TRUE);
     let result = loop {
         let supports = traced(&comparing, comparing.condition_roots());
-        collect_traced(&mut g, &mut a, [root].into_iter(), supports);
+        collect_traced(&mut g, &mut a, [root.clone()].into_iter(), supports);
         if let Some(result) = comparing.tick(&g, &mut a) {
             traced(&comparing, comparing.condition_roots());
             break result;
@@ -357,11 +367,11 @@ fn nested_identity_traces_survive_gc_through_all_merge_equal_and_resolve_phases(
     for bits in 0..4 {
         assert_eq!(a.evaluate(result, |i| bits & (1 << i) != 0), bits == 3);
     }
-    let mut resolving = Resolve::new(&g, root, 3, Condition::TRUE);
+    let mut resolving = Resolve::new(&g, root.clone(), 3, Condition::TRUE);
     let mut observed = vec![Vec::new(); 4];
     for _ in 0..10_000 {
         let supports = traced(&resolving, resolving.condition_roots());
-        collect_traced(&mut g, &mut a, [root].into_iter(), supports);
+        collect_traced(&mut g, &mut a, [root.clone()].into_iter(), supports);
         match resolving.tick(&g, &mut a) {
             ResolveStatus::Found { variable, support } => {
                 for (bits, found) in observed.iter_mut().enumerate() {
@@ -445,7 +455,7 @@ fn resolve_discard_drains_large_pending_and_visited_maps_with_gc_each_step() {
         }
         root = merge(&mut g, &mut a, root, 100, bits, support);
     }
-    let mut resolving = Resolve::new(&g, root, 100, Condition::TRUE);
+    let mut resolving = Resolve::new(&g, root.clone(), 100, Condition::TRUE);
     let mut emitted = 0;
     for _ in 0..100_000 {
         if matches!(resolving.tick(&g, &mut a), ResolveStatus::Found { .. }) {

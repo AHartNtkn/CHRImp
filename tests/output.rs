@@ -161,3 +161,31 @@ fn wide_shared_answers_finish_within_the_delivery_service_budget() {
     assert_eq!(answers, n);
     assert_eq!(e.applications(), (2 * n) as u64);
 }
+
+#[test]
+fn repeated_collection_requests_cannot_starve_duplicate_delivery() {
+    let mut e = engine(
+        "start(X) <=> (fail;live(X)). live(X) ==> witness(X,Y).",
+        "(start(A);start(A))",
+    );
+    let mut reader = Reader::default();
+    let mut answers = vec![];
+    for _ in 0..200000 {
+        if !e.collecting() {
+            e.request_collection();
+        }
+        e.advance(1);
+        if let Some(a) = reader.next(&mut e) {
+            answers.push(a);
+        }
+        if e.delivery_done() {
+            break;
+        }
+    }
+    assert!(e.delivery_done());
+    assert_eq!(e.applications(), 4);
+    assert_eq!(answers.len(), 2);
+    for a in answers {
+        assert_eq!(facts(&e, &a), ["live", "witness"]);
+    }
+}

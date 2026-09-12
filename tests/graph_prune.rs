@@ -100,14 +100,14 @@ fn finish(
                     .collect(),
             );
         }
-        let before = g.index_node_count();
+        let before = g.index_allocations();
         let result = job.tick(g, a);
         assert!(
-            g.index_node_count() - before <= 1,
+            g.index_allocations() - before <= 1,
             "one index allocation per prune tick"
         );
         if let Some(root) = result {
-            assert_eq!(job.tick(g, a), Some(root));
+            assert_eq!(job.tick(g, a), Some(root.clone()));
             assert!(job.graph_roots().all(|r| r == root || r == g.empty()));
             assert!(
                 job.condition_roots().all(|c| c.is_terminal()),
@@ -131,25 +131,28 @@ fn live_raw_arguments_keep_bridge_ancestors_and_only_reachable_reverse_members()
     let (root, id) = post(&mut g, root, vec![3, 3], c);
     let mut prune = g.prune(root, Condition::TRUE);
     let result = finish(&mut g, &mut a, &mut prune, true, &[c]);
-    let fact = g.fact(result, id).unwrap();
+    let fact = g.fact(result.clone(), id).unwrap();
     assert_eq!(fact.args, [3, 3]);
     assert_eq!(fact.support, c);
-    assert_eq!(equal(&g, &mut a, result, 3, 0), c);
-    assert_eq!(equal(&g, &mut a, result, 3, 2), c);
-    assert_eq!(equal(&g, &mut a, result, 1, 0), Condition::FALSE);
+    assert_eq!(equal(&g, &mut a, result.clone(), 3, 0), c);
+    assert_eq!(equal(&g, &mut a, result.clone(), 3, 2), c);
+    assert_eq!(equal(&g, &mut a, result.clone(), 1, 0), Condition::FALSE);
     assert_eq!(
-        members(&g, &mut a, result, 0),
+        members(&g, &mut a, result.clone(), 0),
         BTreeMap::from([(0, Condition::TRUE), (2, c), (3, c)])
     );
     for port in 0..2 {
-        assert_eq!(g.port(result, 0, port, 3).unwrap().next(&g), Some((id, c)));
+        assert_eq!(
+            g.port(result.clone(), 0, port, 3).unwrap().next(&g),
+            Some((id, c))
+        );
     }
-    assert_eq!(g.incidence(result, 3).next(&g), Some((id, c)));
+    assert_eq!(g.incidence(result.clone(), 3).next(&g), Some((id, c)));
     // The old rank at representative 0 must survive in the marked region:
     // a new rank-1 peer must still attach to it rather than win by numeric ID.
     let peer = merge(&mut g, &mut a, result, 10, 11, c);
     let joined = merge(&mut g, &mut a, peer, 0, 10, c);
-    assert_eq!(equal(&g, &mut a, joined, 3, 11), c);
+    assert_eq!(equal(&g, &mut a, joined.clone(), 3, 11), c);
     let mut resolve = Resolve::new(&g, joined, 3, c);
     let mut representative = None;
     for _ in 0..1000 {
@@ -182,15 +185,15 @@ fn conditional_opposite_parent_directions_reach_a_support_fixedpoint() {
         let (root, id) = post(&mut g, root, vec![0, 1], Condition::TRUE);
         let mut prune = g.prune(root, Condition::TRUE);
         let result = finish(&mut g, &mut a, &mut prune, gc, &[c]);
-        assert_eq!(g.fact(result, id).unwrap().support, Condition::TRUE);
-        assert_eq!(equal(&g, &mut a, result, 0, 1), Condition::TRUE);
-        let found = members(&g, &mut a, result, 0);
+        assert_eq!(g.fact(result.clone(), id).unwrap().support, Condition::TRUE);
+        assert_eq!(equal(&g, &mut a, result.clone(), 0, 1), Condition::TRUE);
+        let found = members(&g, &mut a, result.clone(), 0);
         assert_eq!(
             found,
             BTreeMap::from([(0, Condition::TRUE), (1, Condition::TRUE)])
         );
-        assert_eq!(equal(&g, &mut a, result, 0, 2), Condition::FALSE);
-        assert_eq!(equal(&g, &mut a, result, 1, 3), Condition::FALSE);
+        assert_eq!(equal(&g, &mut a, result.clone(), 0, 2), Condition::FALSE);
+        assert_eq!(equal(&g, &mut a, result.clone(), 1, 3), Condition::FALSE);
         let mut resolve = Resolve::new(&g, result, 0, Condition::TRUE);
         let mut representatives = BTreeMap::new();
         for _ in 0..1000 {
@@ -221,7 +224,7 @@ fn explicit_pending_variables_are_seeded_conditionally_and_duplicates_union() {
     prune.seed(9, c);
     prune.seed(999, Condition::FALSE);
     let result = finish(&mut g, &mut a, &mut prune, true, &[c, d]);
-    assert_eq!(equal(&g, &mut a, result, 4, 5), d);
+    assert_eq!(equal(&g, &mut a, result.clone(), 4, 5), d);
     let cd = boolean(&mut a, Operation::And(c, d));
     assert_eq!(equal(&g, &mut a, result, 8, 9), cd);
     assert_eq!(g.occurrence_count(), 0);
@@ -238,33 +241,39 @@ fn active_filter_updates_all_occurrence_indexes_and_old_snapshots_remain_valid()
     let root = merge(&mut g, &mut a, empty, 90, 91, dead);
     let (root, live_id) = post(&mut g, root, vec![1, 2], Condition::TRUE);
     let (old, dead_id) = post(&mut g, root, vec![90, 91], dead);
-    collect(&mut g, &mut a, vec![old], vec![c]);
-    let mut prune = g.prune(old, c);
-    let before = g.index_node_count();
+    collect(&mut g, &mut a, vec![old.clone()], vec![c]);
+    let mut prune = g.prune(old.clone(), c);
+    let before = g.index_allocations();
     let result = finish(&mut g, &mut a, &mut prune, false, &[]);
     assert!(
-        g.index_node_count() - before <= 2 * before,
+        g.index_allocations() - before <= 2 * before,
         "two bottom-up passes have linear allocation growth"
     );
-    assert_eq!(g.fact(old, live_id).unwrap().support, Condition::TRUE);
-    assert_eq!(g.fact(old, dead_id).unwrap().support, dead);
-    assert_eq!(equal(&g, &mut a, old, 90, 91), dead);
-    assert!(g.fact(result, dead_id).is_none());
-    assert_eq!(g.fact(result, live_id).unwrap().support, c);
-    let mut relation = g.relation(result, 0).unwrap();
+    assert_eq!(
+        g.fact(old.clone(), live_id).unwrap().support,
+        Condition::TRUE
+    );
+    assert_eq!(g.fact(old.clone(), dead_id).unwrap().support, dead);
+    assert_eq!(equal(&g, &mut a, old.clone(), 90, 91), dead);
+    assert!(g.fact(result.clone(), dead_id).is_none());
+    assert_eq!(g.fact(result.clone(), live_id).unwrap().support, c);
+    let mut relation = g.relation(result.clone(), 0).unwrap();
     assert_eq!(relation.next(&g), Some((live_id, c)));
     assert_eq!(relation.next(&g), None);
     for (port, variable) in [(0, 1), (1, 2)] {
         assert_eq!(
-            g.port(result, 0, port, variable).unwrap().next(&g),
+            g.port(result.clone(), 0, port, variable).unwrap().next(&g),
             Some((live_id, c))
         );
-        assert_eq!(g.incidence(result, variable).next(&g), Some((live_id, c)));
+        assert_eq!(
+            g.incidence(result.clone(), variable).next(&g),
+            Some((live_id, c))
+        );
     }
-    assert_eq!(g.port(result, 0, 0, 90).unwrap().next(&g), None);
-    assert_eq!(g.incidence(result, 91).next(&g), None);
-    assert_eq!(equal(&g, &mut a, result, 90, 91), Condition::FALSE);
-    collect(&mut g, &mut a, vec![old, result], vec![]);
+    assert_eq!(g.port(result.clone(), 0, 0, 90).unwrap().next(&g), None);
+    assert_eq!(g.incidence(result.clone(), 91).next(&g), None);
+    assert_eq!(equal(&g, &mut a, result.clone(), 90, 91), Condition::FALSE);
+    collect(&mut g, &mut a, vec![old.clone(), result.clone()], vec![]);
     assert_eq!(g.occurrence_count(), 2);
     assert!(a.contains(garbage));
     assert_eq!(g.fact(old, dead_id).unwrap().support, dead);
@@ -286,6 +295,9 @@ fn active_filter_updates_all_occurrence_indexes_and_old_snapshots_remain_valid()
         empty_prune.condition_roots().collect(),
     );
     assert_eq!(g.occurrence_count(), 0);
+    drop(prune);
+    drop(relation);
+    while !g.release_tick() {}
     assert_eq!(g.index_node_count(), 0);
     assert_eq!(a.node_count(), 0);
 }
@@ -297,18 +309,18 @@ fn noop_nullary_occurrences_and_owned_protocol_checks() {
     let mut a = Arena::default();
     let empty = g.empty();
     let (root, id) = post(&mut g, empty, vec![], Condition::TRUE);
-    let mut prune = g.prune(root, Condition::TRUE);
-    let before = g.index_node_count();
+    let mut prune = g.prune(root.clone(), Condition::TRUE);
+    let before = g.index_allocations();
     let result = finish(&mut g, &mut a, &mut prune, false, &[]);
     assert_eq!(result, root);
-    assert_eq!(g.index_node_count(), before);
+    assert_eq!(g.index_allocations(), before);
     assert!(g.fact(result, id).unwrap().args.is_empty());
     assert!(catch_unwind(AssertUnwindSafe(|| prune.seed(1, Condition::TRUE))).is_err());
     let mut foreign_g = graph();
     let mut foreign_a = Arena::default();
     assert!(catch_unwind(AssertUnwindSafe(|| prune.tick(&mut foreign_g, &mut a))).is_err());
     assert!(catch_unwind(AssertUnwindSafe(|| prune.tick(&mut g, &mut foreign_a))).is_err());
-    let lease = g.collect([root].into_iter());
+    let lease = g.collect([root.clone()].into_iter());
     assert!(catch_unwind(AssertUnwindSafe(|| prune.tick(&mut g, &mut a))).is_err());
     drop(lease);
     let lease = a.collect(std::iter::empty());
@@ -329,8 +341,8 @@ fn certified_no_identity_prune_work_is_independent_of_occurrence_count() {
         for i in 0..count {
             root = post(&mut g, root, vec![i, i], Condition::TRUE).0;
         }
-        let before = g.index_node_count();
-        let mut job = g.prune(root, Condition::TRUE);
+        let before = g.index_allocations();
+        let mut job = g.prune(root.clone(), Condition::TRUE);
         let mut result = None;
         for _ in 0..4 {
             if let Some(r) = job.tick(&mut g, &mut a) {
@@ -343,7 +355,7 @@ fn certified_no_identity_prune_work_is_independent_of_occurrence_count() {
             Some(root),
             "certified no-op must not scan {count} occurrences"
         );
-        assert_eq!(g.index_node_count(), before);
+        assert_eq!(g.index_allocations(), before);
     }
 }
 #[test]
@@ -354,7 +366,7 @@ fn certified_true_keeps_conditional_facts_and_gc_roots() {
     let empty = g.empty();
     let (root, left) = post(&mut g, empty, vec![0, 1], x);
     let (root, right) = post(&mut g, root, vec![2, 3], x.not());
-    let mut job = g.prune(root, Condition::TRUE);
+    let mut job = g.prune(root.clone(), Condition::TRUE);
     for i in 0..17 {
         job.seed(i, x);
     }
@@ -367,11 +379,11 @@ fn certified_true_keeps_conditional_facts_and_gc_roots() {
         job.graph_roots().collect(),
         job.condition_roots().collect(),
     );
-    assert_eq!(g.fact(result, left).unwrap().support, x);
-    assert_eq!(g.fact(result, right).unwrap().support, x.not());
+    assert_eq!(g.fact(result.clone(), left).unwrap().support, x);
+    assert_eq!(g.fact(result.clone(), right).unwrap().support, x.not());
     drop(job);
     let mut restricted = g.prune(result, x);
     let new = finish(&mut g, &mut a, &mut restricted, true, &[x]);
-    assert_eq!(g.fact(new, left).unwrap().support, x);
+    assert_eq!(g.fact(new.clone(), left).unwrap().support, x);
     assert!(g.fact(new, right).is_none());
 }

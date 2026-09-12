@@ -6,7 +6,7 @@ use chr::store::Root;
 use std::sync::Arc;
 
 fn collect(history: &mut History, roots: &[Root]) -> Vec<Condition> {
-    let mut gc = history.collect(roots.iter().copied());
+    let mut gc = history.collect(roots.iter().cloned());
     let mut supports = Vec::new();
     for _ in 0..100_000 {
         if gc.done() {
@@ -28,31 +28,34 @@ fn ordered_tuples_rules_and_snapshot_supports_are_distinct() {
     let heads = Arc::new(vec![4, 9]);
     let reversed = Arc::new(vec![9, 4]);
     let empty = h.empty();
-    let first = h.set_support(empty, 2, heads.clone(), c);
-    let second = h.set_support(first, 2, reversed.clone(), c.not());
+    let first = h.set_support(empty.clone(), 2, heads.clone(), c);
+    let second = h.set_support(first.clone(), 2, reversed.clone(), c.not());
     let third = h.set_support(second, 3, heads.clone(), Condition::TRUE);
     assert_eq!(h.record_count(), 3);
-    assert_eq!(h.support(third, 2, &Arc::new(vec![4, 9])), c);
-    assert_eq!(h.support(third, 2, &reversed), c.not());
-    assert_eq!(h.support(third, 3, &heads), Condition::TRUE);
+    assert_eq!(h.support(third.clone(), 2, &Arc::new(vec![4, 9])), c);
+    assert_eq!(h.support(third.clone(), 2, &reversed), c.not());
+    assert_eq!(h.support(third.clone(), 3, &heads), Condition::TRUE);
     assert_eq!(h.support(first, 2, &reversed), Condition::FALSE);
     assert_eq!(h.support(empty, 2, &heads), Condition::FALSE);
-    let replaced = h.set_support(third, 2, Arc::new(vec![4, 9]), c.not());
+    let replaced = h.set_support(third.clone(), 2, Arc::new(vec![4, 9]), c.not());
     assert_eq!(
         h.record_count(),
         3,
         "structurally equal tuples share metadata"
     );
     assert_eq!(
-        h.support(replaced, 2, &heads),
+        h.support(replaced.clone(), 2, &heads),
         c.not(),
         "set replaces; the caller computes unions"
     );
     assert_eq!(h.support(third, 2, &heads), c);
     let nodes = h.node_count();
-    assert_eq!(h.set_support(replaced, 2, heads.clone(), c.not()), replaced);
+    assert_eq!(
+        h.set_support(replaced.clone(), 2, heads.clone(), c.not()),
+        replaced
+    );
     assert_eq!(h.node_count(), nodes);
-    let without = h.set_support(replaced, 2, heads.clone(), Condition::FALSE);
+    let without = h.set_support(replaced.clone(), 2, heads.clone(), Condition::FALSE);
     assert_eq!(h.support(without, 2, &heads), Condition::FALSE);
     assert_eq!(h.support(replaced, 2, &heads), c.not());
 }
@@ -63,7 +66,7 @@ fn absent_false_does_not_allocate_or_intern() {
     let empty = h.empty();
     let heads = Arc::new(vec![1, 2]);
     assert_eq!(
-        h.set_support(empty, 10, heads.clone(), Condition::FALSE),
+        h.set_support(empty.clone(), 10, heads.clone(), Condition::FALSE),
         empty
     );
     assert_eq!((h.record_count(), h.node_count()), (0, 0));
@@ -71,7 +74,7 @@ fn absent_false_does_not_allocate_or_intern() {
     let root = h.set_support(empty, 0, Arc::new(vec![7]), Condition::TRUE);
     let counts = (h.record_count(), h.node_count());
     assert_eq!(
-        h.set_support(root, 10, heads.clone(), Condition::FALSE),
+        h.set_support(root.clone(), 10, heads.clone(), Condition::FALSE),
         root
     );
     assert_eq!((h.record_count(), h.node_count()), counts);
@@ -92,7 +95,7 @@ fn entries_retain_ordered_shared_tuples_and_frozen_roots() {
     for (rule, heads) in tuples.iter().enumerate() {
         root = h.set_support(root, rule, heads.clone(), c);
     }
-    let mut entries = h.entries(root);
+    let mut entries = h.entries(root.clone());
     assert_eq!(entries.root(), root);
     let later = h.set_support(root, 77, Arc::new(vec![99]), Condition::TRUE);
     let supports = collect(&mut h, &[entries.root(), later]);
@@ -129,32 +132,38 @@ fn collection_preserves_snapshots_then_releases_metadata_store_and_conditions() 
     let empty = h.empty();
     let heads = Arc::new(vec![1, 2]);
     let discarded = Arc::new(vec![3]);
-    let old = h.set_support(empty, 0, heads.clone(), c);
-    let updated = h.set_support(old, 0, heads.clone(), d);
-    let latest = h.set_support(updated, 1, discarded.clone(), Condition::TRUE);
-    assert!(h.contains(latest));
-    let supports = collect(&mut h, &[old, updated]);
+    let old = h.set_support(empty.clone(), 0, heads.clone(), c);
+    let updated = h.set_support(old.clone(), 0, heads.clone(), d);
+    let latest = h.set_support(updated.clone(), 1, discarded.clone(), Condition::TRUE);
+    assert!(h.contains(latest.clone()));
+    let supports = collect(&mut h, &[old.clone(), updated.clone()]);
     assert_eq!(h.record_count(), 1);
+    assert!(!h.contains(latest.clone()));
+    drop(latest);
+    while !h.release_tick() {}
     assert_eq!(h.node_count(), 2);
     assert_eq!(Arc::strong_count(&discarded), 1);
-    assert_eq!(h.support(old, 0, &heads), c);
-    assert_eq!(h.support(updated, 0, &heads), d);
-    assert!(!h.contains(latest));
+    assert_eq!(h.support(old.clone(), 0, &heads), c);
+    assert_eq!(h.support(updated.clone(), 0, &heads), d);
     let mut gc = a.collect(supports.into_iter());
     while !gc.tick(&mut a) {}
     drop(gc);
     assert!(a.contains(c) && a.contains(d));
-    let supports = collect(&mut h, &[empty]);
+    let supports = collect(&mut h, std::slice::from_ref(&empty));
     assert!(supports.is_empty());
-    assert_eq!((h.record_count(), h.node_count()), (0, 0));
+    assert_eq!(h.record_count(), 0);
     assert_eq!(Arc::strong_count(&heads), 1);
-    assert!(!h.contains(old) && !h.contains(updated));
+    assert!(!h.contains(old.clone()) && !h.contains(updated.clone()));
     let mut gc = a.collect(supports.into_iter());
     while !gc.tick(&mut a) {}
     drop(gc);
     assert_eq!(a.node_count(), 0);
     let fresh = h.set_support(empty, 0, heads.clone(), Condition::TRUE);
     assert_ne!(fresh, old, "root identities must not be reused");
+    drop(old);
+    drop(updated);
+    while !h.release_tick() {}
+    assert_eq!(h.node_count(), 1);
     assert_eq!(h.support(fresh, 0, &heads), Condition::TRUE);
 }
 
@@ -167,12 +176,15 @@ fn unique_tuple_churn_keeps_only_live_metadata() {
         root = h.set_support(root, 0, previous, Condition::FALSE);
         let heads = Arc::new(vec![i, i + 1]);
         root = h.set_support(root, 0, heads.clone(), Condition::TRUE);
-        assert_eq!(collect(&mut h, &[root]), [Condition::TRUE]);
+        assert_eq!(collect(&mut h, &[root.clone()]), [Condition::TRUE]);
         assert_eq!((h.record_count(), h.node_count()), (1, 1));
-        assert_eq!(h.support(root, 0, &heads), Condition::TRUE);
+        assert_eq!(h.support(root.clone(), 0, &heads), Condition::TRUE);
         previous = heads;
     }
     assert_eq!(collect(&mut h, &[]), []);
+    assert!(!h.contains(root.clone()));
+    drop(root);
+    while !h.release_tick() {}
     assert_eq!((h.record_count(), h.node_count()), (0, 0));
 }
 
@@ -194,18 +206,18 @@ fn foreign_nonempty_roots_are_rejected_even_for_missing_keys() {
     };
     let absent = Arc::new(vec![123]);
     for root in [foreign, graph_root] {
-        assert!(!h.contains(root));
-        assert!(catch_unwind(|| h.support(root, 100, &absent)).is_err());
+        assert!(!h.contains(root.clone()));
+        assert!(catch_unwind(|| h.support(root.clone(), 100, &absent)).is_err());
         assert!(
             catch_unwind(AssertUnwindSafe(|| h.set_support(
-                root,
+                root.clone(),
                 100,
                 absent.clone(),
                 Condition::FALSE
             )))
             .is_err()
         );
-        assert!(catch_unwind(|| h.entries(root)).is_err());
+        assert!(catch_unwind(|| h.entries(root.clone())).is_err());
         assert!(catch_unwind(AssertUnwindSafe(|| collect(&mut h, &[root]))).is_err());
         assert_eq!((h.record_count(), h.node_count()), (0, 0));
     }
@@ -216,7 +228,7 @@ fn collection_after_a_large_peak_retains_only_the_surviving_tuple() {
     let mut h = History::default();
     let survivor = Arc::new(vec![0, 1]);
     let retained = h.set_support(h.empty(), 0, survivor.clone(), Condition::TRUE);
-    let mut root = retained;
+    let mut root = retained.clone();
     let mut payloads = Vec::new();
     for i in 1..4096 {
         let heads = Arc::new(vec![i, i + 1]);
@@ -225,10 +237,13 @@ fn collection_after_a_large_peak_retains_only_the_surviving_tuple() {
     }
     assert_eq!(h.record_count(), 4096);
     assert!(h.contains(root));
-    assert_eq!(collect(&mut h, &[retained]), [Condition::TRUE]);
+    assert_eq!(
+        collect(&mut h, std::slice::from_ref(&retained)),
+        [Condition::TRUE]
+    );
     assert_eq!((h.record_count(), h.node_count()), (1, 1));
     assert!(payloads.into_iter().all(|p| p.upgrade().is_none()));
-    assert_eq!(h.support(retained, 0, &survivor), Condition::TRUE);
+    assert_eq!(h.support(retained.clone(), 0, &survivor), Condition::TRUE);
     assert_eq!(collect(&mut h, &[retained]), [Condition::TRUE]);
 }
 
@@ -244,20 +259,20 @@ fn owned_collection_freezes_interning_through_metadata_sweep() {
         let mut h = History::default();
         let heads = Arc::new(vec![1, 2]);
         let root = h.set_support(h.empty(), 0, heads.clone(), Condition::TRUE);
-        h.set_support(root, 0, Arc::new(vec![3, 4]), Condition::TRUE);
-        let mut gc = begin(&mut h, root);
+        h.set_support(root.clone(), 0, Arc::new(vec![3, 4]), Condition::TRUE);
+        let mut gc = begin(&mut h, root.clone());
         let mut foreign = History::default();
         assert!(catch_unwind(AssertUnwindSafe(|| gc.tick(&mut foreign))).is_err());
-        assert!(catch_unwind(AssertUnwindSafe(|| h.collect([root].into_iter()))).is_err());
+        assert!(catch_unwind(AssertUnwindSafe(|| h.collect([root.clone()].into_iter()))).is_err());
         for _ in 0..cutoff {
             gc.tick(&mut h);
         }
-        assert_eq!(h.support(root, 0, &heads), Condition::TRUE);
+        assert_eq!(h.support(root.clone(), 0, &heads), Condition::TRUE);
         let counts = (h.record_count(), h.node_count());
         let fresh = Arc::new(vec![8, 9]);
         assert!(
             catch_unwind(AssertUnwindSafe(|| h.set_support(
-                root,
+                root.clone(),
                 1,
                 fresh.clone(),
                 Condition::TRUE
@@ -266,7 +281,7 @@ fn owned_collection_freezes_interning_through_metadata_sweep() {
         );
         assert!(
             catch_unwind(AssertUnwindSafe(|| h.set_support(
-                root,
+                root.clone(),
                 0,
                 heads.clone(),
                 Condition::FALSE
@@ -277,7 +292,7 @@ fn owned_collection_freezes_interning_through_metadata_sweep() {
         assert_eq!(Arc::strong_count(&fresh), 1);
         drop(gc);
         let updated = h.set_support(root, 1, fresh.clone(), Condition::TRUE);
-        let mut gc = begin(&mut h, updated);
+        let mut gc = begin(&mut h, updated.clone());
         while !gc.done() {
             gc.tick(&mut h);
         }
@@ -321,11 +336,11 @@ fn semantic_pruning_keeps_only_active_regions_where_all_tuple_heads_remain_live(
             break r;
         }
     };
-    let mut prune = h.prune(&g, root, old, active);
+    let mut prune = h.prune(&g, root.clone(), old.clone(), active);
     let mut done = None;
     for _ in 0..10000 {
         let mut roots = prune.condition_roots().collect::<Vec<_>>();
-        let mut gc = g.collect([root].into_iter());
+        let mut gc = g.collect([root.clone()].into_iter());
         while !gc.done() {
             if let Some(c) = gc.tick(&mut g) {
                 roots.push(c);
@@ -361,9 +376,9 @@ fn semantic_pruning_keeps_only_active_regions_where_all_tuple_heads_remain_live(
             break c;
         }
     };
-    assert_eq!(h.support(new, 0, &live), want);
-    assert_eq!(h.support(new, 1, &dead), Condition::FALSE);
-    assert_eq!(h.support(old, 0, &live), Condition::TRUE);
+    assert_eq!(h.support(new.clone(), 0, &live), want);
+    assert_eq!(h.support(new.clone(), 1, &dead), Condition::FALSE);
+    assert_eq!(h.support(old.clone(), 0, &live), Condition::TRUE);
     assert_eq!(h.support(old, 1, &dead), Condition::TRUE);
     collect(&mut h, &[new]);
     assert_eq!(h.record_count(), 1);

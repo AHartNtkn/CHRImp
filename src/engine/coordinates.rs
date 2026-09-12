@@ -275,8 +275,15 @@ mod engine_tests {
             };
             let (choice, x) = e.arena.fresh_choice();
             let scope = if positive { x } else { x.not() };
-            let matches =
-                Matches::new(&e.graph, e.state.graph, e.code.clone(), 0, scope, None).unwrap();
+            let matches = Matches::new(
+                &e.graph,
+                e.state.graph.clone(),
+                e.code.clone(),
+                0,
+                scope,
+                None,
+            )
+            .unwrap();
             e.spawn(
                 Condition::TRUE,
                 Task::Search(Box::new(Search {
@@ -364,7 +371,7 @@ mod boundary_tests {
             cursor: e
                 .obligations
                 .index
-                .range(e.pending_root, [0; 4], [u64::MAX; 4]),
+                .range(e.pending_root.clone(), [0; 4], [u64::MAX; 4]),
             blocked: Condition::FALSE,
             scope: x,
             job: None,
@@ -406,7 +413,7 @@ mod boundary_tests {
             cursor: e
                 .obligations
                 .index
-                .range(e.pending_root, [0; 4], [u64::MAX; 4]),
+                .range(e.pending_root.clone(), [0; 4], [u64::MAX; 4]),
             blocked: Condition::FALSE,
             scope: x,
             job: None,
@@ -543,7 +550,8 @@ mod rejected_reader_tests {
             }
         }
         let (choice, x) = e.arena.fresh_choice();
-        let matches = Matches::new(&e.graph, e.state.graph, e.code.clone(), 0, x, None).unwrap();
+        let matches =
+            Matches::new(&e.graph, e.state.graph.clone(), e.code.clone(), 0, x, None).unwrap();
         e.spawn(
             x,
             Task::Search(Box::new(Search {

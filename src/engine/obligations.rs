@@ -1,5 +1,6 @@
 //! Persistent remaining expressions, independent of scheduler continuations.
 use super::*;
+type Root = crate::store::Root<Pending>;
 use crate::identity::{Resolve, ResolveStatus};
 use crate::observe::ExpressionKind;
 use crate::trace::{Cursor as TraceCursor, Step, Trace};
@@ -105,7 +106,7 @@ impl Obligations {
         assignments: Arc<BTreeMap<u64, Condition>>,
     ) -> Substitution {
         Substitution {
-            input: root,
+            input: root.clone(),
             filter: self.index.filter(root),
             assignments: Some(assignments),
             draining: BTreeMap::new(),
@@ -145,7 +146,7 @@ pub(super) struct Substitution {
 impl Substitution {
     #[cfg(test)]
     fn roots(&self) -> impl Iterator<Item = Root> + '_ {
-        std::iter::once(self.input).chain(self.filter.roots())
+        std::iter::once(self.input.clone()).chain(self.filter.roots())
     }
     fn cleanup_tick(&mut self) -> bool {
         if let Some(assignments) = self.assignments.take() {
@@ -162,10 +163,10 @@ impl Substitution {
     pub fn tick(&mut self, store: &mut Obligations, arena: &mut Arena) -> Option<Root> {
         store.index.assert_mutable();
         assert!(
-            store.index.contains(self.input),
+            store.index.contains(&self.input),
             "stale or foreign pending substitution root"
         );
-        if let Some(root) = self.result {
+        if let Some(root) = self.result.clone() {
             return self.cleanup_tick().then_some(root);
         }
         if let Some(condition) = &mut self.condition {
@@ -286,7 +287,7 @@ impl Trace for Substitution {
 }
 
 pub(super) struct Collector {
-    index: crate::store::Collector<std::vec::IntoIter<Root>>,
+    index: crate::store::Collector<std::vec::IntoIter<Root>, Pending>,
     after_descriptor: Option<u64>,
     done: bool,
 }
@@ -343,7 +344,7 @@ impl Engine {
             let mut pending = self
                 .obligations
                 .index
-                .get(self.pending_root, &key)
+                .get(&self.pending_root, &key)
                 .expect("scheduled body");
             let previous = pending.body;
             let Some(id) = previous else {
@@ -356,10 +357,10 @@ impl Engine {
             if pending.body == previous {
                 return;
             }
-            self.pending_root = self
-                .obligations
-                .index
-                .insert(self.pending_root, key, pending);
+            self.pending_root =
+                self.obligations
+                    .index
+                    .insert(std::mem::take(&mut self.pending_root), key, pending);
         }
     }
     pub(super) fn sync_obligation(&mut self, id: u64, body: &Body) {
@@ -367,7 +368,7 @@ impl Engine {
         let mut pending = self
             .obligations
             .index
-            .get(self.pending_root, &key)
+            .get(&self.pending_root, &key)
             .expect("scheduled body");
         let parts = self.obligation_parts(body);
         let previous = pending.body;
@@ -377,10 +378,10 @@ impl Engine {
         if pending.body == previous {
             return;
         }
-        self.pending_root = self
-            .obligations
-            .index
-            .insert(self.pending_root, key, pending);
+        self.pending_root =
+            self.obligations
+                .index
+                .insert(std::mem::take(&mut self.pending_root), key, pending);
     }
     pub(super) fn pending_task(&mut self, scope: Condition, task: &Task) -> Pending {
         let body = match task {
@@ -516,7 +517,7 @@ impl Projection {
         &mut self,
         store: &Obligations,
         graph: &Graph,
-        root: Root,
+        root: crate::store::Root,
         arena: &mut Arena,
         code: &Prepared,
     ) -> ObserveStatus {
@@ -686,7 +687,7 @@ mod tests {
                     if matches!(b.phase, BodyPhase::Arguments) && b.variables.len() == 2 =>
                 {
                     e.graph.index.get(
-                        e.state.graph,
+                        &e.state.graph,
                         &[crate::identity::PARENT, b.variables[1], b.variables[0], 0],
                     ) == Some(Condition::TRUE)
                 }
@@ -749,11 +750,11 @@ mod tests {
             .unwrap();
         let mut parent = e.queue.remove(index).unwrap();
         let key = [parent.id, 0, 0, 0];
-        let certificate = e.pending_root;
+        let certificate = e.pending_root.clone();
         let original = e
             .obligations
             .index
-            .get(certificate, &key)
+            .get(&certificate, &key)
             .unwrap()
             .body
             .unwrap();
@@ -773,7 +774,7 @@ mod tests {
         assert!(!e.task(&mut parent)); // Dispatch.
         assert!(!e.task(&mut parent)); // Admit a, retain b,c,d.
         assert_eq!(
-            e.obligations.index.get(e.pending_root, &key).unwrap().body,
+            e.obligations.index.get(&e.pending_root, &key).unwrap().body,
             Some(original)
         );
         assert_eq!(
@@ -791,7 +792,7 @@ mod tests {
         let second_id = e
             .obligations
             .index
-            .get(e.pending_root, &key)
+            .get(&e.pending_root, &key)
             .unwrap()
             .body
             .unwrap();
@@ -816,7 +817,7 @@ mod tests {
         let third_id = e
             .obligations
             .index
-            .get(e.pending_root, &key)
+            .get(&e.pending_root, &key)
             .unwrap()
             .body
             .unwrap();
@@ -829,7 +830,7 @@ mod tests {
         );
         assert!(!e.task(&mut parent)); // Admit d in the same epoch.
         assert_eq!(
-            e.obligations.index.get(e.pending_root, &key).unwrap().body,
+            e.obligations.index.get(&e.pending_root, &key).unwrap().body,
             Some(third_id)
         );
         assert!(
@@ -988,7 +989,10 @@ mod tests {
             root = store.index.insert(root, [i as u64, 0, 0, 0], value);
         }
         let epoch = store.capture_epoch;
-        let mut job = store.substitute(root, Arc::new(BTreeMap::from([(yi, Condition::TRUE)])));
+        let mut job = store.substitute(
+            root.clone(),
+            Arc::new(BTreeMap::from([(yi, Condition::TRUE)])),
+        );
         let result = (0..10000)
             .find_map(|_| {
                 collect_substitution(&mut store, &mut arena, &job);
@@ -998,25 +1002,25 @@ mod tests {
             })
             .expect("finite cofactor");
         let expected = boolean(&mut arena, Operation::Or(x, z));
-        assert_eq!(store.index.get(result, &[0; 4]).unwrap().scope, expected);
-        let changed = store.index.get(result, &[0; 4]).unwrap().body.unwrap();
+        assert_eq!(store.index.get(&result, &[0; 4]).unwrap().scope, expected);
+        let changed = store.index.get(&result, &[0; 4]).unwrap().body.unwrap();
         assert_ne!(Some(changed), kept);
         let mut expected_parts = parts;
         expected_parts[1].as_mut().unwrap().scope = Condition::TRUE;
         expected_parts[1].as_mut().unwrap().guard = expected;
         assert!(store.descriptors[&changed].parts == expected_parts);
         assert_eq!(
-            store.index.get(result, &[1, 0, 0, 0]).unwrap().body,
+            store.index.get(&result, &[1, 0, 0, 0]).unwrap().body,
             unchanged
         );
         assert_eq!(
-            store.index.get(result, &[1, 0, 0, 0]).unwrap().scope,
+            store.index.get(&result, &[1, 0, 0, 0]).unwrap().scope,
             Condition::TRUE
         );
-        assert!(store.index.get(result, &[2, 0, 0, 0]).is_none());
-        assert!(store.index.get(result, &[4, 0, 0, 0]).is_none());
+        assert!(store.index.get(&result, &[2, 0, 0, 0]).is_none());
+        assert!(store.index.get(&result, &[4, 0, 0, 0]).is_none());
         for (i, value) in leaves.into_iter().enumerate() {
-            let old = store.index.get(root, &[i as u64, 0, 0, 0]).unwrap();
+            let old = store.index.get(&root, &[i as u64, 0, 0, 0]).unwrap();
             assert!(old == value, "historical/certificate leaf changed");
         }
         assert_eq!(store.capture_epoch, epoch);
@@ -1051,7 +1055,7 @@ mod tests {
             .index
             .insert(store.empty(), [0; 4], Pending { scope, body: None });
         let before = store.index.node_count();
-        let mut job = store.substitute(root, Arc::new(BTreeMap::new()));
+        let mut job = store.substitute(root.clone(), Arc::new(BTreeMap::new()));
         let result = (0..100)
             .find_map(|_| job.tick(&mut store, &mut arena))
             .unwrap();
@@ -1092,7 +1096,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let mut graph_job = graph.index.substitute(old_graph, bindings.clone());
+        let mut graph_job = graph.index.substitute(old_graph.clone(), bindings.clone());
         let new_graph = (0..1000)
             .find_map(|_| graph_job.tick(&mut graph.index, &mut arena))
             .unwrap();
@@ -1126,21 +1130,23 @@ mod tests {
                 body,
             },
         );
-        let mut job = store.substitute(old, bindings);
+        let mut job = store.substitute(old.clone(), bindings);
         let current = (0..1000)
             .find_map(|_| job.tick(&mut store, &mut arena))
             .unwrap();
         let reverse_bindings = Arc::new(BTreeMap::from([(choice, Condition::FALSE)]));
-        let mut reverse_graph_job = graph.index.substitute(old_graph, reverse_bindings.clone());
+        let mut reverse_graph_job = graph
+            .index
+            .substitute(old_graph.clone(), reverse_bindings.clone());
         let reverse_graph = (0..1000)
             .find_map(|_| reverse_graph_job.tick(&mut graph.index, &mut arena))
             .unwrap();
-        let mut reverse_job = store.substitute(old, reverse_bindings);
+        let mut reverse_job = store.substitute(old.clone(), reverse_bindings);
         let reverse = (0..1000)
             .find_map(|_| reverse_job.tick(&mut store, &mut arena))
             .unwrap();
         // Retain all published versions through descriptor collection.
-        let mut gc = store.collect(vec![old, current, reverse].into_iter());
+        let mut gc = store.collect(vec![old.clone(), current.clone(), reverse.clone()].into_iter());
         while !gc.done() {
             gc.tick(&mut store);
         }
@@ -1148,14 +1154,14 @@ mod tests {
         for (pending, root, alternative, relation) in [
             (current, new_graph, Condition::TRUE, posts[0].1),
             (reverse, reverse_graph, Condition::TRUE, posts[1].1),
-            (old, old_graph, guard, posts[0].1),
+            (old.clone(), old_graph.clone(), guard, posts[0].1),
             (old, old_graph, guard.not(), posts[1].1),
         ] {
             let mut projection = Projection::new(&store, pending, alternative);
             let mut events = vec![];
             let mut done = false;
             for _ in 0..1000 {
-                match projection.tick(&store, &graph, root, &mut arena, &code) {
+                match projection.tick(&store, &graph, root.clone(), &mut arena, &code) {
                     ObserveStatus::Event(event) => events.push(event),
                     ObserveStatus::Done => {
                         done = true;
@@ -1198,7 +1204,7 @@ mod tests {
                 body: None,
             },
         );
-        let mut job = store.substitute(root, assignments);
+        let mut job = store.substitute(root.clone(), assignments);
         for _ in 0..2048 {
             assert!(job.tick(&mut store, &mut arena).is_none());
         }
@@ -1230,7 +1236,7 @@ mod tests {
         let old = store
             .index
             .insert(store.empty(), [0; 4], Pending { scope: x, body });
-        let mut job = store.substitute(old, Arc::new(BTreeMap::from([(xi, image)])));
+        let mut job = store.substitute(old.clone(), Arc::new(BTreeMap::from([(xi, image)])));
         let current = (0..10000)
             .find_map(|_| {
                 collect_substitution(&mut store, &mut arena, &job);
@@ -1238,13 +1244,13 @@ mod tests {
                 job.tick(&mut store, &mut arena)
             })
             .expect("functional pending substitution");
-        let leaf = store.index.get(current, &[0; 4]).unwrap();
+        let leaf = store.index.get(&current, &[0; 4]).unwrap();
         assert_eq!(leaf.scope, image);
         assert_ne!(leaf.body, body);
         let part = store.descriptors[&leaf.body.unwrap()].parts[0].unwrap();
         assert_eq!(part.scope, image);
         assert_eq!(part.guard, image.not());
         assert!(store.descriptors[&body.unwrap()].parts == parts);
-        assert_eq!(store.index.get(old, &[0; 4]).unwrap().scope, x);
+        assert_eq!(store.index.get(&old, &[0; 4]).unwrap().scope, x);
     }
 }

@@ -39,12 +39,15 @@ impl Engine {
     /// Source discard and its physical collection are complete. Held views may
     /// still own data; releasing them requests another maintenance collection.
     pub fn cancel_done(&self) -> bool {
-        self.cancellation.finished && !self.collecting()
+        self.cancellation.finished && !self.collecting() && !self.release_pending()
     }
     /// Budgeted collection without source work or projection. An already
     /// running semantic collection may finish; new collections are physical.
     pub fn maintain(&mut self, budget: usize) {
         for _ in 0..budget {
+            if self.release_store_tick() {
+                continue;
+            }
             let coordinates_done = self.coordinates.cleanup_tick();
             if !self.collect_heap_mode(false) && coordinates_done {
                 break;

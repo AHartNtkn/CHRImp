@@ -85,14 +85,17 @@ impl Source {
             }
         } else if let Some((port, variable)) = bound {
             SourceKind::Port {
-                members: Box::new(Members::new(g, root, variable, scope)),
+                members: Box::new(Members::new(g, root.clone(), variable, scope)),
                 bucket: None,
                 membership: Condition::FALSE,
                 relation,
                 port,
             }
         } else {
-            SourceKind::Relation(g.relation(root, relation).expect("prepared relation"))
+            SourceKind::Relation(
+                g.relation(root.clone(), relation)
+                    .expect("prepared relation"),
+            )
         };
         Self {
             root,
@@ -149,7 +152,10 @@ impl Source {
                 let Some(id) = occurrence.take() else {
                     return SourceStatus::Done;
                 };
-                let Some(fact) = g.fact(self.root, id).filter(|f| f.relation == *relation) else {
+                let Some(fact) = g
+                    .fact(self.root.clone(), id)
+                    .filter(|f| f.relation == *relation)
+                else {
                     return SourceStatus::Done;
                 };
                 Some((id, self.scope, fact.support))
@@ -179,7 +185,7 @@ impl Source {
                         ResolveStatus::Found { variable, support } => {
                             *membership = support;
                             *bucket = Some(
-                                g.port(self.root, *relation, *port, variable)
+                                g.port(self.root.clone(), *relation, *port, variable)
                                     .expect("prepared port"),
                             );
                             None
@@ -251,7 +257,7 @@ impl Matches {
         scope: Condition,
         anchor: Option<(usize, u64)>,
     ) -> Result<Self, MatchError> {
-        if !g.index.contains(root) {
+        if !g.index.contains(&root) {
             return Err(MatchError::InvalidRoot);
         }
         let plan = code.rules.get(rule).ok_or(MatchError::InvalidRule)?;
@@ -292,7 +298,7 @@ impl Matches {
         })
     }
     pub fn root(&self) -> Root {
-        self.root
+        self.root.clone()
     }
     pub fn candidate_visits(&self) -> u64 {
         self.candidate_visits
@@ -325,7 +331,7 @@ impl Matches {
                 self.bindings[atom.args[p]].expect("bound selection port"),
             )
         });
-        let source = Source::new(g, self.root, atom.relation, scope, bound, anchor);
+        let source = Source::new(g, self.root.clone(), atom.relation, scope, bound, anchor);
         self.frames.push(Frame {
             head,
             source,
@@ -462,8 +468,13 @@ impl Matches {
                             self.position += 1;
                             return MatchStatus::Pending;
                         }
-                        self.equality =
-                            Some(Equal::new(g, self.root, expected, actual, self.current));
+                        self.equality = Some(Equal::new(
+                            g,
+                            self.root.clone(),
+                            expected,
+                            actual,
+                            self.current,
+                        ));
                         self.phase = Phase::Equality;
                     } else {
                         self.bindings[slot] = Some(actual);

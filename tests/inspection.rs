@@ -355,7 +355,10 @@ fn held_view_preserves_its_choice_prefix_while_later_choices_are_compacted() {
         }
         panic!("held view projection must finish");
     }
-    let mut e = engine("loop(X) <=> (fail;X=Y,loop(Y)).", "loop(A)");
+    let mut e = engine(
+        "loop(X) <=> (fail;X=Y,loop(Y)).",
+        "(left();right()),loop(A)",
+    );
     while e.applications() < 8 {
         e.advance(1);
     }

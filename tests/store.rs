@@ -12,26 +12,26 @@ fn roots_share_unchanged_paths_and_preserve_old_values() {
     for n in 0..4096 {
         root = store.insert(root, key(n), n);
     }
-    let snapshot = root;
+    let snapshot = root.clone();
     let before = store.node_count();
     root = store.insert(root, key(2048), 77);
-    assert_eq!(store.get(snapshot, &key(2048)), Some(2048));
-    assert_eq!(store.get(root, &key(2048)), Some(77));
+    assert_eq!(store.get(&snapshot, &key(2048)), Some(2048));
+    assert_eq!(store.get(&root, &key(2048)), Some(77));
     assert!(
-        store.node_count() - before <= 257,
+        store.allocations() - before <= 257,
         "an update copies only a bounded key path"
     );
-    assert_eq!(store.get(root, &key(0)), Some(0));
-    assert_eq!(store.get(root, &key(4095)), Some(4095));
+    assert_eq!(store.get(&root, &key(0)), Some(0));
+    assert_eq!(store.get(&root, &key(4095)), Some(4095));
     assert_eq!(
-        store.insert(root, key(2048), 77),
+        store.insert(root.clone(), key(2048), 77),
         root,
         "unchanged write is free"
     );
-    let removed = store.remove(root, &key(2048));
-    assert_eq!(store.get(removed, &key(2048)), None);
-    assert_eq!(store.get(root, &key(2048)), Some(77));
-    assert_eq!(store.remove(removed, &key(2048)), removed);
+    let removed = store.remove(root.clone(), &key(2048));
+    assert_eq!(store.get(&removed, &key(2048)), None);
+    assert_eq!(store.get(&root, &key(2048)), Some(77));
+    assert_eq!(store.remove(removed.clone(), &key(2048)), removed);
 }
 
 #[test]
@@ -55,12 +55,12 @@ fn mixed_updates_and_prefix_ranges_match_an_ordered_map() {
             root = store.insert(root, k, n);
             oracle.insert(k, n);
         }
-        assert_eq!(store.get(root, &k), oracle.get(&k).copied());
+        assert_eq!(store.get(&root, &k), oracle.get(&k).copied());
     }
     for prefix in 0..3 {
         let low = [prefix, 0, 0, 0];
         let high = [prefix, u64::MAX, u64::MAX, u64::MAX];
-        let mut cursor = store.range(root, low, high);
+        let mut cursor = store.range(root.clone(), low, high);
         let mut result = Vec::new();
         while let Some(pair) = cursor.next(&store) {
             result.push(pair);
@@ -82,14 +82,14 @@ fn collection_preserves_snapshot_and_cursor_roots_and_reclaims_dead_versions() {
     for n in 0..1000 {
         root = store.insert(root, key(n), n);
     }
-    let snapshot = root;
-    let mut cursor = store.range(snapshot, key(200), key(300));
+    let snapshot = root.clone();
+    let mut cursor = store.range(snapshot.clone(), key(200), key(300));
     assert_eq!(cursor.next(&store), Some((key(200), 200)));
     for n in 0..1000 {
         root = store.insert(root, key(n), n + 1000);
     }
     let before = store.node_count();
-    let mut gc = store.collect([root, cursor.root()].into_iter());
+    let mut gc = store.collect([root.clone(), cursor.root()].into_iter());
     let mut values = Vec::new();
     while !gc.done() {
         if let Some(pair) = gc.tick(&mut store) {
@@ -97,9 +97,10 @@ fn collection_preserves_snapshot_and_cursor_roots_and_reclaims_dead_versions() {
         }
     }
     drop(gc);
-    assert!(store.node_count() < before / 2);
-    assert_eq!(store.get(snapshot, &key(42)), Some(42));
-    assert_eq!(store.get(root, &key(42)), Some(1042));
+    assert_eq!(store.node_count(), 3998); // two live 1000-leaf snapshots; unique updates leave no arena garbage
+    assert!(store.node_count() <= before);
+    assert_eq!(store.get(&snapshot, &key(42)), Some(42));
+    assert_eq!(store.get(&root, &key(42)), Some(1042));
     assert_eq!(cursor.next(&store), Some((key(201), 201)));
     assert_eq!(
         values.len(),
@@ -111,11 +112,16 @@ fn collection_preserves_snapshot_and_cursor_roots_and_reclaims_dead_versions() {
         gc.tick(&mut store);
     }
     drop(gc);
-    assert_eq!(store.node_count(), 0);
-    assert!(!store.contains(snapshot));
-    assert!(!store.contains(root));
+    assert!(!store.contains(&snapshot));
+    assert!(!store.contains(&root));
     let fresh = store.insert(store.empty(), key(0), 5);
     assert_ne!(fresh, root);
+    drop(fresh);
+    drop(snapshot);
+    drop(root);
+    drop(cursor);
+    while !store.release_tick() {}
+    assert_eq!(store.node_count(), 0);
 }
 
 #[test]
@@ -128,7 +134,7 @@ fn collection_rejects_foreign_and_reclaimed_roots_before_marking() {
     let mut gc = store.collect([foreign_root].into_iter());
     assert!(catch_unwind(AssertUnwindSafe(|| gc.tick(&mut store))).is_err());
     drop(gc);
-    assert_eq!(store.get(live, &key(1)), Some(10));
+    assert_eq!(store.get(&live, &key(1)), Some(10));
     let mut gc = store.collect(std::iter::empty());
     while !gc.done() {
         gc.tick(&mut store);
@@ -138,7 +144,7 @@ fn collection_rejects_foreign_and_reclaimed_roots_before_marking() {
     assert!(catch_unwind(AssertUnwindSafe(|| gc.tick(&mut store))).is_err());
     drop(gc);
     let fresh = store.insert(store.empty(), key(1), 30);
-    assert_eq!(store.get(fresh, &key(1)), Some(30));
+    assert_eq!(store.get(&fresh, &key(1)), Some(30));
 }
 
 #[test]
@@ -150,15 +156,15 @@ fn boundary_bits_and_sparse_range_seek_do_not_scan_unrelated_rows() {
     }
     root = store.insert(root, [u64::MAX; 4], 99);
     root = store.insert(root, [0, 0, 0, 1], 100);
-    let mut cursor = store.range(root, [u64::MAX; 4], [u64::MAX; 4]);
+    let mut cursor = store.range(root.clone(), [u64::MAX; 4], [u64::MAX; 4]);
     assert_eq!(cursor.next(&store), Some(([u64::MAX; 4], 99)));
     assert_eq!(cursor.next(&store), None);
     assert!(
         cursor.visits() <= 514,
         "a keyed seek must not scan all rows"
     );
-    assert_eq!(store.get(root, &[0, 0, 0, 1]), Some(100));
-    assert_eq!(store.get(root, &[0, 0, 0, 0]), Some(0));
+    assert_eq!(store.get(&root, &[0, 0, 0, 1]), Some(100));
+    assert_eq!(store.get(&root, &[0, 0, 0, 0]), Some(0));
 }
 
 #[test]
@@ -171,15 +177,15 @@ fn a_maximal_key_path_remains_bounded_under_update_and_deletion() {
         key[bit / 64] = 1_u64 << (63 - bit % 64);
         root = store.insert(root, key, bit + 1);
     }
-    let before = store.node_count();
-    let changed = store.insert(root, zero, 500);
-    assert!(store.node_count() - before <= 257);
-    assert_eq!(store.get(root, &zero), Some(0));
-    assert_eq!(store.get(changed, &zero), Some(500));
-    let before = store.node_count();
+    let before = store.allocations();
+    let changed = store.insert(root.clone(), zero, 500);
+    assert!(store.allocations() - before <= 257);
+    assert_eq!(store.get(&root, &zero), Some(0));
+    assert_eq!(store.get(&changed, &zero), Some(500));
+    let before = store.allocations();
     let removed = store.remove(changed, &zero);
-    assert!(store.node_count() - before <= 256);
-    assert_eq!(store.get(removed, &zero), None);
+    assert!(store.allocations() - before <= 256);
+    assert_eq!(store.get(&removed, &zero), None);
     let mut cursor = store.range(removed, [0; 4], [u64::MAX; 4]);
     let mut previous = zero;
     let mut count = 0;
@@ -193,7 +199,9 @@ fn a_maximal_key_path_remains_bounded_under_update_and_deletion() {
 
 #[test]
 fn owned_collection_freezes_mutators_and_drop_releases_the_owner() {
-    use chr::store::{Collector, Root};
+    use chr::store::{Collector as GenericCollector, Root as GenericRoot};
+    type Root = GenericRoot<u64>;
+    type Collector<I> = GenericCollector<I, u64>;
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
     fn begin(store: &mut Store<u64>, root: Root) -> Collector<std::array::IntoIter<Root, 1>> {
@@ -202,18 +210,23 @@ fn owned_collection_freezes_mutators_and_drop_releases_the_owner() {
     for cutoff in 0..32 {
         let mut store = Store::default();
         let root = store.insert(store.empty(), key(1), 10);
-        store.insert(root, key(2), 20);
-        let mut gc = begin(&mut store, root);
+        store.insert(root.clone(), key(2), 20);
+        let mut gc = begin(&mut store, root.clone());
         let mut foreign = Store::<u64>::default();
         assert!(catch_unwind(AssertUnwindSafe(|| gc.tick(&mut foreign))).is_err());
-        assert!(catch_unwind(AssertUnwindSafe(|| store.collect([root].into_iter()))).is_err());
+        assert!(
+            catch_unwind(AssertUnwindSafe(
+                || store.collect([root.clone()].into_iter())
+            ))
+            .is_err()
+        );
         for _ in 0..cutoff {
             gc.tick(&mut store);
         }
-        assert_eq!(store.get(root, &key(1)), Some(10));
+        assert_eq!(store.get(&root, &key(1)), Some(10));
         let nodes = store.node_count();
-        assert!(catch_unwind(AssertUnwindSafe(|| store.insert(root, key(3), 30))).is_err());
-        assert!(catch_unwind(AssertUnwindSafe(|| store.remove(root, &key(1)))).is_err());
+        assert!(catch_unwind(AssertUnwindSafe(|| store.insert(root.clone(), key(3), 30))).is_err());
+        assert!(catch_unwind(AssertUnwindSafe(|| store.remove(root.clone(), &key(1)))).is_err());
         assert_eq!(store.node_count(), nodes);
         drop(gc);
         let updated = store.insert(root, key(3), 30);
@@ -252,16 +265,16 @@ fn full_width_rows() -> BTreeMap<Key, u64> {
     rows
 }
 
-fn snapshot_rows(store: &Store<u64>, root: chr::store::Root) -> BTreeMap<Key, u64> {
+fn snapshot_rows(store: &Store<u64>, root: chr::store::Root<u64>) -> BTreeMap<Key, u64> {
     let mut cursor = store.range(root, [0; 4], [u64::MAX; 4]);
     std::iter::from_fn(|| cursor.next(store)).collect()
 }
 
 fn filter_rows(
     store: &mut Store<u64>,
-    root: chr::store::Root,
+    root: chr::store::Root<u64>,
     mut replace: impl FnMut(Key, u64) -> Option<u64>,
-) -> (chr::store::Root, Vec<Key>, usize) {
+) -> (chr::store::Root<u64>, Vec<Key>, usize) {
     use chr::store::FilterStatus;
     let mut filter = store.filter(root);
     let mut visited = Vec::new();
@@ -280,7 +293,7 @@ fn filter_rows(
                 filter.replace(replace(key, value));
             }
             FilterStatus::Complete(result) => {
-                assert_eq!(filter.tick(store), FilterStatus::Complete(result));
+                assert_eq!(filter.tick(store), FilterStatus::Complete(result.clone()));
                 assert_eq!(filter.values().count(), 0);
                 assert!(filter.roots().all(|r| r == result || r == store.empty()));
                 return (result, visited, store.node_count() - before);
@@ -297,28 +310,31 @@ fn filter_full_width_keys_reuses_noop_and_rebuilds_each_changed_node_once() {
     for (&key, &value) in &original {
         root = store.insert(root, key, value);
     }
-    let (same, visited, allocations) = filter_rows(&mut store, root, |_, value| Some(value));
+    let (same, visited, allocations) =
+        filter_rows(&mut store, root.clone(), |_, value| Some(value));
     assert_eq!(same, root);
     assert_eq!(allocations, 0);
     assert_eq!(visited, original.keys().copied().collect::<Vec<_>>());
 
     let old_nodes = 2 * original.len() - 1;
-    let (changed, _, allocations) = filter_rows(&mut store, root, |_, value| Some(value + 1000));
+    let (changed, _, allocations) =
+        filter_rows(&mut store, root.clone(), |_, value| Some(value + 1000));
     assert_eq!(
         allocations, old_nodes,
         "exactly one new copy of each changed leaf and branch"
     );
-    assert_eq!(snapshot_rows(&store, root), original);
+    assert_eq!(snapshot_rows(&store, root.clone()), original);
     assert_eq!(
         snapshot_rows(&store, changed),
         original.iter().map(|(&k, &v)| (k, v + 1000)).collect()
     );
 
-    let (subset, _, allocations) = filter_rows(&mut store, root, |_, value| match value % 3 {
-        0 => None,
-        1 => Some(value),
-        _ => Some(value + 2000),
-    });
+    let (subset, _, allocations) =
+        filter_rows(&mut store, root.clone(), |_, value| match value % 3 {
+            0 => None,
+            1 => Some(value),
+            _ => Some(value + 2000),
+        });
     assert!(allocations <= old_nodes);
     assert_eq!(
         snapshot_rows(&store, subset),
@@ -331,11 +347,12 @@ fn filter_full_width_keys_reuses_noop_and_rebuilds_each_changed_node_once() {
             })
             .collect()
     );
-    assert_eq!(snapshot_rows(&store, root), original);
+    assert_eq!(snapshot_rows(&store, root.clone()), original);
     let (empty, _, allocations) = filter_rows(&mut store, root, |_, _| None);
     assert_eq!(empty, store.empty());
     assert_eq!(allocations, 0);
-    let (empty_again, visited, allocations) = filter_rows(&mut store, empty, |_, _| unreachable!());
+    let (empty_again, visited, allocations) =
+        filter_rows(&mut store, empty.clone(), |_, _| unreachable!());
     assert_eq!(empty_again, empty);
     assert!(visited.is_empty());
     assert_eq!(allocations, 0);
@@ -345,12 +362,13 @@ fn filter_full_width_keys_reuses_noop_and_rebuilds_each_changed_node_once() {
 fn filter_collapses_to_the_existing_child_without_allocating() {
     let mut store = Store::default();
     let child = store.insert(store.empty(), [0; 4], 1);
-    let root = store.insert(child, [u64::MAX; 4], 2);
-    let (result, _, allocations) =
-        filter_rows(&mut store, root, |_, value| (value == 1).then_some(value));
+    let root = store.insert(child.clone(), [u64::MAX; 4], 2);
+    let (result, _, allocations) = filter_rows(&mut store, root.clone(), |_, value| {
+        (value == 1).then_some(value)
+    });
     assert_eq!(result, child);
     assert_eq!(allocations, 0);
-    assert_eq!(store.get(root, &[u64::MAX; 4]), Some(2));
+    assert_eq!(store.get(&root, &[u64::MAX; 4]), Some(2));
 }
 
 #[test]
@@ -404,14 +422,14 @@ fn filter_survives_gc_between_every_transition_and_traces_pending_values() {
 fn filter_protocol_owner_freeze_and_stale_checks_precede_progress() {
     use chr::store::{Filter, FilterStatus, Root};
     use std::panic::{AssertUnwindSafe, catch_unwind};
-    fn begin(store: &Store<u64>, root: Root) -> Filter<u64> {
+    fn begin(store: &Store<u64>, root: Root<u64>) -> Filter<u64> {
         store.filter(root)
     }
     let mut store = Store::default();
     let root = store.insert(store.empty(), key(1), 10);
-    let mut filter = begin(&store, root);
+    let mut filter = begin(&store, root.clone());
     let mut foreign = Store::<u64>::default();
-    assert!(catch_unwind(AssertUnwindSafe(|| foreign.filter(root))).is_err());
+    assert!(catch_unwind(AssertUnwindSafe(|| foreign.filter(root.clone()))).is_err());
     assert!(catch_unwind(AssertUnwindSafe(|| filter.replace(None))).is_err());
     assert!(catch_unwind(AssertUnwindSafe(|| filter.tick(&mut foreign))).is_err());
     assert_eq!(
@@ -435,12 +453,12 @@ fn filter_protocol_owner_freeze_and_stale_checks_precede_progress() {
     let FilterStatus::Complete(result) = filter.tick(&mut store) else {
         panic!("leaf completes")
     };
-    assert_eq!(store.get(result, &key(1)), Some(20));
-    assert_eq!(store.get(root, &key(1)), Some(10));
+    assert_eq!(store.get(&result, &key(1)), Some(20));
+    assert_eq!(store.get(&root, &key(1)), Some(10));
     assert!(catch_unwind(AssertUnwindSafe(|| filter.replace(None))).is_err());
     assert!(catch_unwind(AssertUnwindSafe(|| filter.tick(&mut foreign))).is_err());
     assert_eq!(filter.tick(&mut store), FilterStatus::Complete(result));
-    let mut stale = store.filter(root);
+    let mut stale = store.filter(root.clone());
     let mut gc = store.collect(std::iter::empty());
     while !gc.done() {
         gc.tick(&mut store);
@@ -448,6 +466,9 @@ fn filter_protocol_owner_freeze_and_stale_checks_precede_progress() {
     drop(gc);
     assert!(catch_unwind(AssertUnwindSafe(|| store.filter(root))).is_err());
     assert!(catch_unwind(AssertUnwindSafe(|| stale.tick(&mut store))).is_err());
+    drop(stale);
+    drop(filter);
+    while !store.release_tick() {}
     assert_eq!(store.node_count(), 0);
     let mut empty = store.filter(store.empty());
     assert!(catch_unwind(AssertUnwindSafe(|| empty.tick(&mut foreign))).is_err());

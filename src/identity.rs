@@ -169,7 +169,7 @@ pub struct Resolve {
 }
 impl Resolve {
     pub fn new(g: &Graph, root: Root, variable: u64, scope: Condition) -> Self {
-        assert!(g.index.contains(root), "stale or foreign identity root");
+        assert!(g.index.contains(&root), "stale or foreign identity root");
         Self {
             root,
             initial: Some((variable, scope)),
@@ -188,7 +188,7 @@ impl Resolve {
         }
     }
     pub fn root(&self) -> Root {
-        self.root
+        self.root.clone()
     }
     pub fn visits(&self) -> u64 {
         self.visits
@@ -247,7 +247,7 @@ impl Resolve {
                     return ResolveStatus::Done;
                 }
                 let mut cursor = g.index.range(
-                    self.root,
+                    self.root.clone(),
                     [PARENT, variable, 0, 0],
                     [PARENT, variable, u64::MAX, 0],
                 );
@@ -310,7 +310,7 @@ impl Resolve {
                     self.visits += 1;
                     self.partition = Some(Partition::new(
                         g,
-                        self.root,
+                        self.root.clone(),
                         PARENT,
                         self.variable,
                         self.variable,
@@ -450,8 +450,8 @@ impl Equal {
     pub fn new(g: &Graph, root: Root, x: u64, y: u64, scope: Condition) -> Self {
         Self {
             discard: 0,
-            root,
-            left: Resolved::new(g, root, x, scope),
+            root: root.clone(),
+            left: Resolved::new(g, root.clone(), x, scope),
             right: Resolved::new(g, root, y, scope),
             last: None,
             boolean: None,
@@ -465,7 +465,7 @@ impl Equal {
         }
     }
     pub fn root(&self) -> Root {
-        self.root
+        self.root.clone()
     }
     pub fn condition_roots(&self) -> impl Iterator<Item = Condition> + '_ {
         self.left
@@ -585,7 +585,7 @@ pub struct MergeDelta {
 }
 impl MergeDelta {
     pub fn root(&self) -> Root {
-        self.root
+        self.root.clone()
     }
     pub fn condition_roots(&self) -> impl Iterator<Item = Condition> + '_ {
         self.seeds.iter().map(|(_, c)| *c)
@@ -644,9 +644,9 @@ impl Merge {
     pub fn new(g: &Graph, root: Root, x: u64, y: u64, scope: Condition) -> Self {
         Self {
             discard: 0,
-            base: root,
-            staged: root,
-            left: Resolved::new(g, root, x, scope),
+            base: root.clone(),
+            staged: root.clone(),
+            left: Resolved::new(g, root.clone(), x, scope),
             right: Resolved::new(g, root, y, scope),
             l: None,
             r: None,
@@ -667,7 +667,7 @@ impl Merge {
         }
     }
     pub fn roots(&self) -> [Root; 2] {
-        [self.base, self.staged]
+        [self.base.clone(), self.staged.clone()]
     }
     /// Transfer the completed merge's activation obligation exactly once.
     /// An unchanged merge, or a subsequent take, returns None.
@@ -678,7 +678,7 @@ impl Merge {
             return None;
         }
         Some(MergeDelta {
-            root: self.staged,
+            root: self.staged.clone(),
             seeds: std::mem::take(&mut self.delta),
             discarding: false,
         })
@@ -859,7 +859,7 @@ impl Merge {
                         self.phase = MergePhase::Pair;
                     } else {
                         let l = self.l.expect("left representative");
-                        self.left_rank = Some(Partition::new(g, self.base, RANK, l, 0, c));
+                        self.left_rank = Some(Partition::new(g, self.base.clone(), RANK, l, 0, c));
                         self.phase = MergePhase::LeftRank;
                     }
                 }
@@ -871,7 +871,8 @@ impl Merge {
                 } => {
                     self.rank = rank;
                     let r = self.r.expect("right representative");
-                    self.right_rank = Some(Partition::new(g, self.base, RANK, r, 0, support));
+                    self.right_rank =
+                        Some(Partition::new(g, self.base.clone(), RANK, r, 0, support));
                     self.phase = MergePhase::RightRank;
                 }
                 ResolveStatus::Done => {
@@ -897,14 +898,14 @@ impl Merge {
                     if let Some(c) = poll(&mut self.boolean, a) {
                         let edit = self.edits.pop_front().expect("pending edit");
                         if let Some(key) = edit.key {
-                            self.staged = g.write(self.staged, key, c);
+                            self.staged = g.write(std::mem::take(&mut self.staged), key, c);
                         } else {
                             self.changed = c;
                         }
                     }
                 } else if let Some(edit) = self.edits.front() {
                     let old = edit.key.map_or(self.changed, |key| {
-                        g.index.get(self.staged, &key).unwrap_or(Condition::FALSE)
+                        g.index.get(&self.staged, &key).unwrap_or(Condition::FALSE)
                     });
                     self.boolean = Some(a.start(if edit.remove {
                         Operation::Difference(old, edit.context)
@@ -921,7 +922,7 @@ impl Merge {
                     self.phase = MergePhase::Done;
                 }
             }
-            MergePhase::Done => return Some(self.staged),
+            MergePhase::Done => return Some(self.staged.clone()),
         }
         None
     }

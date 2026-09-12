@@ -199,7 +199,7 @@ fn conditional_query_variables_and_ordered_ports_are_resolved_in_each_history() 
         }
     };
     let mut observer = Observe::new(
-        completion(root, Condition::TRUE, Some(last)),
+        completion(root.clone(), Condition::TRUE, Some(last)),
         code,
         Arc::new(vec![0, 1]),
     );
@@ -419,7 +419,7 @@ fn discard_cancels_nested_projection_without_enumerating_remaining_alternatives(
         let (root, occurrence) = post(&mut g, root, 0, vec![1], Condition::TRUE);
         let variables = Arc::new(vec![1]);
         let mut observer = Observe::new(
-            completion(root, Condition::TRUE, last),
+            completion(root.clone(), Condition::TRUE, last),
             prepared.clone(),
             variables.clone(),
         );
@@ -471,7 +471,7 @@ fn discard_cancels_nested_projection_without_enumerating_remaining_alternatives(
             let done = observer.discard_tick();
             calls += 1;
             assert_eq!(observer.graph_root(), root);
-            assert!(g.fact(root, occurrence).is_some());
+            assert!(g.fact(root.clone(), occurrence).is_some());
             assert!(
                 catch_unwind(AssertUnwindSafe(|| observer.tick(
                     &g,

@@ -1,31 +1,66 @@
-//! Persistent ordered indexes for coherent shared graph roots.
-//!
-//! A compressed binary trie copies only the changed key path. Four-word keys
-//! cover graph namespaces and compound port postings without lossy hashing.
-//! Paths have at most 256 branches regardless of index size. Node ownership is
-//! explicit so releasing a snapshot never recursively destroys a large graph.
-
-use crate::gc::GcLease;
-use std::collections::BTreeMap;
-use std::ops::Bound::{Excluded, Unbounded};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-
+//! Arc-owned persistent indexes. Explicit leaf tracing protects scalar payloads;
+//! completed collection epochs invalidate untraced roots. Child release is deferred.
+use crate::{condition::Condition, gc::GcLease};
+use std::sync::{
+    Arc, Mutex, Weak,
+    atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering::Relaxed},
+};
+pub type Key = [u64; 4];
+pub trait Value: Copy + Eq + Send + Sync + 'static {}
+impl<T: Copy + Eq + Send + Sync + 'static> Value for T {}
+static NEXT_STORE: AtomicU32 = AtomicU32::new(1);
 mod substitute;
 pub use substitute::Substitution;
-
-pub type Key = [u64; 4];
-static NEXT_STORE: AtomicU32 = AtomicU32::new(1);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Root {
-    owner: u32,
-    id: u64,
+#[derive(Default)]
+struct Stats {
+    allocated: AtomicUsize,
+    live: AtomicUsize,
+    peak: AtomicUsize,
+    unique: AtomicUsize,
+    copied: AtomicUsize,
+    released: AtomicUsize,
 }
-const EMPTY: Root = Root { owner: 0, id: 0 };
-
-#[derive(Clone, Copy)]
-enum Node<V> {
+struct Batch<V: Value> {
+    left: Option<Arc<Record<V>>>,
+    right: Option<Arc<Record<V>>>,
+    next: Option<Box<Batch<V>>>,
+}
+struct Queue<V: Value> {
+    head: Mutex<Option<Box<Batch<V>>>>,
+    count: AtomicUsize,
+}
+impl<V: Value> Queue<V> {
+    fn new() -> Self {
+        Self {
+            head: Mutex::new(None),
+            count: AtomicUsize::new(0),
+        }
+    }
+    fn push(&self, left: Option<Arc<Record<V>>>, right: Option<Arc<Record<V>>>) {
+        let mut head = self.head.lock().unwrap();
+        let next = head.take();
+        *head = Some(Box::new(Batch { left, right, next }));
+        self.count.fetch_add(1, Relaxed);
+    }
+    fn pop(&self) -> Option<Box<Batch<V>>> {
+        let mut head = self.head.lock().unwrap();
+        let mut batch = head.take()?;
+        *head = batch.next.take();
+        self.count.fetch_sub(1, Relaxed);
+        Some(batch)
+    }
+}
+impl<V: Value> Drop for Queue<V> {
+    fn drop(&mut self) {
+        let head = self.head.get_mut().unwrap();
+        while let Some(mut batch) = head.take() {
+            *head = batch.next.take();
+            drop(batch);
+        }
+    }
+}
+#[derive(Clone)]
+enum Node<V: Value> {
     Leaf {
         key: Key,
         value: V,
@@ -33,286 +68,375 @@ enum Node<V> {
     Branch {
         prefix: Key,
         bit: u8,
-        left: Root,
-        right: Root,
+        left: Root<V>,
+        right: Root<V>,
     },
 }
-struct Record<V> {
+struct Record<V: Value> {
+    leaves: usize,
     node: Node<V>,
-    marked: u64,
+    marked: AtomicU64,
+    queue: Weak<Queue<V>>,
+    stats: Arc<Stats>,
 }
-
-pub struct Store<V> {
-    owner: u32,
-    next_node: u64,
-    // Reused only during an update; at most 256 branches, empty between calls.
-    path: Vec<(Root, Node<V>)>,
-    nodes: BTreeMap<u64, Record<V>>,
-    epoch: u64,
-    frozen: Arc<AtomicBool>,
-}
-
-impl<V> Default for Store<V> {
-    fn default() -> Self {
-        Self {
-            owner: NEXT_STORE
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
-                .expect("index identity exhausted"),
-            next_node: 0,
-            path: Vec::new(),
-            nodes: BTreeMap::new(),
-            epoch: 0,
-            frozen: Arc::new(AtomicBool::new(false)),
+impl<V: Value> Record<V> {
+    fn children(&mut self) -> (Option<Arc<Self>>, Option<Arc<Self>>) {
+        match &mut self.node {
+            Node::Leaf { .. } => (None, None),
+            Node::Branch { left, right, .. } => (left.node.take(), right.node.take()),
         }
     }
 }
-
+impl<V: Value> Drop for Record<V> {
+    fn drop(&mut self) {
+        self.stats.live.fetch_sub(1, Relaxed);
+        self.stats.released.fetch_add(1, Relaxed);
+        let (left, right) = self.children();
+        if left.is_none() && right.is_none() {
+            return;
+        }
+        if let Some(queue) = self.queue.upgrade() {
+            queue.push(left, right);
+        } else {
+            let mut pending = Vec::new();
+            pending.extend(left);
+            pending.extend(right);
+            while let Some(node) = pending.pop() {
+                if let Some(mut node) = Arc::into_inner(node) {
+                    let (a, b) = node.children();
+                    pending.extend(a);
+                    pending.extend(b);
+                }
+            }
+        }
+    }
+}
+#[derive(Clone)]
+pub struct Root<V: Value = Condition> {
+    owner: u32,
+    node: Option<Arc<Record<V>>>,
+}
+impl<V: Value> Root<V> {
+    fn empty() -> Self {
+        Self {
+            owner: 0,
+            node: None,
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.node.is_none()
+    }
+}
+impl<V: Value> Default for Root<V> {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+impl<V: Value> PartialEq for Root<V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.owner == other.owner
+            && match (&self.node, &other.node) {
+                (None, None) => true,
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                _ => false,
+            }
+    }
+}
+impl<V: Value> Eq for Root<V> {}
+impl<V: Value> std::fmt::Debug for Root<V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Root({}, {:?})",
+            self.owner,
+            self.node.as_ref().map(Arc::as_ptr)
+        )
+    }
+}
+pub struct Store<V: Value> {
+    owner: u32,
+    epoch: u64,
+    completed: u64,
+    frozen: Arc<AtomicBool>,
+    queue: Arc<Queue<V>>,
+    stats: Arc<Stats>,
+}
+impl<V: Value> Default for Store<V> {
+    fn default() -> Self {
+        Self {
+            owner: NEXT_STORE
+                .fetch_update(Relaxed, Relaxed, |x| x.checked_add(1))
+                .expect("index identity exhausted"),
+            epoch: 0,
+            completed: 0,
+            frozen: Arc::new(AtomicBool::new(false)),
+            queue: Arc::new(Queue::new()),
+            stats: Arc::new(Stats::default()),
+        }
+    }
+}
 fn right(key: &Key, bit: u8) -> bool {
     key[bit as usize / 64] & (1 << (63 - bit % 64)) != 0
 }
 fn difference(a: &Key, b: &Key) -> Option<u8> {
     a.iter().zip(b).enumerate().find_map(|(i, (&a, &b))| {
-        (a != b).then(|| (i * 64 + (a ^ b).leading_zeros() as usize) as u8)
+        (a != b).then(|| (64 * i + (a ^ b).leading_zeros() as usize) as u8)
     })
 }
-fn bounds(mut prefix: Key, bit: u8) -> (Key, Key) {
+fn bounds(mut low: Key, bit: u8) -> (Key, Key) {
     let word = bit as usize / 64;
     let mask = if bit.is_multiple_of(64) {
         0
     } else {
         u64::MAX << (64 - bit % 64)
     };
-    prefix[word] &= mask;
-    let mut high = prefix;
+    low[word] &= mask;
+    let mut high = low;
     high[word] |= !mask;
     for i in word + 1..4 {
-        prefix[i] = 0;
+        low[i] = 0;
         high[i] = u64::MAX;
     }
-    (prefix, high)
+    (low, high)
 }
-
-impl<V: Copy + Eq> Store<V> {
+impl<V: Value> Store<V> {
     pub(crate) fn assert_mutable(&self) {
         GcLease::assert_mutable(&self.frozen);
     }
-
-    pub fn empty(&self) -> Root {
-        EMPTY
+    pub fn empty(&self) -> Root<V> {
+        Root::empty()
     }
-    pub fn contains(&self, root: Root) -> bool {
-        root == EMPTY || (root.owner == self.owner && self.nodes.contains_key(&root.id))
+    pub fn contains(&self, root: &Root<V>) -> bool {
+        root.is_empty()
+            || (root.owner == self.owner
+                && root.node.as_ref().unwrap().marked.load(Relaxed) >= self.completed)
+    }
+    pub fn allocations(&self) -> usize {
+        self.stats.allocated.load(Relaxed)
     }
     pub fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.stats.live.load(Relaxed)
     }
-
-    fn node(&self, root: Root) -> Node<V> {
-        assert!(
-            root != EMPTY && root.owner == self.owner,
-            "stale or foreign index root"
-        );
-        self.nodes
-            .get(&root.id)
-            .expect("stale or foreign index root")
-            .node
+    pub fn release_batches(&self) -> usize {
+        self.queue.count.load(Relaxed)
     }
-    fn allocate(&mut self, node: Node<V>) -> Root {
-        let id = self.next_node;
-        self.next_node = id.checked_add(1).expect("index node identity exhausted");
-        self.nodes.insert(id, Record { node, marked: 0 });
-        Root {
-            owner: self.owner,
-            id,
+    pub fn release_pending(&self) -> bool {
+        self.queue.count.load(Relaxed) != 0
+    }
+    pub fn release_tick(&mut self) -> bool {
+        if let Some(mut batch) = self.queue.pop() {
+            drop(batch.left.take());
+            drop(batch.right.take());
+            false
+        } else {
+            true
         }
     }
-
-    pub fn get(&self, mut root: Root, key: &Key) -> Option<V> {
-        while root != EMPTY {
-            match self.node(root) {
-                Node::Leaf { key: found, value } => return (found == *key).then_some(value),
+    pub fn mutation_counts(&self) -> (usize, usize) {
+        (
+            self.stats.unique.load(Relaxed),
+            self.stats.copied.load(Relaxed),
+        )
+    }
+    fn record<'a>(&self, root: &'a Root<V>) -> &'a Record<V> {
+        assert!(
+            self.contains(root) && !root.is_empty(),
+            "stale or foreign index root"
+        );
+        root.node.as_deref().unwrap()
+    }
+    fn node(&self, root: &Root<V>) -> Node<V> {
+        self.record(root).node.clone()
+    }
+    fn allocate(&mut self, node: Node<V>) -> Root<V> {
+        let leaves = Self::leaf_count(&node);
+        self.stats.allocated.fetch_add(1, Relaxed);
+        let live = self.stats.live.fetch_add(1, Relaxed) + 1;
+        self.stats.peak.fetch_max(live, Relaxed);
+        Root {
+            owner: self.owner,
+            node: Some(Arc::new(Record {
+                leaves,
+                node,
+                marked: AtomicU64::new(self.epoch),
+                queue: Arc::downgrade(&self.queue),
+                stats: self.stats.clone(),
+            })),
+        }
+    }
+    fn unique(&mut self, root: &mut Root<V>) {
+        assert!(self.contains(root));
+        if Arc::get_mut(root.node.as_mut().unwrap()).is_some() {
+            self.stats.unique.fetch_add(1, Relaxed);
+        } else {
+            self.stats.copied.fetch_add(1, Relaxed);
+            *root = self.allocate(self.node(root));
+        }
+    }
+    fn leaf_count(node: &Node<V>) -> usize {
+        match node {
+            Node::Leaf { .. } => 1,
+            Node::Branch { left, right, .. } => {
+                left.node.as_ref().map_or(0, |n| n.leaves)
+                    + right.node.as_ref().map_or(0, |n| n.leaves)
+            }
+        }
+    }
+    fn refresh(root: &mut Root<V>) {
+        let record = Arc::get_mut(root.node.as_mut().unwrap()).unwrap();
+        record.leaves = Self::leaf_count(&record.node);
+    }
+    /// Count a key interval via cached subtrees; only the two boundary paths descend.
+    pub fn count(&self, root: &Root<V>, low: Key, high: Key) -> usize {
+        assert!(self.contains(root));
+        if root.is_empty() || low > high {
+            return 0;
+        }
+        let record = self.record(root);
+        match &record.node {
+            Node::Leaf { key, .. } => usize::from(*key >= low && *key <= high),
+            Node::Branch {
+                prefix,
+                bit,
+                left,
+                right,
+            } => {
+                let (a, b) = bounds(*prefix, *bit);
+                if a > high || b < low {
+                    0
+                } else if low <= a && b <= high {
+                    record.leaves
+                } else {
+                    self.count(left, low, high) + self.count(right, low, high)
+                }
+            }
+        }
+    }
+    pub fn get(&self, root: &Root<V>, key: &Key) -> Option<V> {
+        let mut r = root;
+        while !r.is_empty() {
+            match &self.record(r).node {
+                Node::Leaf { key: found, value } => return (found == key).then_some(*value),
                 Node::Branch {
                     bit,
                     left,
-                    right: r,
+                    right: rgt,
                     ..
-                } => root = if right(key, bit) { r } else { left },
+                } => r = if right(key, *bit) { rgt } else { left },
             }
         }
         None
     }
-
-    pub fn insert(&mut self, root: Root, key: Key, value: V) -> Root {
+    pub fn insert(&mut self, root: Root<V>, key: Key, value: V) -> Root<V> {
         self.assert_mutable();
-        let mut path = std::mem::take(&mut self.path);
-        let result = self.insert_path(root, key, value, &mut path);
-        path.clear();
-        self.path = path;
-        result
-    }
-
-    fn insert_path(
-        &mut self,
-        root: Root,
-        key: Key,
-        value: V,
-        path: &mut Vec<(Root, Node<V>)>,
-    ) -> Root {
-        if root == EMPTY {
-            return self.allocate(Node::Leaf { key, value });
-        }
-        // Reuse visited branch values when splitting and rebuilding the path.
-        let mut cursor = root;
-        let (found, old) = loop {
-            match self.node(cursor) {
-                Node::Leaf { key, value } => break (key, value),
-                node @ Node::Branch {
-                    bit,
-                    left,
-                    right: r,
-                    ..
-                } => {
-                    path.push((cursor, node));
-                    cursor = if right(&key, bit) { r } else { left };
-                }
-            }
-        };
-        if found == key && old == value {
+        assert!(self.contains(&root), "stale or foreign index root");
+        if self.get(&root, &key) == Some(value) {
             return root;
         }
-        let mut replacement = self.allocate(Node::Leaf { key, value });
-        if let Some(split) = difference(&found, &key) {
-            let index = path
-                .iter()
-                .position(|&(_, node)| matches!(node, Node::Branch { bit, .. } if bit >= split))
-                .unwrap_or(path.len());
-            let subtree = path.get(index).map_or(cursor, |&(root, _)| root);
-            path.truncate(index);
-            let (left, r) = if right(&key, split) {
-                (subtree, replacement)
+        self.insert_node(root, key, value)
+    }
+    fn insert_node(&mut self, mut root: Root<V>, key: Key, value: V) -> Root<V> {
+        if root.is_empty() {
+            return self.allocate(Node::Leaf { key, value });
+        }
+        let (prefix, bit) = match &self.record(&root).node {
+            Node::Leaf { key, .. } => (*key, 256),
+            Node::Branch { prefix, bit, .. } => (*prefix, *bit as usize),
+        };
+        if let Some(split) = difference(&prefix, &key).filter(|&x| (x as usize) < bit) {
+            let new = self.allocate(Node::Leaf { key, value });
+            let (left, rgt) = if right(&key, split) {
+                (root, new)
             } else {
-                (replacement, subtree)
+                (new, root)
             };
-            replacement = self.allocate(Node::Branch {
+            return self.allocate(Node::Branch {
                 prefix: key,
                 bit: split,
                 left,
-                right: r,
+                right: rgt,
             });
         }
-        self.rebuild(path, &key, replacement)
-    }
-
-    fn rebuild(&mut self, path: &[(Root, Node<V>)], key: &Key, mut replacement: Root) -> Root {
-        for &(_, node) in path.iter().rev() {
-            let Node::Branch {
-                prefix,
+        self.unique(&mut root);
+        let record = Arc::get_mut(root.node.as_mut().unwrap()).unwrap();
+        match &mut record.node {
+            Node::Leaf { value: v, .. } => *v = value,
+            Node::Branch {
                 bit,
                 left,
-                right: r,
-            } = node
-            else {
-                unreachable!("branch path")
-            };
-            let (left, r) = if right(key, bit) {
-                (left, replacement)
-            } else {
-                (replacement, r)
-            };
-            replacement = self.allocate(Node::Branch {
-                prefix,
-                bit,
-                left,
-                right: r,
-            });
-        }
-        replacement
-    }
-
-    pub fn remove(&mut self, root: Root, key: &Key) -> Root {
-        self.assert_mutable();
-        let mut path = std::mem::take(&mut self.path);
-        let result = self.remove_path(root, key, &mut path);
-        path.clear();
-        self.path = path;
-        result
-    }
-
-    fn remove_path(&mut self, root: Root, key: &Key, path: &mut Vec<(Root, Node<V>)>) -> Root {
-        if root == EMPTY {
-            return root;
-        }
-        let mut cursor = root;
-        loop {
-            match self.node(cursor) {
-                Node::Leaf { key: found, .. } => {
-                    if found != *key {
-                        return root;
-                    }
-                    break;
-                }
-                node @ Node::Branch {
-                    bit,
-                    left,
-                    right: r,
-                    ..
-                } => {
-                    path.push((cursor, node));
-                    cursor = if right(key, bit) { r } else { left };
-                }
+                right: rgt,
+                ..
+            } => {
+                let child = if right(&key, *bit) { rgt } else { left };
+                let input = std::mem::take(child);
+                *child = self.insert_node(input, key, value);
             }
         }
-        let Some((_, parent)) = path.pop() else {
-            return EMPTY;
-        };
+        Self::refresh(&mut root);
+        root
+    }
+    pub fn remove(&mut self, root: Root<V>, key: &Key) -> Root<V> {
+        self.assert_mutable();
+        assert!(self.contains(&root), "stale or foreign index root");
+        if self.get(&root, key).is_none() {
+            return root;
+        }
+        self.remove_node(root, key)
+    }
+    fn remove_node(&mut self, mut root: Root<V>, key: &Key) -> Root<V> {
+        if matches!(self.record(&root).node, Node::Leaf { .. }) {
+            return Root::empty();
+        }
+        self.unique(&mut root);
         let Node::Branch {
             bit,
             left,
-            right: r,
+            right: rgt,
             ..
-        } = parent
+        } = &mut Arc::get_mut(root.node.as_mut().unwrap()).unwrap().node
         else {
-            unreachable!("branch path")
+            unreachable!()
         };
-        let sibling = if right(key, bit) { left } else { r };
-        self.rebuild(path, key, sibling)
+        let (child, sibling) = if right(key, *bit) {
+            (rgt, left)
+        } else {
+            (left, rgt)
+        };
+        let input = std::mem::take(child);
+        *child = self.remove_node(input, key);
+        if child.is_empty() {
+            return std::mem::take(sibling);
+        }
+        Self::refresh(&mut root);
+        root
     }
-
-    pub fn range(&self, root: Root, low: Key, high: Key) -> Cursor {
-        assert!(self.contains(root), "stale or foreign index root");
+    pub fn range(&self, root: Root<V>, low: Key, high: Key) -> Cursor<V> {
+        assert!(self.contains(&root), "stale or foreign index root");
+        let pending = if root.is_empty() {
+            vec![]
+        } else {
+            vec![root.clone()]
+        };
         Cursor {
             root,
-            pending: if root == EMPTY || low > high {
-                Vec::new()
-            } else {
-                vec![root]
-            },
+            pending,
             low,
             high,
             visits: 0,
         }
     }
-
-    /// Visit each leaf once and rebuild changed branches bottom-up. Keep the
-    /// token's roots and pending values traced whenever collection intervenes.
-    pub fn filter(&self, root: Root) -> Filter<V> {
-        assert!(self.contains(root), "stale or foreign index root");
+    pub fn filter(&self, root: Root<V>) -> Filter<V> {
+        assert!(self.contains(&root), "stale or foreign index root");
         Filter {
             owner: self.owner,
-            base: root,
+            base: root.clone(),
             frame: Some(FilterFrame::Visit(root)),
             frames: Vec::new(),
-            last: EMPTY,
+            last: Root::empty(),
             leaf: None,
         }
     }
-
-    /// Supply all current, staged and explicitly inspected roots. Cursor roots
-    /// retain their whole coherent index version. Leaf events expose payloads
-    /// so the graph owner can trace occurrence and condition dependencies.
-    /// The owner remains read-only until the returned token is dropped, even
-    /// after completion. Dropping an unfinished token safely aborts collection.
-    pub fn collect<I: Iterator<Item = Root>>(&mut self, roots: I) -> Collector<I> {
+    pub fn collect<I: Iterator<Item = Root<V>>>(&mut self, roots: I) -> Collector<I, V> {
         let lease = GcLease::acquire(&self.frozen);
         self.epoch = self
             .epoch
@@ -324,189 +448,30 @@ impl<V: Copy + Eq> Store<V> {
             _lease: lease,
             roots,
             pending: Vec::new(),
-            sweep: None,
             marking: true,
             done: false,
         }
     }
 }
-
-#[derive(Clone, Copy)]
-enum FilterFrame {
-    Visit(Root),
-    AfterLeft { root: Root },
-    AfterRight { root: Root, left: Root },
-}
-
-struct FilterLeaf<V> {
-    root: Root,
-    key: Key,
-    value: V,
-    replacement: Option<Option<V>>,
-}
-
-/// An owned filter continuation. Call `replace` exactly once after every Leaf.
-/// Dropping this token abandons the staged result without changing its input.
-pub struct Filter<V> {
-    owner: u32,
-    base: Root,
-    frame: Option<FilterFrame>,
-    // Only branch continuations are stacked, so even a full-width path has
-    // at most 256 entries. The active Visit is held separately.
-    frames: Vec<FilterFrame>,
-    last: Root,
-    leaf: Option<FilterLeaf<V>>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FilterStatus<V> {
-    Pending,
-    Leaf { key: Key, value: V },
-    Complete(Root),
-}
-
-impl<V: Copy + Eq> Filter<V> {
-    pub fn replace(&mut self, value: Option<V>) {
-        let leaf = self.leaf.as_mut().expect("filter replace requires a Leaf");
-        assert!(leaf.replacement.is_none(), "filter Leaf already replaced");
-        leaf.replacement = Some(value);
-    }
-
-    pub fn roots(&self) -> impl Iterator<Item = Root> + '_ {
-        [self.base, self.last].into_iter().chain(
-            self.frames
-                .iter()
-                .chain(self.frame.iter())
-                .filter_map(|frame| match *frame {
-                    FilterFrame::AfterRight { left, .. } => Some(left),
-                    _ => None,
-                }),
-        )
-    }
-
-    /// Values supplied by the caller but not yet installed in a store leaf.
-    pub fn values(&self) -> impl Iterator<Item = V> + '_ {
-        self.leaf
-            .iter()
-            .filter_map(|leaf| leaf.replacement.flatten())
-    }
-
-    fn returned(&mut self, root: Root) -> FilterStatus<V> {
-        self.last = root;
-        self.frame = self.frames.pop();
-        if self.frame.is_none() {
-            self.base = root;
-            self.frames = Vec::new();
-            FilterStatus::Complete(root)
-        } else {
-            FilterStatus::Pending
-        }
-    }
-
-    /// Perform one traversal transition or allocate at most one changed node.
-    /// GC may run between ticks, but its lease must be dropped before ticking.
-    pub fn tick(&mut self, store: &mut Store<V>) -> FilterStatus<V> {
-        assert_eq!(self.owner, store.owner, "foreign index filter");
-        store.assert_mutable();
-        assert!(store.contains(self.base), "stale index filter root");
-        if let Some(leaf) = &self.leaf {
-            let replacement = leaf
-                .replacement
-                .expect("filter Leaf requires replace before tick");
-            let root = match replacement {
-                None => EMPTY,
-                Some(value) if value == leaf.value => leaf.root,
-                Some(value) => store.allocate(Node::Leaf {
-                    key: leaf.key,
-                    value,
-                }),
-            };
-            self.leaf = None;
-            return self.returned(root);
-        }
-        match self.frame {
-            None => FilterStatus::Complete(self.last),
-            Some(FilterFrame::Visit(root)) if root == EMPTY => self.returned(EMPTY),
-            Some(FilterFrame::Visit(root)) => match store.node(root) {
-                Node::Leaf { key, value } => {
-                    self.leaf = Some(FilterLeaf {
-                        root,
-                        key,
-                        value,
-                        replacement: None,
-                    });
-                    FilterStatus::Leaf { key, value }
-                }
-                Node::Branch { left, .. } => {
-                    self.frames.push(FilterFrame::AfterLeft { root });
-                    self.frame = Some(FilterFrame::Visit(left));
-                    FilterStatus::Pending
-                }
-            },
-            Some(FilterFrame::AfterLeft { root }) => {
-                let Node::Branch { right, .. } = store.node(root) else {
-                    unreachable!("filter branch")
-                };
-                self.frames.push(FilterFrame::AfterRight {
-                    root,
-                    left: self.last,
-                });
-                self.frame = Some(FilterFrame::Visit(right));
-                FilterStatus::Pending
-            }
-            Some(FilterFrame::AfterRight { root, left }) => {
-                let Node::Branch {
-                    prefix,
-                    bit,
-                    left: old_left,
-                    right: old_right,
-                } = store.node(root)
-                else {
-                    unreachable!("filter branch")
-                };
-                let right = self.last;
-                let result = if left == old_left && right == old_right {
-                    root
-                } else if left == EMPTY {
-                    right
-                } else if right == EMPTY {
-                    left
-                } else {
-                    store.allocate(Node::Branch {
-                        prefix,
-                        bit,
-                        left,
-                        right,
-                    })
-                };
-                self.returned(result)
-            }
-        }
-    }
-}
-
-pub struct Cursor {
-    root: Root,
-    pending: Vec<Root>,
+pub struct Cursor<V: Value = Condition> {
+    root: Root<V>,
+    pending: Vec<Root<V>>,
     low: Key,
     high: Key,
     visits: u64,
 }
-
-impl Cursor {
-    pub fn root(&self) -> Root {
-        self.root
+impl<V: Value> Cursor<V> {
+    pub fn root(&self) -> Root<V> {
+        self.root.clone()
     }
     pub fn visits(&self) -> u64 {
         self.visits
     }
-
-    /// Advance to one row, crossing at most two bounded key paths between rows.
-    /// No tuple product or unrelated predicate bucket is materialized.
-    pub fn next<V: Copy + Eq>(&mut self, store: &Store<V>) -> Option<(Key, V)> {
+    pub fn next(&mut self, store: &Store<V>) -> Option<(Key, V)> {
+        assert!(store.contains(&self.root), "stale or foreign cursor root");
         while let Some(root) = self.pending.pop() {
             self.visits += 1;
-            match store.node(root) {
+            match store.node(&root) {
                 Node::Leaf { key, value } => {
                     if key >= self.low && key <= self.high {
                         return Some((key, value));
@@ -528,72 +493,190 @@ impl Cursor {
         None
     }
 }
-
-pub struct Collector<I> {
+#[derive(Clone)]
+enum FilterFrame<V: Value> {
+    Visit(Root<V>),
+    AfterLeft { root: Root<V> },
+    AfterRight { root: Root<V>, left: Root<V> },
+}
+struct FilterLeaf<V: Value> {
+    root: Root<V>,
+    key: Key,
+    value: V,
+    replacement: Option<Option<V>>,
+}
+pub struct Filter<V: Value> {
+    owner: u32,
+    base: Root<V>,
+    frame: Option<FilterFrame<V>>,
+    frames: Vec<FilterFrame<V>>,
+    last: Root<V>,
+    leaf: Option<FilterLeaf<V>>,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FilterStatus<V: Value> {
+    Pending,
+    Leaf { key: Key, value: V },
+    Complete(Root<V>),
+}
+impl<V: Value> Filter<V> {
+    pub fn replace(&mut self, value: Option<V>) {
+        let leaf = self.leaf.as_mut().expect("filter replace requires a Leaf");
+        assert!(leaf.replacement.is_none(), "filter Leaf already replaced");
+        leaf.replacement = Some(value);
+    }
+    pub fn roots(&self) -> impl Iterator<Item = Root<V>> + '_ {
+        [self.base.clone(), self.last.clone()].into_iter().chain(
+            self.frames
+                .iter()
+                .chain(self.frame.iter())
+                .filter_map(|f| match f {
+                    FilterFrame::AfterRight { left, .. } => Some(left.clone()),
+                    _ => None,
+                }),
+        )
+    }
+    pub fn values(&self) -> impl Iterator<Item = V> + '_ {
+        self.leaf.iter().filter_map(|l| l.replacement.flatten())
+    }
+    fn returned(&mut self, root: Root<V>) -> FilterStatus<V> {
+        self.last = root;
+        self.frame = self.frames.pop();
+        if self.frame.is_none() {
+            self.base = self.last.clone();
+            self.frames = Vec::new();
+            FilterStatus::Complete(self.last.clone())
+        } else {
+            FilterStatus::Pending
+        }
+    }
+    pub fn tick(&mut self, store: &mut Store<V>) -> FilterStatus<V> {
+        assert_eq!(self.owner, store.owner, "foreign index filter");
+        store.assert_mutable();
+        assert!(store.contains(&self.base), "stale index filter root");
+        if let Some(leaf) = &self.leaf {
+            leaf.replacement
+                .expect("filter Leaf requires replace before tick");
+        }
+        if let Some(leaf) = self.leaf.take() {
+            let replacement = leaf.replacement.unwrap();
+            let root = match replacement {
+                None => Root::empty(),
+                Some(v) if v == leaf.value => leaf.root,
+                Some(value) => store.allocate(Node::Leaf {
+                    key: leaf.key,
+                    value,
+                }),
+            };
+            return self.returned(root);
+        }
+        match self.frame.take() {
+            None => FilterStatus::Complete(self.last.clone()),
+            Some(FilterFrame::Visit(root)) if root.is_empty() => self.returned(root),
+            Some(FilterFrame::Visit(root)) => match store.node(&root) {
+                Node::Leaf { key, value } => {
+                    self.leaf = Some(FilterLeaf {
+                        root,
+                        key,
+                        value,
+                        replacement: None,
+                    });
+                    FilterStatus::Leaf { key, value }
+                }
+                Node::Branch { left, .. } => {
+                    self.frames.push(FilterFrame::AfterLeft { root });
+                    self.frame = Some(FilterFrame::Visit(left));
+                    FilterStatus::Pending
+                }
+            },
+            Some(FilterFrame::AfterLeft { root }) => {
+                let Node::Branch { right, .. } = store.node(&root) else {
+                    unreachable!()
+                };
+                self.frames.push(FilterFrame::AfterRight {
+                    root,
+                    left: self.last.clone(),
+                });
+                self.frame = Some(FilterFrame::Visit(right));
+                FilterStatus::Pending
+            }
+            Some(FilterFrame::AfterRight { root, left }) => {
+                let Node::Branch {
+                    prefix,
+                    bit,
+                    left: old_left,
+                    right: old_right,
+                } = store.node(&root)
+                else {
+                    unreachable!()
+                };
+                let right = self.last.clone();
+                let result = if left == old_left && right == old_right {
+                    root
+                } else if left.is_empty() {
+                    right
+                } else if right.is_empty() {
+                    left
+                } else {
+                    store.allocate(Node::Branch {
+                        prefix,
+                        bit,
+                        left,
+                        right,
+                    })
+                };
+                self.returned(result)
+            }
+        }
+    }
+}
+pub struct Collector<I, V: Value = Condition> {
     owner: u32,
     epoch: u64,
     _lease: GcLease,
     roots: I,
-    pending: Vec<Root>,
-    sweep: Option<u64>,
+    pending: Vec<Root<V>>,
     marking: bool,
     done: bool,
 }
-
-impl<I: Iterator<Item = Root>> Collector<I> {
-    pub(crate) fn validate<V: Copy + Eq>(&self, store: &Store<V>) {
+impl<I: Iterator<Item = Root<V>>, V: Value> Collector<I, V> {
+    pub(crate) fn validate(&self, store: &Store<V>) {
         assert_eq!(self.owner, store.owner, "foreign index collector");
         assert_eq!(self.epoch, store.epoch, "stale index collector");
     }
-
     pub fn done(&self) -> bool {
         self.done
     }
-
-    /// Mark or reclaim one node. Each reachable physical leaf is reported once
-    /// across all roots; map operations retain their usual size-dependent cost.
-    pub fn tick<V: Copy + Eq>(&mut self, store: &mut Store<V>) -> Option<(Key, V)> {
+    pub fn tick(&mut self, store: &mut Store<V>) -> Option<(Key, V)> {
         self.validate(store);
         if self.done {
             return None;
         }
         if self.marking {
             if let Some(root) = self.pending.pop().or_else(|| self.roots.next()) {
-                if root != EMPTY {
-                    assert_eq!(root.owner, store.owner, "stale or foreign collection root");
-                    let record = store
-                        .nodes
-                        .get_mut(&root.id)
-                        .expect("stale or foreign collection root");
-                    if record.marked != self.epoch {
-                        record.marked = self.epoch;
-                        match record.node {
-                            Node::Leaf { key, value } => return Some((key, value)),
-                            Node::Branch { left, right, .. } => self.pending.extend([right, left]),
+                assert!(store.contains(&root), "stale or foreign collection root");
+                if !root.is_empty() {
+                    let record = store.record(&root);
+                    if record.marked.swap(self.epoch, Relaxed) != self.epoch {
+                        match &record.node {
+                            Node::Leaf { key, value } => return Some((*key, *value)),
+                            Node::Branch { left, right, .. } => {
+                                self.pending.extend([right.clone(), left.clone()])
+                            }
                         }
                     }
                 }
             } else {
+                store.completed = self.epoch;
                 self.marking = false;
             }
-        } else {
-            let next = match self.sweep {
-                Some(id) => store.nodes.range((Excluded(id), Unbounded)).next(),
-                None => store.nodes.first_key_value(),
-            };
-            if let Some((&id, record)) = next {
-                if record.marked != self.epoch {
-                    store.nodes.remove(&id);
-                }
-                self.sweep = Some(id);
-            } else {
-                self.done = true;
-            }
+        } else if store.release_tick() {
+            self.pending = Vec::new();
+            self.done = true;
         }
         None
     }
 }
-
 #[cfg(test)]
 mod filter_tests {
     use super::*;
@@ -607,7 +690,7 @@ mod filter_tests {
             key[bit / 64] = 1_u64 << (63 - bit % 64);
             root = store.insert(root, key, bit as u64 + 1);
         }
-        let mut filter = store.filter(root);
+        let mut filter = store.filter(root.clone());
         let mut peak = 0;
         let before = store.node_count();
         let mut leaves = 0;
@@ -633,44 +716,5 @@ mod filter_tests {
         assert_eq!(filter.frames.capacity(), 0);
         assert!(filter.frame.is_none());
         assert!(filter.leaf.is_none());
-    }
-}
-
-#[cfg(test)]
-mod scratch_checks {
-    use super::*;
-    #[test]
-    fn bounded_reuse_all_returns_and_gc() {
-        let mut store = Store::default();
-        let empty = store.empty();
-        assert_eq!(store.remove(empty, &[0; 4]), empty);
-        let mut root = store.insert(empty, [0; 4], 0u64);
-        for bit in 0..256 {
-            let mut key = [0; 4];
-            key[bit / 64] = 1u64 << (63 - bit % 64);
-            root = store.insert(root, key, bit as u64 + 1);
-        }
-        let snapshot = root;
-        assert_eq!(store.insert(root, [0; 4], 0), root);
-        assert_eq!(store.path.len(), 0);
-        assert_eq!(store.path.capacity(), 256);
-        let pointer = store.path.as_ptr();
-        root = store.insert(root, [0; 4], 99);
-        root = store.remove(root, &[0; 4]);
-        assert_eq!(store.remove(root, &[0; 4]), root);
-        assert_eq!(store.path.as_ptr(), pointer);
-        assert!(store.path.is_empty());
-        let mut gc = store.collect([root, snapshot].into_iter());
-        while !gc.done() {
-            gc.tick(&mut store);
-        }
-        drop(gc);
-        assert_eq!(store.get(snapshot, &[0; 4]), Some(0));
-        assert_eq!(store.get(root, &[0; 4]), None);
-        let one = store.insert(empty, [0; 4], 1);
-        assert_eq!(store.remove(one, &[0; 4]), empty);
-        assert_eq!(store.remove(empty, &[0; 4]), empty);
-        assert_eq!(store.path.as_ptr(), pointer);
-        assert!(store.path.is_empty());
     }
 }
