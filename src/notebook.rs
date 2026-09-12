@@ -21,6 +21,7 @@ const BUDGET_LIMIT: usize = 4096;
 pub struct Runtime {
     runs: Mutex<Runs>,
     batches: Mutex<BTreeMap<(u64, Option<u64>), Value>>,
+    captures: Mutex<BTreeMap<u64, (u64, ViewId)>>,
 }
 #[derive(Default)]
 struct Runs {
@@ -94,6 +95,8 @@ struct RunRequest {
     run: u64,
     #[serde(default)]
     ack: Option<u64>,
+    #[serde(default)]
+    capture: Option<u64>,
     #[serde(default = "budget")]
     budget: usize,
     #[serde(default)]
@@ -232,10 +235,16 @@ impl Runtime {
             .cloned()
             .ok_or_else(|| Response::error(404, "unknown run"))?;
         let mut e = run.lock().unwrap();
-        if self.runs.lock().unwrap().closing.contains_key(&request.run)
-            && !matches!(path, "/api/status" | "/api/close" | "/api/cancel")
         {
-            return Err(Response::error(409, "run is closing"));
+            let runs = self.runs.lock().unwrap();
+            if !runs.entries.contains_key(&request.run) {
+                return Err(Response::error(404, "unknown run"));
+            }
+            if runs.closing.contains_key(&request.run)
+                && !matches!(path, "/api/status" | "/api/close" | "/api/cancel")
+            {
+                return Err(Response::error(409, "run is closing"));
+            }
         }
         let stream = match path {
             "/api/advance" => Some((request.run, None)),
@@ -359,16 +368,37 @@ impl Runtime {
                     .remove(&(request.run, Some(id.0)));
                 json!({})
             }
-            "/api/snapshot" => json!({"snapshot":view_result(e.capture_snapshot())?.0.to_string()}),
+            "/api/snapshot" => {
+                let capture = request
+                    .capture
+                    .filter(|&id| id > 0 && id <= 9_007_199_254_740_991)
+                    .ok_or_else(|| Response::error(400, "missing or invalid capture request ID"))?;
+                let mut captures = self.captures.lock().unwrap();
+                if let Some(&(previous, snapshot)) = captures.get(&request.run) {
+                    if capture < previous {
+                        return Err(Response::error(
+                            409,
+                            "capture request is outside the retained replay window",
+                        ));
+                    }
+                    if capture == previous {
+                        return Ok(Response::ok(json!({"snapshot":snapshot.0.to_string()})));
+                    }
+                }
+                let snapshot = view_result(e.capture_snapshot())?;
+                captures.insert(request.run, (capture, snapshot));
+                json!({"snapshot":snapshot.0.to_string()})
+            }
             "/api/snapshot_release" => {
-                view_result(
-                    e.release_snapshot(
-                        request
-                            .snapshot
-                            .ok_or_else(|| Response::error(400, "missing snapshot"))?
-                            .view(),
-                    ),
-                )?;
+                let snapshot = request
+                    .snapshot
+                    .ok_or_else(|| Response::error(400, "missing snapshot"))?;
+                match e.release_snapshot(snapshot.view()) {
+                    Ok(()) | Err(InspectionError::UnknownSnapshot) => {}
+                    Err(error) => {
+                        view_result::<()>(Err(error))?;
+                    }
+                }
                 json!({})
             }
             "/api/views" => {
@@ -547,6 +577,7 @@ impl Runtime {
                             let mut runs = self.runs.lock().unwrap();
                             runs.entries.remove(&id);
                             runs.closing.remove(&id);
+                            self.captures.lock().unwrap().remove(&id);
                         }
                     }
                 }

@@ -234,6 +234,8 @@ assert.equal(switchedRecovery.stream.total, 1);
 const pagedSelection = new InspectionSelection();
 let pageRequests = 0;
 const metadataApi = async (route, payload) => {
+  if (route === 'snapshot') return {snapshot:'9000'};
+  if (route === 'snapshot_release') return {};
   assert.equal(route, 'views'); pageRequests++;
   const page = (kind, noun) => {
     const start = payload[`before_${kind}`] ? Number(payload[`before_${kind}`]) - 64 : payload[`after_${kind}`] ? Number(payload[`after_${kind}`]) + 1 : 1;
@@ -270,7 +272,8 @@ await assert.rejects(pagedSelection.selectSnapshot(async () => { throw new Error
 assert.deepEqual(pagedSelection.payload(1), coherentPayload);
 assert.equal(pagedSelection.choices, coherentChoices);
 let completePage;
-const loadingPage = pagedSelection.page((...args) => new Promise(resolve => { completePage = async () => resolve(await metadataApi(...args)); }), 1, 'choice', 'next');
+const loadingPage = pagedSelection.page((route, payload) => route === 'views' ? new Promise(resolve => { completePage = async () => resolve(await metadataApi(route, payload)); }) : metadataApi(route, payload), 1, 'choice', 'next');
+await new Promise(resolve => setTimeout(resolve, 0));
 await assert.rejects(pagedSelection.selectSnapshot(metadataApi, 1, pagedSelection.snapshots[0].id), /already loading/);
 assert.deepEqual(pagedSelection.payload(1), coherentPayload);
 await completePage(); await loadingPage;
@@ -298,3 +301,189 @@ assert.throws(() => unfinishedPending.push({kind:'end'}), /pending body/);
 unfinishedPending.discardPartial(); unfinishedPending.finish();
 assert.equal(unfinishedPending.pending, null);
 assert.equal(unfinishedPending.expressions.length, 0);
+
+// A metadata lease bridges refreshes without changing Current inspection targets.
+const leaseCalls = [], heldLeases = new Map();
+let leaseId = 10000, leaseRun = 20, failViews = false, failRelease = false, busyCapture = false, holdViews = null;
+const leaseApi = async (route, payload) => {
+  leaseCalls.push([route, {...payload}]);
+  if (route === 'start') return {run: ++leaseRun, ...tables};
+  if (route === 'cancel' || route === 'close' || route === 'maintenance') return {};
+  if (route === 'snapshot') {
+    if (busyCapture) { busyCapture = false; throw Object.assign(new Error('Collecting'), {retry:true}); }
+    const snapshot = String(++leaseId); heldLeases.set(snapshot, payload.run); return {snapshot};
+  }
+  if (route === 'snapshot_release') {
+    if (failRelease) throw new Error('Release unavailable');
+    assert.equal(heldLeases.get(payload.snapshot), payload.run);
+    heldLeases.delete(payload.snapshot); return {};
+  }
+  assert.equal(route, 'views');
+  if (failViews) throw new Error('Metadata unavailable');
+  assert.ok(payload.snapshot === '17' || heldLeases.get(payload.snapshot) === payload.run);
+  if (holdViews) await new Promise(resolve => { holdViews = resolve; });
+  return {
+    choices:[{id:payload.after_choice ? '82' : '41', label:'Choice'}],
+    snapshots:[{id:'17',label:'Recorded state'}, ...[...heldLeases.keys()].map(id => ({id,label:'Metadata lease'}))],
+    next_choice:'41', prev_choice:null, next_snapshot:null, prev_snapshot:null,
+  };
+};
+const leased = new RunSession(leaseApi);
+await leased.start(untouched, false, false);
+busyCapture = true;
+await leased.selection.page(leaseApi, leased.run);
+assert.ok(leaseCalls.some(([route]) => route === 'maintenance'));
+assert.deepEqual(leased.selection.snapshots, [{id:'17',label:'Recorded state'}]);
+leased.selection.choose('41', 'second');
+const firstLease = leased.selection.lease.snapshot;
+await leased.selection.page(leaseApi, leased.run, 'choice', 'next');
+assert.equal(heldLeases.size, 1);
+assert.ok(!heldLeases.has(firstLease));
+assert.deepEqual(leased.selection.payload(leased.run), {run:leased.run, choices:{41:false}});
+assert.deepEqual(leased.selection.snapshots, [{id:'17',label:'Recorded state'}]);
+const preservedLease = leased.selection.lease.snapshot;
+const preservedChoices = leased.selection.choices;
+failViews = true;
+await assert.rejects(leased.selection.page(leaseApi, leased.run), /Metadata unavailable/);
+assert.equal(heldLeases.size, 1);
+assert.equal(leased.selection.lease.snapshot, preservedLease);
+assert.equal(leased.selection.choices, preservedChoices);
+assert.equal(leased.selection.payload(leased.run).choices[41], false);
+// A failed candidate cleanup remains owned and is retried before another capture.
+failRelease = true;
+await assert.rejects(leased.selection.page(leaseApi, leased.run), /Release unavailable/);
+assert.equal(heldLeases.size, 2);
+assert.ok(heldLeases.has(leased.selection.retiring.snapshot));
+failViews = false; failRelease = false;
+await leased.selection.page(leaseApi, leased.run);
+assert.equal(heldLeases.size, 1);
+assert.equal(leased.selection.retiring, null);
+// Successful installation with failed old-lease release also keeps both owners.
+failRelease = true;
+await assert.rejects(leased.selection.page(leaseApi, leased.run), /Release unavailable/);
+assert.equal(heldLeases.size, 2);
+assert.deepEqual(leased.selection.snapshots, [{id:'17',label:'Recorded state'}]);
+await assert.rejects(leased.selection.reset(leaseApi), /Release unavailable/);
+assert.equal(heldLeases.size, 2);
+assert.equal(leased.selection.payload(leased.run).choices[41], false);
+failRelease = false;
+await leased.selection.reset(leaseApi);
+assert.equal(heldLeases.size, 0);
+assert.deepEqual(leased.selection.payload(leased.run).choices, {});
+// Reset waits for an admitted page, then releases its candidate before clearing.
+holdViews = true;
+const waitingPage = leased.selection.page(leaseApi, leased.run);
+await new Promise(resolve => setTimeout(resolve, 0));
+const resettingSelection = leased.selection.reset(leaseApi);
+await assert.rejects(leased.selection.page(leaseApi, leased.run), /already loading/);
+assert.equal(heldLeases.size, 1);
+holdViews(); holdViews = null;
+await waitingPage; await resettingSelection;
+assert.equal(heldLeases.size, 0);
+assert.deepEqual(leased.selection.choices, []);
+// Historical selection uses its existing root and never acquires a metadata lease.
+await leased.selection.page(leaseApi, leased.run);
+const capturesBeforeHistory = leaseCalls.filter(([route]) => route === 'snapshot').length;
+await leased.selection.selectSnapshot(leaseApi, leased.run, '17');
+assert.equal(heldLeases.size, 0);
+await leased.selection.page(leaseApi, leased.run);
+assert.equal(leaseCalls.filter(([route]) => route === 'snapshot').length, capturesBeforeHistory);
+assert.equal(leased.selection.payload(leased.run).snapshot, '17');
+await leased.selection.selectSnapshot(leaseApi, leased.run, '');
+assert.equal(heldLeases.size, 1);
+assert.ok(!('snapshot' in leased.selection.payload(leased.run)));
+// Real lifecycle methods release against the original run, including in-flight metadata.
+const oldLeaseRun = leased.run;
+leased.selection.choose('41', 'first');
+const sharedSelection = leased.selection;
+await leased.start(untouched, false, false);
+assert.equal(leased.selection, sharedSelection);
+assert.deepEqual(sharedSelection.choices, []);
+assert.deepEqual(sharedSelection.snapshots, []);
+assert.equal(sharedSelection.assignments.size, 0);
+assert.equal(sharedSelection.snapshot, '');
+assert.deepEqual(sharedSelection.navigation, {});
+assert.equal(heldLeases.size, 0);
+assert.ok(leaseCalls.some(([route,payload]) => route === 'snapshot_release' && payload.run === oldLeaseRun));
+await leased.selection.page(leaseApi, leased.run);
+await leased.switchRun(oldLeaseRun);
+assert.equal(heldLeases.size, 0);
+await leased.selection.page(leaseApi, leased.run);
+await leased.closeRun();
+assert.equal(heldLeases.size, 0);
+assert.equal(leased.run, null);
+console.log('Metadata snapshot ownership, cofactor-safe selections, page failure recovery, and lifecycle release checks passed.');
+
+// Capture replay recovers ownership when the server mutates before transport fails.
+const replaySelection = new InspectionSelection();
+const captureCache = new Map(), replayHeld = new Map(), replayCalls = [];
+let replayId = 20000, loseCapture = false, loseRelease = false;
+const replayApi = async (route, payload) => {
+  replayCalls.push([route, {...payload}]);
+  if (route === 'snapshot') {
+    assert.ok(Number.isSafeInteger(payload.capture) && payload.capture > 0);
+    let cached = captureCache.get(payload.run);
+    if (!cached || payload.capture > cached.capture) {
+      cached = {capture:payload.capture, snapshot:String(++replayId)};
+      captureCache.set(payload.run, cached);
+      replayHeld.set(cached.snapshot, payload.run);
+    } else assert.equal(payload.capture, cached.capture, 'Older capture rejected');
+    if (loseCapture) { loseCapture = false; throw new Error('Capture response lost'); }
+    return {snapshot:cached.snapshot};
+  }
+  if (route === 'snapshot_release') {
+    if (replayHeld.has(payload.snapshot)) assert.equal(replayHeld.get(payload.snapshot), payload.run);
+    replayHeld.delete(payload.snapshot);
+    if (loseRelease) { loseRelease = false; throw new Error('Release response lost'); }
+    return {};
+  }
+  assert.equal(route, 'views');
+  assert.equal(replayHeld.get(payload.snapshot), payload.run);
+  return {choices:[{id:'8',label:'Choice 8'}], snapshots:[...replayHeld.keys()].map(id => ({id,label:'Owned'}))};
+};
+loseCapture = true;
+await assert.rejects(replaySelection.page(replayApi, 1), /Capture response lost/);
+assert.equal(replayHeld.size, 1);
+assert.deepEqual(replaySelection.pendingCapture, {run:1,capture:1});
+await replaySelection.page(replayApi, 1);
+assert.equal(replayHeld.size, 1);
+assert.equal(replayId, 20001, 'Replay must not allocate another snapshot');
+assert.equal(replaySelection.pendingCapture, null);
+assert.deepEqual(replaySelection.snapshots, []);
+replaySelection.choose('8', 'second');
+const replayOld = replaySelection.lease.snapshot;
+loseCapture = true;
+await assert.rejects(replaySelection.page(replayApi, 1), /Capture response lost/);
+assert.equal(replayHeld.size, 2);
+assert.equal(replaySelection.lease.snapshot, replayOld);
+assert.deepEqual(replaySelection.payload(1), {run:1,choices:{8:false}});
+const uncertainToken = {...replaySelection.pendingCapture};
+loseCapture = true;
+await assert.rejects(replaySelection.reset(replayApi), /Capture response lost/);
+assert.deepEqual(replaySelection.pendingCapture, uncertainToken);
+assert.equal(replayHeld.size, 2);
+// Reset learns the uncertain ID, then an uncertain release retains that owner.
+loseRelease = true;
+await assert.rejects(replaySelection.reset(replayApi), /Release response lost/);
+assert.equal(replaySelection.pendingCapture, null);
+assert.ok(replaySelection.retiring);
+assert.equal(replayHeld.size, 1);
+await replaySelection.reset(replayApi);
+assert.equal(replayHeld.size, 0);
+assert.equal(replaySelection.retiring, null);
+assert.equal(replaySelection.lease, null);
+await replaySelection.page(replayApi, 2);
+assert.equal(captureCache.get(2).capture, 3, 'Capture sequence spans runs');
+const heldSecondRun = replaySelection.lease.snapshot;
+loseRelease = true;
+await assert.rejects(replaySelection.reset(replayApi), /Release response lost/);
+assert.equal(replaySelection.lease.snapshot, heldSecondRun);
+assert.equal(replayHeld.size, 0);
+await replaySelection.reset(replayApi);
+assert.equal(replaySelection.lease, null);
+await replaySelection.page(replayApi, 1);
+assert.equal(captureCache.get(1).capture, 4, 'Returning to a run uses a newer token');
+await replaySelection.reset(replayApi);
+assert.equal(replayHeld.size, 0);
+assert.deepEqual(replayCalls.filter(([route]) => route === 'snapshot').map(([,p]) => [p.run,p.capture]), [[1,1],[1,1],[1,2],[1,2],[1,2],[2,3],[1,4]]);
+console.log('Lost capture/release response replay preserves bounded snapshot ownership across pages, resets and runs.');

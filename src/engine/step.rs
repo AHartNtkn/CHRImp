@@ -95,6 +95,14 @@ impl Trace for RuleStep {
     }
 }
 impl Engine {
+    /// The controller owns a selection through execution and the paused Done
+    /// state, when the UI may still inspect its choice IDs. Keep the prefix
+    /// pinned until resume/cancellation drains the owner or a new step takes it.
+    pub(super) fn step_coordinate_cutoff(&self) -> Option<u64> {
+        self.rule_step
+            .as_ref()
+            .and_then(|_| self.births.last_key_value().map(|(&id, _)| id))
+    }
     /// Select existing explicit choices and pause after one overlapping commit.
     /// The request does not execute source work or run a Boolean operation.
     /// A completed step remains paused until another request or `resume`.
@@ -306,5 +314,55 @@ impl Engine {
         }
         self.rule_step = Some(step);
         gate
+    }
+}
+
+#[cfg(test)]
+mod coordinate_tests {
+    use super::*;
+    #[test]
+    fn step_pins_coordinates_through_done_until_selection_ownership_ends() {
+        let code = crate::program::prepare(
+            &crate::syntax::parse_program("").unwrap(),
+            &crate::syntax::parse_query("true").unwrap(),
+        )
+        .unwrap();
+        let mut e = Engine::new(Arc::new(code));
+        e.request_step(vec![]).unwrap();
+        for _ in 0..2 {
+            let (id, decision) = e.arena.fresh_choice();
+            e.births.insert(
+                id,
+                Birth {
+                    event: 0,
+                    instruction: 0,
+                    arm: 0,
+                    support: Condition::TRUE,
+                    decision,
+                },
+            );
+            assert_eq!(e.step_coordinate_cutoff(), Some(id));
+        }
+        e.rule_step.as_mut().unwrap().phase = Phase::Cleanup;
+        for _ in 0..100 {
+            e.step_gate();
+            if e.rule_step.as_ref().unwrap().status.done {
+                break;
+            }
+        }
+        assert!(e.rule_step.as_ref().unwrap().status.done);
+        assert_eq!(
+            e.step_coordinate_cutoff(),
+            e.births.last_key_value().map(|(&id, _)| id)
+        );
+        e.resume().unwrap();
+        for _ in 0..100 {
+            e.step_gate();
+            if e.rule_step.is_none() {
+                break;
+            }
+        }
+        assert!(e.rule_step.is_none());
+        assert_eq!(e.step_coordinate_cutoff(), None);
     }
 }

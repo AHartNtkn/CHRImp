@@ -22,7 +22,7 @@ struct Record {
 
 #[derive(Default)]
 pub struct History {
-    index: Store<Condition>,
+    pub(crate) index: Store<Condition>,
     lookup: BTreeMap<Key, u64>,
     records: BTreeMap<u64, Record>,
     next_id: u64,

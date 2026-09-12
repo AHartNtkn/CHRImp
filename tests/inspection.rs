@@ -333,3 +333,73 @@ fn explicit_failed_alternatives_remain_distinct_in_recorded_history() {
     assert!(e.delivery_done());
     assert!(e.take_output().is_none());
 }
+
+#[test]
+fn held_view_preserves_its_choice_prefix_while_later_choices_are_compacted() {
+    use chr::observe::Output;
+    fn stream(e: &mut Engine, snapshot: ViewId) -> Vec<Output> {
+        let id = e.start_inspection(Some(snapshot), vec![]).unwrap();
+        let mut result = Vec::new();
+        for _ in 0..100_000 {
+            e.advance_inspection(id, 1).unwrap();
+            if let Some(mut event) = e.take_inspection_output(id).unwrap() {
+                if let Output::Begin { completion, .. } = &mut event {
+                    *completion = 0;
+                }
+                result.push(event);
+            }
+            if e.inspection_status(id).unwrap().done {
+                e.release_inspection(id).unwrap();
+                return result;
+            }
+        }
+        panic!("held view projection must finish");
+    }
+    let mut e = engine("loop(X) <=> (fail;X=Y,loop(Y)).", "loop(A)");
+    while e.applications() < 8 {
+        e.advance(1);
+    }
+    let snapshot = capture(&mut e);
+    let last = e.snapshot_info(snapshot).unwrap().last_choice.unwrap();
+    let prefix: Vec<_> = e
+        .choices_after(None, Some(last))
+        .map(|(&id, birth)| (id, birth.support, birth.decision))
+        .collect();
+    let expected = stream(&mut e, snapshot);
+    assert!(!expected.is_empty());
+    for target in [32, 64, 128] {
+        for _ in 0..1_000_000 {
+            if e.applications() >= target {
+                break;
+            }
+            e.advance(1);
+        }
+        assert!(e.applications() >= target);
+        collect(&mut e);
+        assert_eq!(
+            e.choices_after(None, Some(last))
+                .map(|(&id, birth)| (id, birth.support, birth.decision))
+                .collect::<Vec<_>>(),
+            prefix
+        );
+        assert!(e.memory().choices < prefix.len() + 16, "{:?}", e.memory());
+        assert_eq!(stream(&mut e, snapshot), expected);
+    }
+    while e.collecting() {
+        e.maintain(1);
+    }
+    // A metadata lease can retain a selected choice while inspection targets
+    // the current graph, independently of the earlier snapshot's graph.
+    let current = e
+        .start_inspection(None, vec![(prefix[0].0, false)])
+        .unwrap();
+    assert_eq!(inspection(&mut e, current, false).len(), 1);
+    e.release_inspection(current).unwrap();
+    // Release the only historical owner and finish the resulting maintenance.
+    while e.collecting() {
+        e.maintain(1);
+    }
+    e.release_snapshot(snapshot).unwrap();
+    collect(&mut e);
+    assert!(e.memory().choices < 16);
+}

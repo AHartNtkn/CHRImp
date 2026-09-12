@@ -185,3 +185,63 @@ fn nested_choice_selection_excludes_its_inactive_sibling() {
     assert_eq!(e.step_status().event, None);
     assert_eq!(e.applications(), count);
 }
+
+#[test]
+fn paused_selected_step_can_be_inspected_after_collection_until_resume() {
+    use chr::observe::Output;
+    let mut e = engine("p(X) <=> p(X).", "(fail;p(A))");
+    while e.choices().next().is_none() {
+        e.advance(1);
+    }
+    let choice = *e.choices().next().unwrap().0;
+    let selection = vec![(choice, false)];
+    e.request_step(selection.clone()).unwrap();
+    finish_step(&mut e);
+    let applications = e.applications();
+    assert_eq!(e.step_status().rule, Some(0));
+    e.request_collection();
+    for _ in 0..200_000 {
+        e.advance(1);
+        if !e.collecting() {
+            break;
+        }
+    }
+    assert!(!e.collecting());
+    assert_eq!(e.applications(), applications);
+    let view = e.start_inspection(None, selection).unwrap();
+    let mut alternatives = 0;
+    for _ in 0..200_000 {
+        e.advance_inspection(view, 1).unwrap();
+        if matches!(
+            e.take_inspection_output(view).unwrap(),
+            Some(Output::Begin { .. })
+        ) {
+            alternatives += 1;
+        }
+        let status = e.inspection_status(view).unwrap();
+        assert_eq!(
+            status.error, None,
+            "the paused selection still owns its choice IDs"
+        );
+        if status.done {
+            break;
+        }
+    }
+    assert!(e.inspection_status(view).unwrap().done);
+    assert_eq!(alternatives, 1);
+    assert_eq!(e.applications(), applications);
+    e.release_inspection(view).unwrap();
+    // Resuming releases the paused selection; its fixed coordinate can retire.
+    e.resume().unwrap();
+    e.advance(1000);
+    e.request_collection();
+    for _ in 0..200_000 {
+        e.advance(1);
+        if !e.collecting() {
+            break;
+        }
+    }
+    assert!(!e.collecting());
+    assert!(e.choices().all(|(&id, _)| id != choice));
+    assert!(e.applications() > applications);
+}

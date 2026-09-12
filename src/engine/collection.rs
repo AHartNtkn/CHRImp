@@ -13,6 +13,7 @@ fn retain_condition(roots: &mut Vec<Condition>, root: Condition) {
 }
 #[derive(Clone, Copy)]
 enum Phase {
+    Compact,
     Prune,
     Tasks,
     Parked,
@@ -32,6 +33,7 @@ enum Phase {
 }
 pub(super) struct Collection {
     phase: Phase,
+    compact: Option<super::compact::Compact>,
     owns_lane: bool,
     retain_choice: Option<u64>,
     prune: Option<history::Prune>,
@@ -63,6 +65,7 @@ pub struct Memory {
     pub pending_nodes: usize,
     pub obligation_descriptors: usize,
     pub choices: usize,
+    pub coordinate_records: usize,
     pub snapshots: usize,
     pub inspections: usize,
 }
@@ -76,6 +79,7 @@ impl Memory {
             .saturating_add(self.pending_nodes)
             .saturating_add(self.obligation_descriptors)
             .saturating_add(self.choices)
+            .saturating_add(self.coordinate_records)
             .saturating_add(self.snapshots)
             .saturating_add(self.inspections)
     }
@@ -91,6 +95,7 @@ impl Engine {
             pending_nodes: self.obligations.index.node_count(),
             obligation_descriptors: self.obligations.descriptor_count(),
             choices: self.births.len(),
+            coordinate_records: self.coordinates.memory(),
             snapshots: self.snapshots.len(),
             inspections: self.inspections.len(),
         }
@@ -130,6 +135,7 @@ impl Engine {
                 && !self.canceled()
                 && (self.state.graph != self.graph.empty()
                     || self.state.history != self.history.empty()
+                    || !self.births.is_empty()
                     || self.lane == Some(Owner::Collection))
                 && self.acquire(Owner::Collection);
             if !owns_lane
@@ -142,14 +148,6 @@ impl Engine {
                 return false;
             }
             self.collection_requested = false;
-            let prune = owns_lane.then(|| {
-                self.history.prune(
-                    &self.graph,
-                    self.state.graph,
-                    self.state.history,
-                    self.active,
-                )
-            });
             let mut pending_roots = vec![self.pending_root];
             if let Some(ready) = &self.ready {
                 pending_roots.push(ready.cursor.root());
@@ -159,22 +157,16 @@ impl Engine {
             }
             self.collector = Some(Collection {
                 phase: if owns_lane {
-                    Phase::Prune
+                    Phase::Compact
                 } else {
                     Phase::Tasks
                 },
+                compact: owns_lane.then(|| super::compact::Compact::new(self)),
                 owns_lane,
                 retain_choice: None,
-                prune,
-                prune_graph: owns_lane.then(|| self.graph.prune(self.state.graph, self.active)),
-                variable_groups: if owns_lane {
-                    BTreeMap::from([(
-                        Arc::as_ptr(&self.variables) as usize,
-                        (self.variables.clone(), self.active),
-                    )])
-                } else {
-                    BTreeMap::new()
-                },
+                prune: None,
+                prune_graph: None,
+                variable_groups: BTreeMap::new(),
                 seed_job: None,
                 seed_slot: 0,
                 index: 0,
@@ -206,6 +198,26 @@ impl Engine {
         }
         let mut c = self.collector.take().unwrap();
         match c.phase {
+            Phase::Compact => {
+                if c.compact.as_mut().unwrap().tick(self) {
+                    c.compact = None;
+                    c.prune = Some(self.history.prune(
+                        &self.graph,
+                        self.state.graph,
+                        self.state.history,
+                        self.active,
+                    ));
+                    c.prune_graph = Some(self.graph.prune(self.state.graph, self.active));
+                    c.variable_groups.insert(
+                        Arc::as_ptr(&self.variables) as usize,
+                        (self.variables.clone(), self.active),
+                    );
+                    c.pending_roots[0] = self.pending_root;
+                    c.conditions.clear();
+                    retain_condition(&mut c.conditions, self.active);
+                    c.phase = Phase::Prune;
+                }
+            }
             Phase::Prune => {
                 if let Some(root) = c.prune.as_mut().expect("history pruning").tick(
                     &self.graph,
@@ -564,7 +576,8 @@ impl Trace for Task {
             Task::Body(b) => c.optional(Some(b.as_ref())),
             Task::Search(s) => c.optional(Some(s.as_ref())),
             Task::Wake(w) => c.optional(Some(w.as_ref())),
-            Task::Init(_) | Task::Activate { .. } => c.advance(),
+            Task::Activate { reader_scope, .. } => c.fields(&[*reader_scope]),
+            Task::Init(_) => c.advance(),
         }
     }
 }
@@ -587,6 +600,7 @@ impl Trace for Search {
                 .as_ref()
                 .map_or(Condition::FALSE, |m| m.support)]),
             2 => c.optional(self.commit.as_ref()),
+            3 => c.optional(self.transport.as_ref()),
             _ => Step::Done,
         }
     }
@@ -596,6 +610,7 @@ impl Trace for Ready {
         match c.phase {
             0 => c.fields(&[self.scope, self.blocked]),
             1 => c.optional(self.job.as_ref()),
+            2 => c.optional(self.transport.as_ref()),
             _ => Step::Done,
         }
     }

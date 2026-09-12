@@ -568,3 +568,108 @@ fn logical_step_inspection_streams_the_pending_rhs_with_string_variable_ids() {
         json!({"run":run,"inspection":inspection}),
     );
 }
+
+#[test]
+fn snapshot_capture_and_release_replay_after_lost_responses() {
+    let runtime = Runtime::default();
+    let run = start(&runtime, "", "true", false)["run"].as_u64().unwrap();
+    let first = ok(&runtime, "/api/snapshot", json!({"run":run,"capture":1}));
+    // The caller can discard any response and recover the same allocation.
+    for _ in 0..8 {
+        assert_eq!(
+            ok(&runtime, "/api/snapshot", json!({"run":run,"capture":1})),
+            first
+        );
+    }
+    assert_eq!(
+        ok(&runtime, "/api/status", json!({"run":run}))["memory"]["snapshots"],
+        1
+    );
+    for _ in 0..3 {
+        retry(
+            &runtime,
+            "/api/snapshot_release",
+            json!({"run":run,"snapshot":first["snapshot"]}),
+        );
+    }
+    assert_eq!(
+        ok(&runtime, "/api/status", json!({"run":run}))["memory"]["snapshots"],
+        0
+    );
+    // A released request remains replayable without allocating another view.
+    assert_eq!(
+        ok(&runtime, "/api/snapshot", json!({"run":run,"capture":1})),
+        first
+    );
+    let second = retry(&runtime, "/api/snapshot", json!({"run":run,"capture":7}));
+    assert_ne!(first, second);
+    let stale = runtime.request("/api/snapshot", &json!({"run":run,"capture":1}).to_string());
+    assert_eq!(stale.status, 409);
+    for capture in [json!(null), json!(0), json!(9_007_199_254_740_992_u64)] {
+        assert_eq!(
+            runtime
+                .request(
+                    "/api/snapshot",
+                    &json!({"run":run,"capture":capture}).to_string()
+                )
+                .status,
+            400
+        );
+    }
+    assert_eq!(
+        ok(&runtime, "/api/status", json!({"run":run}))["memory"]["snapshots"],
+        1
+    );
+}
+
+#[test]
+fn concurrent_capture_retries_allocate_one_snapshot_per_run() {
+    let runtime = std::sync::Arc::new(Runtime::default());
+    let run = start(&runtime, "", "true", false)["run"].as_u64().unwrap();
+    let threads: Vec<_> = (0..8)
+        .map(|_| {
+            let runtime = runtime.clone();
+            std::thread::spawn(move || {
+                ok(&runtime, "/api/snapshot", json!({"run":run,"capture":17}))
+            })
+        })
+        .collect();
+    let responses: Vec<_> = threads
+        .into_iter()
+        .map(|thread| thread.join().unwrap())
+        .collect();
+    assert!(responses.iter().all(|response| *response == responses[0]));
+    assert_eq!(
+        ok(&runtime, "/api/status", json!({"run":run}))["memory"]["snapshots"],
+        1
+    );
+    let other = start(&runtime, "", "true", false)["run"].as_u64().unwrap();
+    assert_ne!(
+        ok(&runtime, "/api/snapshot", json!({"run":other,"capture":17})),
+        responses[0]
+    );
+    ok(&runtime, "/api/close", json!({"run":run}));
+    for _ in 0..1000 {
+        runtime.tick();
+        if runtime
+            .request("/api/status", &json!({"run":run}).to_string())
+            .status
+            == 404
+        {
+            break;
+        }
+    }
+    assert_eq!(
+        runtime
+            .request(
+                "/api/snapshot",
+                &json!({"run":run,"capture":17}).to_string()
+            )
+            .status,
+        404
+    );
+    assert_eq!(
+        ok(&runtime, "/api/status", json!({"run":other}))["memory"]["snapshots"],
+        1
+    );
+}

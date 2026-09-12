@@ -177,7 +177,7 @@ export class IndexedAnswerStore {
 }
 
 export class InspectionSelection {
-  constructor() { this.choices = []; this.snapshots = []; this.assignments = new Map(); this.snapshot = ''; this.selectedSnapshot = null; this.cursors = {}; this.navigation = {}; this.loading = false; }
+  constructor() { this.choices = []; this.snapshots = []; this.assignments = new Map(); this.snapshot = ''; this.selectedSnapshot = null; this.cursors = {}; this.navigation = {}; this.loading = false; this.lease = null; this.retiring = null; this.operation = null; this.resetting = false; this.pendingCapture = null; this.nextCapture = 1; }
   update(choices, snapshots, preserve = false) {
     const descriptors = (items, name) => {
       check(Array.isArray(items), `Inspection response needs ${name} descriptors.`);
@@ -200,7 +200,49 @@ export class InspectionSelection {
     check(key === '' || descriptor?.id === key, 'This snapshot is no longer available.');
     return this.page(api, run, null, 'refresh', {key, descriptor:key === '' ? null : descriptor});
   }
-  async page(api, run, kind = null, direction = 'refresh', selection = null) {
+  async capture(api, run) {
+    if (!this.pendingCapture) {
+      check(Number.isSafeInteger(this.nextCapture), 'Metadata capture sequence exhausted.');
+      this.pendingCapture = {run, capture: this.nextCapture++};
+    }
+    check(this.pendingCapture.run === run, 'Recover the previous run metadata capture before changing runs.');
+    const pending = this.pendingCapture;
+    const response = await liveRequest('snapshot', pending, api);
+    const lease = {run, snapshot: id(response.snapshot)};
+    this.pendingCapture = null;
+    return lease;
+  }
+  async releaseRetiring(api) {
+    if (!this.retiring) return;
+    const lease = this.retiring;
+    await liveRequest('snapshot_release', lease, api);
+    this.retiring = null;
+  }
+  async reset(api) {
+    check(!this.resetting, 'Selection reset is already in progress.');
+    this.resetting = true;
+    try {
+      if (this.operation) await this.operation.catch(() => {});
+      await this.releaseRetiring(api);
+      if (this.pendingCapture) {
+        this.retiring = await this.capture(api, this.pendingCapture.run);
+        await this.releaseRetiring(api);
+      }
+      if (this.lease) {
+        await liveRequest('snapshot_release', this.lease, api);
+        this.lease = null;
+      }
+      this.choices = []; this.snapshots = []; this.assignments.clear();
+      this.snapshot = ''; this.selectedSnapshot = null; this.cursors = {}; this.navigation = {};
+    } finally { this.resetting = false; }
+  }
+  page(api, run, kind = null, direction = 'refresh', selection = null) {
+    if (this.loading || this.resetting) return Promise.reject(new Error('A metadata page is already loading.'));
+    const operation = this.loadPage(api, run, kind, direction, selection);
+    this.operation = operation;
+    return operation.finally(() => { if (this.operation === operation) this.operation = null; });
+  }
+  async loadPage(api, run, kind = null, direction = 'refresh', selection = null) {
     check(!this.loading, 'A metadata page is already loading.');
     check(kind === null || ['choice', 'snapshot'].includes(kind), 'Unknown metadata page.');
     check(['refresh', 'next', 'prev'].includes(direction), 'Unknown page direction.');
@@ -214,16 +256,41 @@ export class InspectionSelection {
     }
     this.loading = true;
     try {
+      await this.releaseRetiring(api);
+      check(!this.lease || this.lease.run === run, 'Reset inspection selection before changing runs.');
       const snapshot = selection ? selection.key : this.snapshot;
-      const response = await api('views', {run, ...cursors, ...(snapshot ? {snapshot} : {})});
-      const navigation = {};
-      for (const type of ['choice', 'snapshot']) for (const way of ['next', 'prev']) {
-        const key = `${way}_${type}`;
-        navigation[key] = response[key] == null ? null : id(response[key]);
+      let candidate = null;
+      if (snapshot && this.pendingCapture) {
+        this.retiring = await this.capture(api, this.pendingCapture.run);
+        await this.releaseRetiring(api);
       }
-      this.update(response.choices, response.snapshots, true);
-      this.cursors = cursors; this.navigation = navigation;
-      if (selection) { this.snapshot = selection.key; this.selectedSnapshot = selection.descriptor; this.assignments.clear(); }
+      if (!snapshot) candidate = await this.capture(api, run);
+      let response;
+      try {
+        response = await liveRequest('views', {run, ...cursors, snapshot: snapshot || candidate.snapshot}, api);
+
+        const navigation = {};
+        for (const type of ['choice', 'snapshot']) for (const way of ['next', 'prev']) {
+          const key = `${way}_${type}`;
+          navigation[key] = response[key] == null ? null : id(response[key]);
+        }
+        // These snapshots own choice metadata; they are not recorded states.
+        const owned = new Set([this.lease, this.retiring, candidate].filter(Boolean).map(lease => lease.snapshot));
+        check(Array.isArray(response.snapshots), 'Inspection response needs snapshot descriptors.');
+        this.update(response.choices, response.snapshots.filter(item => !owned.has(id(item.id))), true);
+        this.cursors = cursors; this.navigation = navigation;
+        if (selection) {
+          if (this.snapshot !== selection.key) this.assignments.clear();
+          this.snapshot = selection.key; this.selectedSnapshot = selection.descriptor;
+        }
+      } catch (error) {
+        this.retiring = candidate;
+        await this.releaseRetiring(api);
+        throw error;
+      }
+      this.retiring = this.lease;
+      this.lease = candidate;
+      await this.releaseRetiring(api);
     } finally { this.loading = false; }
   }
   choose(key, value) {
@@ -269,13 +336,14 @@ export class RunSession {
   constructor(api = request, notify = () => {}, store = null) {
     this.api = api; this.notify = notify; this.store = store; this.archive = null; this.pendingDelivery = null; this.run = null; this.status = 'idle';
     this.running = false; this.inFlight = null; this.timer = null; this.stream = null;
-    this.applications = 0; this.error = null; this.starting = false; this.runs = new Map(); this.canceling = false; this.ack = null;
+    this.applications = 0; this.error = null; this.starting = false; this.runs = new Map(); this.canceling = false; this.ack = null; this.selection = new InspectionSelection(); this.changingRun = false;
   }
   async start(model, recordHistory = false, auto = true) {
-    check(!this.starting, 'A run is already starting.');
+    check(!this.starting && !this.changingRun, 'A run is already starting.');
     this.starting = true;
     try {
       await this.cancel();
+      await this.selection.reset(this.api);
       this.submission = clone(validateNotebook(model));
       this.status = 'starting'; this.error = null; this.notify();
       const response = await this.api('start', { ...clone(this.submission), record_history: recordHistory });
@@ -370,14 +438,24 @@ export class RunSession {
     if (this.run !== null) this.runs.set(this.run, { run: this.run, stream: this.stream, archive: this.archive, recordHistory: this.recordHistory, applications: this.applications, submission: this.submission, status: this.status, exhausted: this.exhausted, ack: this.ack });
   }
   async switchRun(run) {
-    this.pause(); if (this.inFlight) await this.inFlight; await this.deliverPending(); this.rememberRun();
-    check(this.runs.has(run), 'Unknown execution.');
-    Object.assign(this, this.runs.get(run)); this.running = false; this.error = null; this.notify();
+    check(!this.changingRun && !this.starting, 'An execution change is already in progress.');
+    this.changingRun = true; this.notify();
+    try {
+      this.pause(); if (this.inFlight) await this.inFlight; await this.deliverPending(); this.rememberRun();
+      check(this.runs.has(run), 'Unknown execution.');
+      await this.selection.reset(this.api);
+      Object.assign(this, this.runs.get(run)); this.running = false; this.error = null;
+    } finally { this.changingRun = false; this.notify(); }
   }
   async closeRun() {
-    await this.cancel();
-    if (this.run !== null) { await this.api('close', {run: this.run}); this.runs.delete(this.run); }
-    this.run = null; this.status = 'idle'; this.recordHistory = false; this.notify();
+    check(!this.changingRun && !this.starting, 'An execution change is already in progress.');
+    this.changingRun = true; this.notify();
+    try {
+      await this.cancel();
+      await this.selection.reset(this.api);
+      if (this.run !== null) { await this.api('close', {run: this.run}); this.runs.delete(this.run); }
+      this.run = null; this.status = 'idle'; this.recordHistory = false;
+    } finally { this.changingRun = false; this.notify(); }
   }
   async cancel() {
     this.canceling = true;
@@ -423,8 +501,9 @@ function mountNotebook() {
   let savedView = null, savedSelection = '', answerPage = 0, loadRevision = 0, inspectionPending = null, inspecting = false, launching = false;
   let resultPage = 0, resultPortPage = 0, bindingPage = 0;
   let pendingNumber = 0, pendingPath = ['query'], pendingPage = 0, pendingPortPage = 0;
-  let inspectionSelection = new InspectionSelection(), inspectionCanceled = false;
+  let inspectionCanceled = false;
   const session = new RunSession(request, renderRun, store);
+  const inspectionSelection = session.selection;
   function message(text, error = false) { $('message').textContent = text; $('message').classList.toggle('error', error); }
   async function safe(action) { try { return await action(); } catch (error) { message(error.message, true); } }
   function remember() { undo.push(clone(model)); if (undo.length > 40) undo.shift(); redo = []; }
@@ -546,7 +625,7 @@ function mountNotebook() {
     $('step').disabled = session.status === 'canceled' || session.starting || !!session.inFlight || busy || launching || inspecting;
     $('cancel').disabled = session.run === null || session.starting;
     $('inspect').disabled = (session.run === null && !inspectionPending) || session.starting || inspecting || launching;
-    $('snapshot').disabled = !session.recordHistory || inspecting || inspectionSelection.loading;
+    $('snapshot').disabled = !session.recordHistory || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
     if (session.error) message(session.error.message, true);
     renderResults(); safe(refreshSaved);
   }
@@ -672,19 +751,21 @@ function mountNotebook() {
   }
 
   function renderInspectionControls() {
-    $('snapshot').disabled = !session.recordHistory || inspecting || inspectionSelection.loading;
+    const unavailable = session.starting || session.changingRun || inspectionSelection.resetting;
+    $('snapshot').disabled = !session.recordHistory || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
     $('choices').replaceChildren();
     if (!inspectionSelection.choices.length) $('choices').append(el('p', session.run === null ? 'Start a run to inspect its choices.' : inspectionSelection.navigation.next_choice === undefined ? 'Inspect the graph to load available choices.' : 'No choices in this state.'));
     inspectionSelection.choices.forEach(item => {
       const label = el('label', item.label), select = el('select');
       select.append(el('option', 'Either', { value: 'either' }), el('option', 'First', { value: 'first' }), el('option', 'Second', { value: 'second' }));
+      select.disabled = unavailable;
       select.value = inspectionSelection.assignments.get(item.id) ?? 'either';
       select.onchange = () => safe(() => inspectionSelection.choose(item.id, select.value));
       label.append(select); $('choices').append(label);
     });
     $('choice-page').textContent = `${inspectionSelection.choices.length} choices on this page`;
     for (const kind of ['choice', 'snapshot']) for (const direction of ['prev', 'next']) {
-      $(`${kind}-${direction}`).disabled = inspectionSelection.loading || !inspectionSelection.navigation[`${direction}_${kind}`];
+      $(`${kind}-${direction}`).disabled = unavailable || inspectionSelection.loading || !inspectionSelection.navigation[`${direction}_${kind}`];
     }
     const snapshots = [...inspectionSelection.snapshots];
     if (inspectionSelection.selectedSnapshot && !snapshots.some(item => item.id === inspectionSelection.snapshot)) snapshots.unshift(inspectionSelection.selectedSnapshot);
@@ -693,6 +774,7 @@ function mountNotebook() {
     $('snapshot').value = inspectionSelection.snapshot;
   }
   async function metadataPage(kind, direction) {
+    check(!session.starting && !session.changingRun, 'Wait for the execution change.');
     const pending = inspectionSelection.page(request, session.run, kind, direction);
     renderInspectionControls();
     try { await pending; } finally { renderInspectionControls(); }
@@ -701,6 +783,7 @@ function mountNotebook() {
     $(`${kind}-${direction}`).onclick = () => safe(() => metadataPage(kind, direction));
   }
   $('snapshot').onchange = () => safe(async () => {
+    check(!session.starting && !session.changingRun, 'Wait for the execution change.');
     const pending = inspectionSelection.selectSnapshot(request, session.run, $('snapshot').value);
     renderInspectionControls();
     try { await pending; } finally { renderInspectionControls(); }
@@ -726,29 +809,28 @@ function mountNotebook() {
     check(!launching, 'A run is already starting.'); launching = true; renderRun();
     try {
     await syncSource(); inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; resetResultPages();
-    inspectionSelection = new InspectionSelection(); renderInspectionControls();
-    await session.start(model, $('history').checked); message('Running the submitted notebook.');
-    } finally { launching = false; renderRun(); }
+    await session.start(model, $('history').checked); renderInspectionControls(); message('Running the submitted notebook.');
+    } finally { launching = false; renderInspectionControls(); renderRun(); }
   });
   $('step').onclick = () => safe(async () => {
     check(!launching, 'A step is already in progress.'); launching = true; renderRun();
     try {
-    if (session.run === null) { savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; await syncSource(); inspectionSelection = new InspectionSelection(); renderInspectionControls(); await session.start(model, $('history').checked, false); }
+    if (session.run === null) { savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; await syncSource(); await session.start(model, $('history').checked, false); renderInspectionControls(); }
     const response = await session.step(inspectionSelection.payload(session.run).choices); await inspect();
     if (response?.step?.event !== null && response?.step?.rule !== undefined) {
       const name = session.submission.program.rules[response.step.rule]?.name ?? `Rule ${response.step.rule + 1}`;
       message(response.step.shared ? `${name} applied across the selection and other alternatives.` : `${name} applied.`);
     } else { message('No further rule applies in this selection.'); }
-    } finally { launching = false; renderRun(); }
+    } finally { launching = false; renderInspectionControls(); renderRun(); }
   });
   $('execution').onchange = () => safe(async () => {
     if (!$('execution').value) return;
     await session.switchRun(Number($('execution').value));
-    inspectionSelection = new InspectionSelection(); inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0;
+    inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0;
     renderInspectionControls(); await refreshSaved();
   });
   $('release-run').onclick = () => safe(async () => {
-    await session.closeRun(); inspectionSelection = new InspectionSelection(); renderInspectionControls(); message('Execution released. Saved answers remain available.');
+    await session.closeRun(); renderInspectionControls(); message('Execution released. Saved answers remain available.');
   });
   $('pause').onclick = () => session.pause(); $('resume').onclick = () => safe(() => session.resume());
   $('cancel').onclick = () => safe(async () => { inspectionCanceled = true; await session.cancel(); }); $('inspect').onclick = () => safe(inspect);

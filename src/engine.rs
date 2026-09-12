@@ -1,6 +1,8 @@
 //! Cooperative execution of supported bodies, indexed discovery and CHR commits.
 mod cancel;
 mod collection;
+mod compact;
+mod coordinates;
 mod inspection;
 mod obligations;
 mod step;
@@ -18,6 +20,7 @@ use crate::observe::{Observe, ObserveStatus, Output};
 use crate::program::{Instruction, Prepared};
 use crate::store::{Cursor, Root, Store};
 use crate::wake::{Wake, WakeStatus};
+use coordinates::{Coordinates, Epoch, Transport};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
@@ -41,6 +44,7 @@ enum Owner {
     Collection,
 }
 struct Scheduled {
+    epoch: Option<Epoch>,
     id: u64,
     scope: Condition,
     task: Task,
@@ -51,12 +55,14 @@ enum Task {
     Activate {
         root: Root,
         occurrence: u64,
+        reader_scope: Condition,
         next: usize,
     },
     Search(Box<Search>),
     Wake(Box<Wake>),
 }
 struct Search {
+    transport: Option<Transport>,
     rule: usize,
     matches: Matches,
     candidate: Option<Match>,
@@ -112,10 +118,13 @@ enum ReadyPhase {
     Scan,
     Difference,
     Acquire,
+    Transport,
     Filter,
     Publish,
 }
 struct Ready {
+    epoch: Epoch,
+    transport: Option<Transport>,
     cursor: Cursor,
     blocked: Condition,
     scope: Condition,
@@ -124,6 +133,7 @@ struct Ready {
 }
 
 pub struct Engine {
+    coordinates: Coordinates,
     code: Arc<Prepared>,
     graph: Graph,
     arena: Arena,
@@ -173,6 +183,7 @@ impl Engine {
         let obligations = obligations::Obligations::default();
         let pending_root = obligations.empty();
         let mut e = Self {
+            coordinates: Coordinates::default(),
             code,
             graph,
             history,
@@ -247,6 +258,10 @@ impl Engine {
         self.exhausted() && self.observer.is_none() && self.output.is_none()
     }
     fn spawn(&mut self, scope: Condition, task: Task) {
+        self.spawn_in_epoch(scope, task, self.coordinates.current());
+    }
+    // Pending support is current; immutable reader inputs retain their epoch.
+    fn spawn_in_epoch(&mut self, scope: Condition, task: Task, epoch: Epoch) {
         if scope == Condition::FALSE {
             return;
         }
@@ -258,7 +273,13 @@ impl Engine {
             .obligations
             .index
             .insert(self.pending_root, key, pending);
-        self.queue.push_back(Scheduled { id, scope, task });
+        let epoch = (!matches!(&task, Task::Body(_) | Task::Init(_))).then_some(epoch);
+        self.queue.push_back(Scheduled {
+            id,
+            scope,
+            task,
+            epoch,
+        });
     }
     fn body(&mut self, event: u64, instruction: usize, variables: Arc<Vec<u64>>, scope: Condition) {
         self.spawn(
@@ -294,6 +315,7 @@ impl Engine {
     /// A budget counts finite continuation steps, not source answers. Zero is a no-op.
     pub fn advance(&mut self, budget: usize) {
         for _ in 0..budget {
+            self.coordinates.cleanup_tick();
             if self.collect_heap() {
                 continue;
             }
@@ -333,6 +355,12 @@ impl Engine {
         }
     }
     fn task(&mut self, s: &mut Scheduled) -> bool {
+        // A false conservative scope admits no remaining descendants. Keep a
+        // lane owner's transaction intact; other readers can drain their roots
+        // without completing an irrelevant immutable enumeration.
+        if s.scope == Condition::FALSE && self.lane != Some(Owner::Task(s.id)) {
+            return s.task.discard_tick();
+        }
         match &mut s.task {
             Task::Init(vars) => {
                 if vars.len() < self.code.query_variables.len() {
@@ -356,6 +384,7 @@ impl Engine {
             Task::Activate {
                 root,
                 occurrence,
+                reader_scope,
                 next,
             } => {
                 let Some(fact) = self.graph.fact(*root, *occurrence) else {
@@ -372,18 +401,20 @@ impl Engine {
                         *root,
                         self.code.clone(),
                         rule,
-                        s.scope,
+                        *reader_scope,
                         Some((head, *occurrence)),
                     )
                     .expect("prepared trigger");
-                    self.spawn(
+                    self.spawn_in_epoch(
                         s.scope,
                         Task::Search(Box::new(Search {
                             rule,
                             matches,
+                            transport: None,
                             candidate: None,
                             commit: None,
                         })),
+                        s.epoch.as_ref().expect("immutable reader epoch").clone(),
                     );
                     false
                 }
@@ -422,6 +453,23 @@ impl Engine {
                     false
                 } else if search.candidate.is_some() {
                     if self.acquire(Owner::Task(s.id)) {
+                        if search.transport.is_none() {
+                            search.transport = Some(self.coordinates.transport(
+                                search.candidate.as_ref().unwrap().support,
+                                s.epoch.as_ref().expect("immutable reader epoch"),
+                            ));
+                            return false;
+                        }
+                        let Progress::Complete(support) = search
+                            .transport
+                            .as_mut()
+                            .unwrap()
+                            .tick(&mut self.arena, &self.coordinates)
+                        else {
+                            return false;
+                        };
+                        search.candidate.as_mut().unwrap().support = support;
+                        search.transport = None;
                         search.commit = Some(
                             Commit::new(
                                 &self.graph,
@@ -454,13 +502,15 @@ impl Engine {
                     occurrence,
                     support,
                 } => {
-                    self.spawn(
-                        support,
+                    self.spawn_in_epoch(
+                        s.scope,
                         Task::Activate {
                             root: w.root(),
+                            reader_scope: support,
                             occurrence,
                             next: 0,
                         },
+                        s.epoch.as_ref().expect("immutable reader epoch").clone(),
                     );
                     false
                 }
@@ -562,6 +612,7 @@ impl Engine {
                         b.scope,
                         Task::Activate {
                             root,
+                            reader_scope: b.scope,
                             occurrence,
                             next: 0,
                         },
@@ -674,6 +725,8 @@ impl Engine {
             return;
         }
         let mut ready = self.ready.take().unwrap_or_else(|| Ready {
+            epoch: self.coordinates.current(),
+            transport: None,
             cursor: self
                 .obligations
                 .index
@@ -717,7 +770,21 @@ impl Engine {
             }
             ReadyPhase::Acquire => {
                 if self.acquire(Owner::Completion) {
-                    ready.job = Some(self.arena.start(Operation::And(ready.scope, self.active)));
+                    ready.transport = Some(self.coordinates.transport(ready.scope, &ready.epoch));
+                    ready.phase = ReadyPhase::Transport;
+                }
+            }
+            ReadyPhase::Transport => {
+                if let Progress::Complete(scope) = ready
+                    .transport
+                    .as_mut()
+                    .unwrap()
+                    .tick(&mut self.arena, &self.coordinates)
+                {
+                    ready.scope = scope;
+                    ready.epoch = self.coordinates.current();
+                    ready.transport = None;
+                    ready.job = Some(self.arena.start(Operation::And(scope, self.active)));
                     ready.phase = ReadyPhase::Filter;
                 }
             }

@@ -45,7 +45,8 @@ impl Engine {
     /// running semantic collection may finish; new collections are physical.
     pub fn maintain(&mut self, budget: usize) {
         for _ in 0..budget {
-            if !self.collect_heap_mode(false) {
+            let coordinates_done = self.coordinates.cleanup_tick();
+            if !self.collect_heap_mode(false) && coordinates_done {
                 break;
             }
         }
@@ -79,6 +80,10 @@ impl Engine {
                     if let Some(job) = &mut ready.job {
                         if job.discard_tick() {
                             ready.job = None;
+                        }
+                    } else if let Some(transport) = &mut ready.transport {
+                        if transport.discard_tick() {
+                            ready.transport = None;
                         }
                     } else {
                         self.ready = None;
@@ -139,6 +144,9 @@ impl Engine {
                 // advance services every outstanding collection before reaching
                 // here, including its leases and final root walk.
                 debug_assert!(!self.collecting());
+                if !self.coordinates.cleanup_tick() {
+                    return;
+                }
                 self.cancellation.finished = true;
                 self.cancellation.phase = Phase::Done;
             }
@@ -147,7 +155,7 @@ impl Engine {
     }
 }
 impl Task {
-    fn discard_tick(&mut self) -> bool {
+    pub(super) fn discard_tick(&mut self) -> bool {
         match self {
             Task::Init(vars) => {
                 *vars = Vec::new();
@@ -177,6 +185,12 @@ impl Task {
                 if let Some(commit) = &mut search.commit {
                     if commit.discard_tick() {
                         search.commit = None;
+                    }
+                    return false;
+                }
+                if let Some(transport) = &mut search.transport {
+                    if transport.discard_tick() {
+                        search.transport = None;
                     }
                     return false;
                 }

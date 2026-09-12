@@ -140,6 +140,9 @@ impl Observe {
             discarding: false,
         }
     }
+    pub(crate) fn last_choice(&self) -> Option<u64> {
+        self.last_choice
+    }
     pub fn graph_root(&self) -> Root {
         self.root
     }

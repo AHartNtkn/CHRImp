@@ -1,0 +1,349 @@
+//! Forget coordinates with one surviving arm wherever their birth occurs. The mutation
+//! lane freezes publication while each supported index is rebuilt persistently.
+use super::*;
+use crate::condition::Restriction;
+use std::ops::Bound::{Excluded, Unbounded};
+
+#[derive(Clone, Copy)]
+enum Phase {
+    Snapshots,
+    Inspections,
+    Choices,
+    Global,
+    BirthSupport,
+    Born,
+    Positive,
+    Negative,
+    Reduce,
+    Graph,
+    History,
+    Pending,
+    Tasks,
+    Parked,
+    Births,
+    Publish,
+}
+pub(super) struct Compact {
+    phase: Phase,
+    pin: Option<u64>,
+    after: Option<u64>,
+    choice: u64,
+    positive: bool,
+    bindings: Arc<BTreeMap<u64, bool>>,
+    active: Condition,
+    born: Condition,
+    boolean: Option<Job>,
+    restriction: Option<Restriction>,
+    index: Option<crate::store::Restriction>,
+    pending: Option<obligations::Restriction>,
+    state: StateRoot,
+    pending_root: Root,
+    task: usize,
+    slot: usize,
+}
+impl Compact {
+    pub(super) fn new(e: &Engine) -> Self {
+        Self {
+            phase: Phase::Snapshots,
+            pin: e
+                .observer
+                .as_ref()
+                .and_then(Observe::last_choice)
+                .max(e.step_coordinate_cutoff()),
+            after: None,
+            choice: 0,
+            positive: false,
+            bindings: Arc::new(BTreeMap::new()),
+            active: e.active,
+            born: Condition::FALSE,
+            boolean: None,
+            restriction: None,
+            index: None,
+            pending: None,
+            state: e.state,
+            pending_root: e.pending_root,
+            task: 0,
+            slot: 0,
+        }
+    }
+    pub(super) fn tick(&mut self, e: &mut Engine) -> bool {
+        debug_assert!(e.lane == Some(Owner::Collection));
+        match self.phase {
+            Phase::Snapshots => {
+                let next = match self.after {
+                    Some(id) => e.snapshots.range((Excluded(id), Unbounded)).next(),
+                    None => e.snapshots.first_key_value(),
+                };
+                if let Some((&id, snapshot)) = next {
+                    self.pin = self.pin.max(snapshot.info.last_choice);
+                    self.after = Some(id);
+                } else {
+                    self.phase = Phase::Inspections;
+                    self.after = None;
+                }
+            }
+            Phase::Inspections => {
+                let next = match self.after {
+                    Some(id) => e.inspections.range((Excluded(id), Unbounded)).next(),
+                    None => e.inspections.first_key_value(),
+                };
+                if let Some((&id, inspection)) = next {
+                    if let Some(snapshot) = &inspection.snapshot {
+                        self.pin = self.pin.max(snapshot.info.last_choice);
+                    }
+                    self.after = Some(id);
+                } else {
+                    self.phase = Phase::Choices;
+                    self.after = self.pin;
+                }
+            }
+            Phase::Choices => {
+                if self.active == Condition::FALSE {
+                    self.after = None;
+                    self.phase = Phase::Births;
+                    return false;
+                }
+                let next = match self.after {
+                    Some(id) => e.births.range((Excluded(id), Unbounded)).next(),
+                    None => e.births.first_key_value(),
+                };
+                if let Some((&id, birth)) = next {
+                    self.choice = id;
+                    self.boolean = Some(e.arena.start(Operation::And(self.active, birth.decision)));
+                    self.phase = Phase::Global;
+                } else if self.bindings.is_empty() {
+                    self.after = None;
+                    self.phase = Phase::Births;
+                } else {
+                    self.index = Some(
+                        e.graph
+                            .index
+                            .restrict(self.state.graph, self.bindings.clone()),
+                    );
+                    self.phase = Phase::Graph;
+                }
+            }
+            Phase::Global => {
+                if let Some(scope) = poll(&mut self.boolean, &mut e.arena) {
+                    if scope == Condition::FALSE || scope == self.active {
+                        self.positive = scope == self.active;
+                        self.reduce(e);
+                    } else if e.births[&self.choice].support == Condition::TRUE {
+                        self.after = Some(self.choice);
+                        self.phase = Phase::Choices;
+                    } else {
+                        self.restriction = Some(
+                            e.arena
+                                .restrict(e.births[&self.choice].support, self.bindings.clone()),
+                        );
+                        self.phase = Phase::BirthSupport;
+                    }
+                }
+            }
+            Phase::BirthSupport => {
+                if let Some(scope) = self.restricted(&mut e.arena) {
+                    self.boolean = Some(e.arena.start(Operation::And(self.active, scope)));
+                    self.phase = Phase::Born;
+                }
+            }
+            Phase::Born => {
+                if let Some(scope) = poll(&mut self.boolean, &mut e.arena) {
+                    if scope == Condition::FALSE {
+                        e.births.remove(&self.choice);
+                        self.after = Some(self.choice);
+                        self.phase = Phase::Choices;
+                    } else {
+                        self.born = scope;
+                        self.boolean = Some(
+                            e.arena
+                                .start(Operation::And(scope, e.births[&self.choice].decision)),
+                        );
+                        self.phase = Phase::Positive;
+                    }
+                }
+            }
+            Phase::Positive => {
+                if let Some(c) = poll(&mut self.boolean, &mut e.arena) {
+                    if c == Condition::FALSE {
+                        self.positive = false;
+                        self.reduce(e);
+                    } else {
+                        self.boolean = Some(e.arena.start(Operation::And(
+                            self.born,
+                            e.births[&self.choice].decision.not(),
+                        )));
+                        self.phase = Phase::Negative;
+                    }
+                }
+            }
+            Phase::Negative => {
+                if let Some(c) = poll(&mut self.boolean, &mut e.arena) {
+                    if c == Condition::FALSE {
+                        self.positive = true;
+                        self.reduce(e);
+                    } else {
+                        self.after = Some(self.choice);
+                        self.phase = Phase::Choices;
+                    }
+                }
+            }
+            Phase::Reduce => {
+                if let Some(c) = self.restricted(&mut e.arena) {
+                    self.active = c;
+                    // Every temporary cofactor has released its assignment
+                    // reference before extending the shared substitution map.
+                    Arc::get_mut(&mut self.bindings)
+                        .expect("exclusive discovery assignments")
+                        .insert(self.choice, self.positive);
+                    self.after = Some(self.choice);
+                    self.phase = Phase::Choices;
+                }
+            }
+            Phase::Graph => {
+                if let Some(root) = self
+                    .index
+                    .as_mut()
+                    .unwrap()
+                    .tick(&mut e.graph.index, &mut e.arena)
+                {
+                    self.state.graph = root;
+                    self.index = Some(
+                        e.history
+                            .index
+                            .restrict(self.state.history, self.bindings.clone()),
+                    );
+                    self.phase = Phase::History;
+                }
+            }
+            Phase::History => {
+                if let Some(root) = self
+                    .index
+                    .as_mut()
+                    .unwrap()
+                    .tick(&mut e.history.index, &mut e.arena)
+                {
+                    self.state.history = root;
+                    self.index = None;
+                    self.pending = Some(
+                        e.obligations
+                            .restrict(self.pending_root, self.bindings.clone()),
+                    );
+                    self.phase = Phase::Pending;
+                }
+            }
+            Phase::Pending => {
+                if let Some(root) = self
+                    .pending
+                    .as_mut()
+                    .unwrap()
+                    .tick(&mut e.obligations, &mut e.arena)
+                {
+                    self.pending_root = root;
+                    self.pending = None;
+                    self.phase = Phase::Tasks;
+                }
+            }
+            Phase::Tasks | Phase::Parked => {
+                let scheduled = if matches!(self.phase, Phase::Tasks) {
+                    e.queue.get_mut(self.task)
+                } else {
+                    match self.after {
+                        Some(id) => e
+                            .parked
+                            .range_mut((Excluded(id), Unbounded))
+                            .next()
+                            .map(|(_, task)| task),
+                        None => e.parked.values_mut().next(),
+                    }
+                };
+                if let Some(scheduled) = scheduled {
+                    if self.slot == 0 {
+                        self.restriction =
+                            Some(e.arena.restrict(scheduled.scope, self.bindings.clone()));
+                        self.slot = 1;
+                    } else if let Some(c) = self.restricted(&mut e.arena) {
+                        scheduled.scope = c;
+                        if let Task::Body(body) = &mut scheduled.task {
+                            debug_assert!(
+                                body.job.is_none() && body.merge.is_none() && body.update.is_none()
+                            );
+                            // Pending bodies have not acquired the mutation lane,
+                            // so their scope still equals the scheduling support.
+                            body.scope = c;
+                        }
+                        self.task += 1;
+                        self.after = Some(scheduled.id);
+                        self.slot = 0;
+                    }
+                } else {
+                    self.phase = if matches!(self.phase, Phase::Tasks) {
+                        Phase::Parked
+                    } else {
+                        Phase::Births
+                    };
+                    self.after = None;
+                    self.slot = 0;
+                }
+            }
+            Phase::Births => {
+                let next = match self.after {
+                    Some(id) => e.births.range((Excluded(id), Unbounded)).next(),
+                    None => e.births.first_key_value(),
+                };
+                if let Some((&id, birth)) = next {
+                    if self.bindings.contains_key(&id) {
+                        e.births.remove(&id);
+                        self.after = Some(id);
+                    } else if self.pin.is_some_and(|pin| id <= pin) {
+                        self.after = Some(id);
+                    } else if self.slot == 0 {
+                        self.restriction =
+                            Some(e.arena.restrict(birth.support, self.bindings.clone()));
+                        self.slot = 1;
+                    } else if self.slot == 1 {
+                        if let Some(c) = self.restricted(&mut e.arena) {
+                            self.boolean = Some(e.arena.start(Operation::And(c, self.active)));
+                            self.slot = 2;
+                        }
+                    } else if let Some(c) = poll(&mut self.boolean, &mut e.arena) {
+                        if c == Condition::FALSE {
+                            e.births.remove(&id);
+                        } else {
+                            e.births.get_mut(&id).unwrap().support = c;
+                        }
+                        self.after = Some(id);
+                        self.slot = 0;
+                    }
+                } else {
+                    self.phase = Phase::Publish;
+                }
+            }
+            Phase::Publish => {
+                e.state = self.state;
+                e.active = self.active;
+                e.pending_root = self.pending_root;
+                if !self.bindings.is_empty() {
+                    e.coordinates.publish(self.bindings.clone());
+                }
+                return true;
+            }
+        }
+        false
+    }
+    fn reduce(&mut self, e: &Engine) {
+        self.restriction = Some(e.arena.restrict(
+            self.active,
+            Arc::new(BTreeMap::from([(self.choice, self.positive)])),
+        ));
+        self.phase = Phase::Reduce;
+    }
+    fn restricted(&mut self, arena: &mut Arena) -> Option<Condition> {
+        match self.restriction.as_mut().unwrap().tick(arena) {
+            Progress::Pending => None,
+            Progress::Complete(c) => {
+                self.restriction = None;
+                Some(c)
+            }
+        }
+    }
+}

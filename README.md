@@ -29,4 +29,6 @@ Only `;` creates search alternatives. Competing rule applications commit to a sc
 
 Standard output is newline-delimited JSON. A `program` event supplies relation signatures and query-variable names. Each answer streams from `begin` through `end`, with variable mappings, distinct relation occurrences, and ports in argument order. An answer is flushed as soon as it finishes, including when another alternative continues indefinitely.
 
+The engine reclaims completed choices during continuing execution when they no longer distinguish surviving alternatives. Suspended matches keep their progress across compaction. Explicitly held views and notebook choice selections retain the information needed for inspection.
+
 Run the checks with `cargo test --offline`.
