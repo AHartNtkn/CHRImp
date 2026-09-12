@@ -1970,4 +1970,25 @@ for (const kind of ['editor','display']) for (const gap of [0,1,2,3,4]) await te
   assert.equal(kind === 'editor' ? writes.at(-1).program : writes.at(-1).answerNumber,kind === 'editor' ? 'third' : 3);
 });
 
+await test('Step follows the current graph while preserving the selected alternative', async () => {
+  const selection = new InspectionSelection(), calls = [], controls = new Map();
+  selection.update([{id:'4',label:'Choice 4'}],[{id:'9',label:'Earlier state'}]);
+  selection.snapshot = '9'; selection.selectedSnapshot = selection.snapshots[0]; selection.choose('4','second');
+  const $ = name => {if (!controls.has(name)) controls.set(name,{}); return controls.get(name);};
+  const c = createContext({$,launching:false,inspectionSelection:selection,
+    session:{run:1,submission:{program:{rules:[{name:'rewrite'}]}},async finishClose(){},
+      async step(choices){assert.equal(choices['4'],false);calls.push('step');return {step:{event:1,rule:0}};}},
+    request:async(route,payload)=>{
+      calls.push(route);
+      if(route==='snapshot')return {snapshot:'10'};
+      if(route==='views'){assert.equal(payload.snapshot,'10');return {choices:[{id:'4',label:'Choice 4'}],snapshots:[{id:'9',label:'Earlier state'}]};}
+      throw Error(route);
+    },renderRun(){},renderInspectionControls(){},message(){},safe:action=>action(),
+    async inspect(){const payload=selection.payload(1);assert.equal(payload.snapshot,undefined);assert.equal(payload.choices['4'],false);calls.push('inspect');}});
+  runInContext(productionSection("  $('step').onclick", "  $('execution').onchange"),c);
+  await $('step').onclick();
+  assert.equal(calls.at(-1),'inspect');
+  assert.equal(selection.snapshot,'');
+});
+
 });

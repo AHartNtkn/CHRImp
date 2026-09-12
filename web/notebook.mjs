@@ -58,10 +58,10 @@ export class InspectionSelection {
       if (!nextSnapshots.some(item => item.id === this.snapshot)) { this.snapshot = ''; this.selectedSnapshot = null; }
     }
   }
-  selectSnapshot(api, run, key) {
+  selectSnapshot(api, run, key, preserveChoices = false) {
     const descriptor = this.snapshots.find(item => item.id === key) ?? this.selectedSnapshot;
     check(key === '' || descriptor?.id === key, 'This snapshot is no longer available.');
-    return this.page(api, run, null, 'refresh', {key, descriptor:key === '' ? null : descriptor});
+    return this.page(api, run, null, 'refresh', {key, descriptor:key === '' ? null : descriptor, preserveChoices});
   }
   async capture(api, run) {
     if (!this.pendingCapture) {
@@ -144,7 +144,7 @@ export class InspectionSelection {
         this.update(response.choices, response.snapshots.filter(item => !owned.has(id(item.id))), true);
         this.cursors = cursors; this.navigation = navigation;
         if (selection) {
-          if (this.snapshot !== selection.key) this.assignments.clear();
+          if (this.snapshot !== selection.key && !selection.preserveChoices) this.assignments.clear();
           this.snapshot = selection.key; this.selectedSnapshot = selection.descriptor;
         }
       } catch (error) {
@@ -1036,7 +1036,9 @@ function mountNotebook() {
     try {
     await session.finishClose();
     if (session.run === null) { savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; await syncSource(); await session.start(model, $('history').checked, false); renderInspectionControls(); }
-    const response = await session.step(inspectionSelection.payload(session.run).choices); await inspect();
+    const response = await session.step(inspectionSelection.payload(session.run).choices);
+    if (inspectionSelection.snapshot) await inspectionSelection.selectSnapshot(request, session.run, '', true);
+    await inspect();
     if (response?.step?.event !== null && response?.step?.rule !== undefined) {
       const name = session.submission.program.rules[response.step.rule]?.name ?? `Rule ${response.step.rule + 1}`;
       message(response.step.shared ? `${name} applied across the selection and other alternatives.` : `${name} applied.`);
