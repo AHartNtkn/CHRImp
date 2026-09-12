@@ -20,6 +20,16 @@ export class OutputAssembler {
     this.capacity = capacity; this.writes = []; this.answers = []; this.current = null; this.total = 0;
     this.fact = null; this.pending = null; this.expressions = [];
   }
+  checkpoint({discard = false} = {}) {
+    return continuation(this.tables, {total:this.total, current:discard ? null : this.current,
+      fact:discard ? null : this.fact, pending:discard ? null : this.pending,
+      expressions:discard ? [] : this.expressions});
+  }
+  static restore(tables, checkpoint, capacity = 256) {
+    const assembler = new OutputAssembler(tables, capacity);
+    Object.assign(assembler, continuation(assembler.tables, checkpoint));
+    return assembler;
+  }
   get needsFlush() { return this.writes.length > this.capacity - 3; }
   part(kind, node, slot, value) { this.writes.push({store:'parts', value:{number:this.current.number, kind, node, slot, ...value}}); }
   node(frame) {
@@ -101,18 +111,82 @@ export class OutputAssembler {
   finish() { check(!this.current, 'Output delivery ended inside an alternative.'); }
 }
 
+// Validate and copy only the fixed scalar continuation; never traverse saved facts.
+function continuation(tables, state) {
+  const shape = (value, keys) => {
+    check(value && typeof value === 'object' && !Array.isArray(value), 'Invalid checkpoint object.');
+    check(Object.keys(value).every(key => keys.includes(key)), 'Unexpected checkpoint field.');
+  };
+  shape(state, ['total','current','fact','pending','expressions']);
+  const total = uint(state.total), current = state.current, fact = state.fact, pending = state.pending;
+  check(Array.isArray(state.expressions) && state.expressions.length <= MAX_NESTING + 1, 'Invalid checkpoint nesting.');
+  const frames = state.expressions;
+  if (current === null) {
+    check(fact === null && pending === null && !frames.length, 'Checkpoint has no open alternative.');
+    return {total,current:null,fact:null,pending:null,expressions:[]};
+  }
+  shape(current, ['format','number','completion','alternative','variables','facts','pending','nodes','maxArity']);
+  check(current.format === 2 && uint(current.number) === uint(total + 1), 'Invalid checkpoint alternative.');
+  id(current.completion); id(current.alternative);
+  for (const key of ['variables','facts','pending','nodes','maxArity']) uint(current[key]);
+  check(current.variables <= tables.variables.length && current.facts + current.pending <= current.nodes, 'Invalid checkpoint counts.');
+  check(!(fact !== null && pending !== null), 'Overlapping checkpoint bodies.');
+  if (fact !== null || pending !== null || current.nodes) check(current.variables === tables.variables.length, 'Missing checkpoint bindings.');
+  const frame = (value, depth, parent, isFact = false) => {
+    shape(value, ['node','kind','relation','occurrence','arity','ports','childcount','parent','maxChildArity']);
+    check(uint(value.node) < current.nodes, 'Invalid checkpoint node.');
+    const group = ['and','or'].includes(value.kind);
+    check(group ? depth < MAX_NESTING : depth <= MAX_NESTING, 'Invalid checkpoint nesting.');
+    check(['atom','equal','and','or','true','fail'].includes(value.kind), 'Invalid checkpoint expression.');
+    const signature = value.kind === 'atom' ? tables.signatures[uint(value.relation)] : null;
+    if (value.kind === 'atom') check(signature, 'Unknown checkpoint relation.');
+    else check(value.relation === undefined, 'Unexpected checkpoint relation.');
+    check(uint(value.arity) === (signature ? signature.arity : value.kind === 'equal' ? 2 : 0), 'Invalid checkpoint arity.');
+    check(uint(value.ports) <= value.arity, 'Invalid checkpoint ports.');
+    check(uint(value.childcount) <= current.nodes - value.node - 1 && (group || value.childcount === 0), 'Invalid checkpoint children.');
+    if (value.maxChildArity !== undefined) uint(value.maxChildArity);
+    check(value.parent === parent, 'Invalid checkpoint parent.');
+    if (isFact) { check(value.kind === 'atom', 'Invalid checkpoint fact.'); id(value.occurrence); }
+    else check(value.occurrence === undefined, 'Unexpected checkpoint occurrence.');
+    return {...value};
+  };
+  let factCopy = null, pendingCopy = null;
+  if (fact !== null) {
+    factCopy = frame(fact, 0, undefined, true);
+    check(!current.pending && fact.node === current.nodes - 1, 'Invalid open checkpoint fact.');
+  }
+  if (pending !== null) {
+    shape(pending, ['event','root']); id(pending.event);
+    if (pending.root !== null) check(uint(pending.root) < current.nodes, 'Invalid checkpoint root.');
+    else check(!frames.length, 'Checkpoint stack without root.');
+    pendingCopy = {...pending};
+  } else check(!frames.length, 'Checkpoint stack without body.');
+  const expressions = Array.from(frames, (value, depth) => {
+    check(value && typeof value === 'object', 'Invalid checkpoint frame.');
+    const parent = frames[depth - 1];
+    if (parent) check(['and','or'].includes(parent.kind) && parent.node < value.node && parent.childcount > 0, 'Invalid checkpoint stack.');
+    else check(value.node === pending.root, 'Invalid checkpoint stack root.');
+    return frame(value, depth, parent?.node);
+  });
+  check(current.facts + current.pending + (fact ? 1 : 0) + (pending?.root !== null && pending ? 1 : 0) <= current.nodes, 'Invalid checkpoint node counts.');
+  return {total,current:{...current},fact:factCopy,pending:pendingCopy,expressions};
+}
+
 export class IndexedAnswerStore {
   constructor(indexed = globalThis.indexedDB, ranges = globalThis.IDBKeyRange) {
     this.ranges = ranges; this.flushing = new WeakSet();
     this.opened = new Promise((resolve, reject) => {
       if (!indexed) { reject(new Error('This browser cannot open saved answer storage.')); return; }
-      const request = indexed.open('chr-notebook-answers', 2);
+      const request = indexed.open('chr-notebook-answers', 3);
       request.onupgradeneeded = event => {
         const db = request.result;
         if (!db.objectStoreNames.contains('collections')) db.createObjectStore('collections', {keyPath:'id'});
         if (!db.objectStoreNames.contains('answers')) db.createObjectStore('answers', {keyPath:['collection','number']});
         if (!db.objectStoreNames.contains('parts')) db.createObjectStore('parts', {keyPath:['collection','number','kind','node','slot']});
         if (!db.objectStoreNames.contains('tables')) db.createObjectStore('tables', {keyPath:'collection'});
+        if (!db.objectStoreNames.contains('recovery')) db.createObjectStore('recovery', {keyPath:'id'});
+        const recovery = request.transaction.objectStore('recovery');
+        if (!recovery.indexNames.contains('archive')) recovery.createIndex('archive', 'value.archive');
         if (!db.objectStoreNames.contains('migration')) db.createObjectStore('migration', {keyPath:'id'});
         if (event.oldVersion === 1) request.transaction.objectStore('migration').put({id:'v1',phase:'collections',after:null});
         const catalog = request.transaction.objectStore('collections');
@@ -135,21 +209,66 @@ export class IndexedAnswerStore {
       try { work(tx, result => { value = result; }, error => { tx.abort(); reject(error); }); } catch (error) { tx.abort(); reject(error); }
     });
   }
-  async create(tables, label) {
-    const collection = crypto.randomUUID();
-    return this.transaction(['collections','tables'], 'readwrite', (tx, result) => {
-      tx.objectStore('collections').add({id:collection, label, total:0, created:Date.now()});
-      tx.objectStore('tables').add({collection, tables:structuredClone(tables)}); result(collection);
+  recovery(id) {
+    check(typeof id === 'string', 'Invalid recovery ID.');
+    return this.transaction(['recovery'], 'readonly', (tx, result) => {
+      const request = tx.objectStore('recovery').get(id);
+      request.onsuccess = () => result(request.result?.value ?? null);
     });
   }
-  async flush(collection, assembler, migrating = false, discard = false) {
+  saveRecovery(id, value) {
+    check(typeof id === 'string', 'Invalid recovery ID.');
+    return this.transaction(['recovery'], 'readwrite', tx => {
+      const store = tx.objectStore('recovery');
+      if (value === null) store.delete(id); else store.put({id,value});
+    });
+  }
+  recoveryPage(prefix, after = null, size = 32) {
+    check(typeof prefix === 'string' && (after === null || typeof after === 'string' && after.startsWith(prefix)), 'Invalid recovery cursor.');
+    uint(size); check(size > 0 && size <= 64, 'Recovery page size must be 1..64.');
+    return this.transaction(['recovery'], 'readonly', (tx, result) => {
+      const records = [];
+      const request = tx.objectStore('recovery').openCursor(this.ranges.lowerBound(after ?? prefix, after !== null));
+      request.onsuccess = () => {
+        const item = request.result, more = item && typeof item.key === 'string' && item.key.startsWith(prefix);
+        if (!more || records.length === size) { result({records,next:more ? records.at(-1).id : null}); return; }
+        records.push(item.value); item.continue();
+      };
+    });
+  }
+  async create(tables, label, recovery = null) {
+    if (recovery) check(typeof recovery.id === 'string' && recovery.value && typeof recovery.value === 'object', 'Invalid recovery record.');
+    const collection = crypto.randomUUID();
+    return this.transaction(['collections','tables', ...(recovery ? ['recovery'] : [])], 'readwrite', (tx, result, fail) => {
+      const create = () => {
+        tx.objectStore('collections').add({id:collection, label, total:0, created:Date.now()});
+        tx.objectStore('tables').add({collection, tables:structuredClone(tables)});
+        if (recovery) tx.objectStore('recovery').put({id:recovery.id,value:{...recovery.value,archive:collection}});
+        result(collection);
+      };
+      if (!recovery) { create(); return; }
+      const request = tx.objectStore('recovery').get(recovery.id);
+      request.onsuccess = () => {
+        if (!request.result) { create(); return; }
+        const archive = request.result.value?.archive;
+        if (typeof archive !== 'string') { fail(new Error('Recovery record has no archive.')); return; }
+        const catalog = tx.objectStore('collections').get(archive), tables = tx.objectStore('tables').get(archive);
+        catalog.onsuccess = () => { if (!catalog.result) fail(new Error('Recovery archive is missing.')); };
+        tables.onsuccess = () => { if (!tables.result) fail(new Error('Recovery archive tables are missing.')); else result(archive); };
+      };
+    });
+  }
+  async flush(collection, assembler, {migrating = false, discard = false, recovery = null} = {}) {
     check(!this.flushing.has(assembler), 'Output flush already in progress.');
     const discardNumber = discard ? assembler.current?.number : undefined;
-    if (!assembler.writes.length && discardNumber === undefined) return;
+    if (!assembler.writes.length && discardNumber === undefined && !recovery) return;
+    if (recovery) check(typeof recovery.id === 'string' && recovery.value && typeof recovery.value === 'object', 'Invalid recovery record.');
+    const savedRecovery = recovery ? {id:recovery.id,value:structuredClone({...recovery.value,assembler:assembler.checkpoint({discard})})} : null;
     this.flushing.add(assembler);
     const batch = assembler.writes.slice();
     try {
-      await this.transaction(['collections','answers','parts'], 'readwrite', tx => {
+      await this.transaction(['collections','answers','parts', ...(recovery ? ['recovery'] : [])], 'readwrite', tx => {
+        if (savedRecovery) tx.objectStore('recovery').put(savedRecovery);
         const catalog = tx.objectStore('collections'), request = catalog.get(collection);
         request.onsuccess = () => {
           if (!request.result) { tx.abort(); return; }
@@ -209,10 +328,10 @@ export class IndexedAnswerStore {
       };
     });
   }
-  discardPartial(collection, assembler) {
+  discardPartial(collection, assembler, recovery = null) {
     // Skip unpublished writes and remove their persisted parts in the same
     // transaction that saves any queued completed answers. Quota need not grow.
-    return this.flush(collection, assembler, false, true);
+    return this.flush(collection, assembler, {discard:true, recovery});
   }
   scene(collection, number, options = {}) {
     uint(number);
@@ -275,9 +394,13 @@ export class IndexedAnswerStore {
     });
   }
   clear(collection) {
-    return this.transaction(['collections','tables','answers','parts'], 'readwrite', tx => {
-      tx.objectStore('collections').delete(collection); tx.objectStore('tables').delete(collection);
-      tx.objectStore('answers').delete(this.collectionRange(collection)); tx.objectStore('parts').delete(this.collectionRange(collection));
+    return this.transaction(['collections','tables','answers','parts','recovery'], 'readwrite', (tx, result, fail) => {
+      const owner = tx.objectStore('recovery').index('archive').getKey(collection);
+      owner.onsuccess = () => {
+        if (owner.result !== undefined) { fail(new Error('Release the execution or inspection before clearing its saved answers.')); return; }
+        tx.objectStore('collections').delete(collection); tx.objectStore('tables').delete(collection);
+        tx.objectStore('answers').delete(this.collectionRange(collection)); tx.objectStore('parts').delete(this.collectionRange(collection));
+      };
     });
   }
   async migrate() {
@@ -306,10 +429,10 @@ export class IndexedAnswerStore {
         }, true);
         const assembler = new OutputAssembler(tables); assembler.total = record.number - 1;
         for (const event of legacyEvents(record, tables)) {
-          if (assembler.needsFlush) { await this.flush(record.collection, assembler, true); await yieldTask(); }
+          if (assembler.needsFlush) { await this.flush(record.collection, assembler, {migrating:true}); await yieldTask(); }
           assembler.push(event);
         }
-        assembler.finish(); await this.flush(record.collection, assembler, true);
+        assembler.finish(); await this.flush(record.collection, assembler, {migrating:true});
       }
       checkpoint={id:'v1',phase:'answers',after:[record.collection,record.number]};
       await this.transaction(['migration'], 'readwrite', tx => tx.objectStore('migration').put(checkpoint), true);

@@ -74,3 +74,38 @@ for (const leaf of [{kind:'expression',operator:'true'}, {kind:'expression',oper
   assert.equal(deep.answers[0].nodes,129);
 }
 console.log('Scalar assembly bounds, full language nesting boundary, flush failure/retry and protocol checks passed.');
+
+const resumeTables={signatures:[{name:'p',arity:2}],variables:[]};
+const events=[{kind:'begin',completion:1,alternative:0},{kind:'fact',relation:0,occurrence:2},
+  {kind:'port',variable:3},{kind:'port',variable:4},{kind:'end_fact'},
+  {kind:'pending_begin',event:5},{kind:'expression',operator:'and'},
+  {kind:'expression',operator:'or'},{kind:'expression_relation',relation:0},
+  {kind:'expression_variable',variable:6},{kind:'expression_variable',variable:7},
+  {kind:'expression_end'},{kind:'expression_end'},{kind:'expression_end'},
+  {kind:'pending_end'},{kind:'end'}];
+const uninterrupted=new OutputAssembler(resumeTables);events.forEach(e=>uninterrupted.push(e));
+for(let split=0;split<=events.length;split++) {
+  const initial=new OutputAssembler(resumeTables);events.slice(0,split).forEach(e=>initial.push(e));
+  const checkpoint=initial.checkpoint(), prefix=structuredClone(initial.writes);
+  const resumed=OutputAssembler.restore(resumeTables,checkpoint);
+  assert.deepEqual(resumed.writes,[]);assert.deepEqual(resumed.answers,[]);
+  assert.deepEqual(resumed.checkpoint(),checkpoint);
+  events.slice(split).forEach(e=>resumed.push(e));resumed.finish();
+  assert.deepEqual([...prefix,...resumed.writes],uninterrupted.writes);
+  assert.equal(resumed.total,1);
+  const discarded=OutputAssembler.restore(resumeTables,initial.checkpoint({discard:true}));
+  assert.equal(discarded.current,null);assert.equal(discarded.total,initial.total);
+  if(checkpoint.current){checkpoint.current.nodes=999;assert.notEqual(initial.current.nodes,999);}
+}
+const structural=new OutputAssembler(resumeTables);
+structural.push(events[0]);structural.push({kind:'pending_begin',event:1});
+for(let i=0;i<128;i++)structural.push({kind:'expression',operator:'and'});
+structural.push({kind:'expression',operator:'true'});
+const full=structural.checkpoint();assert.equal(full.expressions.length,129);
+assert.deepEqual(OutputAssembler.restore(resumeTables,full).checkpoint(),full);
+for(const corrupt of [c=>c.expressions.push(c.expressions.at(-1)),c=>c.expressions[0].kind='atom',
+  c=>c.expressions[1].parent=999,c=>c.current.nodes=1,c=>c.current.number=8,
+  c=>c.expressions[0].ports=1,c=>{delete c.expressions[128]},c=>c.fact={},c=>c.writes=[{}]]) {
+  const bad=structuredClone(full);corrupt(bad);assert.throws(()=>OutputAssembler.restore(resumeTables,bad));
+}
+console.log('Checkpoint split-point equivalence, discard, depth and validation checks passed.');

@@ -1,10 +1,68 @@
 import assert from 'node:assert/strict';
 import {test as runTest} from 'node:test';
 import { applyEdit, at, sceneEntries, validateNotebook } from './graph.mjs';
-import { RunSession, InspectionSelection, deliverCachedOutput, request } from './notebook.mjs';
+import { RunSession, InspectionSelection, deliverCachedOutput } from './notebook.mjs';
 import { OutputAssembler } from './answers.mjs';
+import { NotebookConnection } from './connection.mjs';
+
+function memorySink() {
+  let next = 0;
+  const archives = new Map(), recovery = new Map();
+  return {
+    archives, journal:recovery,
+    async recovery(id) { return structuredClone(recovery.get(id) ?? null); },
+    async saveRecovery(id,value) { if (value === null) recovery.delete(id); else recovery.set(id,structuredClone(value)); },
+    async recoveryPage(prefix,after=null,size=32) {
+      const keys=[...recovery.keys()].filter(key=>key.startsWith(prefix) && (after === null || key > after)).sort();
+      return {records:keys.slice(0,size).map(id=>({id,value:structuredClone(recovery.get(id))})),next:keys.length>size ? keys[size-1] : null};
+    },
+    async tables(archive) { return structuredClone(archives.get(archive)?.tables ?? null); },
+    commits: [], beforeCommit: null, afterCommit: null,
+    async create(tables, label, owned = null) {
+      if (owned && recovery.has(owned.id)) return recovery.get(owned.id).archive;
+      const archive = String(++next);
+      archives.set(archive, { tables: structuredClone(tables), label, answers: new Map(), parts: new Map() });
+      if (owned) recovery.set(owned.id,structuredClone({...owned.value,archive}));
+      return archive;
+    },
+    async flush(archive, assembler, {discard = false, recovery:owned = null} = {}) {
+      const discardNumber = discard ? assembler.current?.number : undefined;
+      if (!assembler.writes.length && discardNumber === undefined && !owned) return;
+      const batch = structuredClone(assembler.writes);
+      assert.ok(batch.length <= assembler.capacity, 'each committed batch is bounded');
+      const preserved = batch.filter(record => record.value.number !== discardNumber);
+      if (preserved.length) await this.beforeCommit?.(preserved, archive);
+      const saved = archives.get(archive);
+      assert.ok(saved, 'archive must exist before storage');
+      for (const { store, value } of preserved) {
+        if (store === 'answers') saved.answers.set(value.number, value);
+        else if (store === 'parts') saved.parts.set(JSON.stringify([value.number, value.kind, value.node, value.slot]), value);
+        else {
+          assert.equal(store, 'discard');
+          for (const [key, part] of saved.parts) if (part.number === value.number) saved.parts.delete(key);
+        }
+      }
+      if (discardNumber !== undefined) {
+        for (const [key, part] of saved.parts) if (part.number === discardNumber) saved.parts.delete(key);
+      }
+      if (owned) recovery.set(owned.id,structuredClone({...owned.value,assembler:assembler.checkpoint({discard})}));
+      if (preserved.length) this.commits.push(preserved);
+      if (preserved.length) await this.afterCommit?.(preserved, archive);
+      assembler.writes.splice(0, batch.length);
+      assembler.answers.splice(0, batch.filter(record => record.store === 'answers').length);
+      if (discardNumber !== undefined) assembler.discardPartial();
+    },
+    async discardPartial(archive, assembler, recovery = null) {
+      await this.flush(archive, assembler, {discard:true,recovery});
+    },
+  };
+}
+function testConnection(store = memorySink(), fetcher = (...args) => fetch(...args)) {
+  return new NotebookConnection(store, fetcher, {request:async (_name,_options,callback) => callback({})});
+}
 
 await runTest('transport pins execution requests to one server incarnation', async () => {
+  const request = testConnection().request;
   const originalFetch = globalThis.fetch;
   const first = 'a'.repeat(32), second = 'b'.repeat(32);
   let boot = first, helloFails = true, starts = 0;
@@ -42,7 +100,7 @@ await runTest('transport pins execution requests to one server incarnation', asy
 });
 
 await runTest('control retries preserve exact commands and serialize accepted effects', async () => {
-  const api = (await import('./notebook.mjs?control-replay')).request;
+  const api = testConnection().request;
   const originalFetch = globalThis.fetch;
   const boot = 'd'.repeat(32);
   let reservations = 0, attachments = 0, loseAttach = true, loseReply = false, receipt = null;
@@ -66,7 +124,7 @@ await runTest('control retries preserve exact commands and serialize accepted ef
     else {
       assert.equal(body.command, (receipt?.command ?? 0) + 1);
       applied.push(route);
-      receipt = {command:body.command, body:options.body, response:{run:1, inspection:'2'}};
+      receipt = {command:body.command, body:options.body, response:{run:1, inspection:'2', snapshot:'3', signatures:[], variables:[]}};
     }
     if (loseReply) { loseReply = false; throw new Error('command response lost'); }
     return reply(receipt.response);
@@ -94,7 +152,7 @@ await runTest('control retries preserve exact commands and serialize accepted ef
 
 // Exercise the production receipt authority with transport failures after effects.
 async function controlSession(name, body) {
-  const api = (await import(`./notebook.mjs?lifecycle-${name}`)).request;
+  const store = memorySink(), connection = testConnection(store), api = connection.request;
   const originalFetch = globalThis.fetch, calls = [], runs = new Map(), jobs = new Map(), snapshots = new Map();
   const losses = new Set(), effects = [], archives = [];
   let receipt = null, nextRun = 0, nextView = 0, applications = 0, failCreate = false;
@@ -120,6 +178,7 @@ async function controlSession(name, body) {
         receipt = {route, command:payload.command, body:options.body, response};
       }
     } else if (route === 'cancel') { runs.get(payload.run).canceled = true; }
+    else if (route === 'status') response = {canceled:runs.get(payload.run).canceled,applications};
     else if (route === 'close') runs.delete(payload.run);
     else if (route === 'inspect_cancel') { assert.equal(jobs.get(payload.inspection), payload.run); response = {done:true}; }
     else if (route === 'inspect_release') jobs.delete(payload.inspection);
@@ -130,13 +189,17 @@ async function controlSession(name, body) {
     if (losses.delete(route)) throw new Error(`Lost ${route} response`);
     return {ok:true, status:200, text:async () => JSON.stringify(response)};
   };
-  const store = {
-    async create(tables, label) { if (failCreate) { failCreate = false; throw new Error('Archive unavailable'); } archives.push({tables, label}); return archives.length; },
-    async flush() {}, async discardPartial() {},
+  const create = store.create.bind(store);
+  store.create = async (tables,label,owned) => {
+    if (failCreate) { failCreate=false; throw new Error('Archive unavailable'); }
+    const known = owned && await store.recovery(owned.id);
+    const archive = await create(tables,label,owned);
+    if (!known) archives.push({tables,label});
+    return archive;
   };
   const session = new RunSession(api, () => {}, store);
   try { await body({api, session, model, calls, runs, jobs, snapshots, effects, archives, lose:route => losses.add(route), failArchive:() => { failCreate = true; }}); }
-  finally { session.pause(); globalThis.fetch = originalFetch; }
+  finally { session.pause(); await connection.close(); globalThis.fetch = originalFetch; }
 }
 
 await runTest('lost step can close then start while ordinary retry commits once', async () => {
@@ -161,14 +224,35 @@ await runTest('lost start is adopted through archive failure before cancellation
   await controlSession('start-cancel', async ({session, model, lose, failArchive, effects, runs, archives}) => {
     lose('start'); await assert.rejects(session.start(model, true, false), /Lost start/);
     failArchive(); await assert.rejects(session.cancel(), /Archive unavailable/);
-    assert.equal(session.recoveredControl.route, 'start'); assert.equal(session.run, 1);
+    assert.equal(runs.get(1).canceled, true, 'source stops before archive adoption can fail');
+    assert.equal((await session.store.recovery('controller')).pending.route, 'start'); assert.equal(session.run, null);
     await session.cancel();
     assert.equal(runs.get(1).canceled, true); assert.equal(session.recordHistory, true);
     assert.deepEqual(session.submission, model); assert.equal(archives.length, 1);
     assert.equal(session.recoveredControl, null);
     await session.start({program:{rules:[]}, query:{kind:'fail'}}, false, false);
-    assert.equal(session.run, 2); assert.equal(session.runs.get(1).archive, 1);
+    assert.equal(session.run, 2); assert.equal(session.runs.get(1).archive, '1');
     assert.equal(effects.filter(route => route === 'start').length, 2);
+  });
+});
+
+await runTest('cancellation-mode recovery stops an accepted Step before its quota-blocked adoption',async()=>{
+  await controlSession('quota-step',async({session,model,lose,runs,effects})=>{
+    await session.start(model,false,false);
+    lose('step');await assert.rejects(session.step(),/Lost step/);
+    const save=session.store.saveRecovery.bind(session.store);
+    let blocked=true;
+    session.store.saveRecovery=async(key,value)=>{
+      if(blocked && key==='live:run:1')throw Error('Journal quota');
+      return save(key,value);
+    };
+    await assert.rejects(session.cancel(),/Journal quota/);
+    assert.equal(runs.get(1).canceled,true);
+    assert.equal((await session.store.recovery('controller')).pending.route,'step');
+    assert.equal(effects.filter(route=>route==='step').length,1);
+    blocked=false;await session.cancel();
+    assert.equal(session.status,'canceled');assert.equal(session.recoveredControl,null);
+    assert.equal(effects.filter(route=>route==='step').length,1);
   });
 });
 
@@ -182,7 +266,7 @@ await runTest('switch recovers an interrupted start without losing either execut
     await session.switchRun(1);
     assert.equal(session.run, 1); assert.equal(session.status, 'canceled');
     assert.equal(session.runs.get(2).recordHistory, true);
-    assert.equal(session.runs.get(2).archive, 2); assert.equal(runs.size, 2);
+    assert.equal(session.runs.get(2).archive, '2'); assert.equal(runs.size, 2);
     assert.equal(effects.filter(route => route === 'start').length, 2);
     await session.switchRun(2);
     lose('resume'); await assert.rejects(session.resume(), /Lost resume/);
@@ -233,49 +317,19 @@ await runTest('notebook persistence and production UI', async t => {
 const test = t.test.bind(t);
 
 // Node tests explicitly own a small normalized-record sink. Production uses IndexedDB.
-const testSession = (api, notify = () => {}, store = memorySink()) => new RunSession(api, notify, store);
-
-function memorySink() {
-  let next = 0;
-  const archives = new Map();
-  return {
-    archives, commits: [], beforeCommit: null, afterCommit: null,
-    async create(tables, label) {
-      const archive = String(++next);
-      archives.set(archive, { tables: structuredClone(tables), label, answers: new Map(), parts: new Map() });
-      return archive;
-    },
-    async flush(archive, assembler, discard = false) {
-      const discardNumber = discard ? assembler.current?.number : undefined;
-      if (!assembler.writes.length && discardNumber === undefined) return;
-      const batch = structuredClone(assembler.writes);
-      assert.ok(batch.length <= assembler.capacity, 'each committed batch is bounded');
-      const preserved = batch.filter(record => record.value.number !== discardNumber);
-      if (preserved.length) await this.beforeCommit?.(preserved, archive);
-      const saved = archives.get(archive);
-      assert.ok(saved, 'archive must exist before storage');
-      for (const { store, value } of preserved) {
-        if (store === 'answers') saved.answers.set(value.number, value);
-        else if (store === 'parts') saved.parts.set(JSON.stringify([value.number, value.kind, value.node, value.slot]), value);
-        else {
-          assert.equal(store, 'discard');
-          for (const [key, part] of saved.parts) if (part.number === value.number) saved.parts.delete(key);
-        }
-      }
-      if (discardNumber !== undefined) {
-        for (const [key, part] of saved.parts) if (part.number === discardNumber) saved.parts.delete(key);
-      }
-      this.commits.push(preserved);
-      if (preserved.length) await this.afterCommit?.(preserved, archive);
-      assembler.writes.splice(0, batch.length);
-      assembler.answers.splice(0, batch.filter(record => record.store === 'answers').length);
-      if (discardNumber !== undefined) assembler.discardPartial();
-    },
-    async discardPartial(archive, assembler) {
-      await this.flush(archive, assembler, true);
-    },
+const testSession = (api, notify = () => {}, store = memorySink()) => {
+  const registered = async (route,payload) => {
+    if (route === 'status') return {canceled:false};
+    const response = await api(route,payload);
+    if (route !== 'start') return response;
+    await store.saveRecovery(`live:source:${response.run}`,{submission:{program:payload.program,query:payload.query},recordHistory:payload.record_history});
+    const archive = await store.create(response,`Run ${response.run}`,{id:`live:run:${response.run}`,value:{run:response.run,
+      phase:'paused',ack:null,index:0,sequence:null,applications:0,stepPending:false}});
+    return {...response,archive};
   };
-}
+  return new RunSession(registered,notify,store);
+};
+
 const summaries = assembler => assembler.answers;
 const parts = (records, number, kind, node) => records.filter(part => part.number === number && part.kind === kind && (node === undefined || part.node === node)).sort((a, b) => a.slot - b.slot);
 const queuedParts = assembler => assembler.writes.filter(record => record.store === 'parts').map(record => record.value);
@@ -384,12 +438,12 @@ assert.equal(disconnected.run, null);
 console.log('AST editing, schema validation, server metadata, bounded stream assembly and run lifecycle checks passed.');
 
 // Persistence is the ownership handoff: a failed save must not consume a new batch.
-let storageBlocked = false, advanceCalls = 0;
+let storageBlocked = false, advanceCalls = 0, persistedRun = 8;
 const store = memorySink();
 const durable = store.archives;
 store.beforeCommit = () => { if (storageBlocked) throw new Error('Storage full'); };
 const persisted = testSession(async route => {
-  if (route === 'start') return { run: 9, ...tables };
+  if (route === 'start') return { run: ++persistedRun, ...tables };
   if (route === 'cancel') return {};
   if (route === 'advance') { advanceCalls++; return { sequence: 7, events: [0, 1, 2].flatMap(answer), applications: 3, exhausted: true, delivery_done: true }; }
 }, () => {}, store);
@@ -723,7 +777,7 @@ const replayHeld = new Map(), replayCalls = [];
 let controlReceipt = null;
 let replayId = 20000, loseCapture = false, loseRelease = false;
 const replayFetch = globalThis.fetch;
-const replayApi = (await import('./notebook.mjs?capture-replay')).request;
+const replayApi = testConnection().request;
 globalThis.fetch = async (url, options) => {
   const route = url.slice('/api/'.length), payload = JSON.parse(options.body);
   const reply = data => ({ok:true, status:200, text:async () => JSON.stringify(data)});
@@ -944,7 +998,26 @@ console.log('Bounded mid-answer writes, durable acknowledgements, quiescent retr
 // Execute the UI's production closures with a small DOM and deferred storage.
 // Keeping storage unresolved reproduces repeated clicks before a new page paints.
 const {readFileSync} = await import('node:fs');
-const {createContext, runInContext} = await import('node:vm');
+const {createContext:rawCreateContext, runInContext} = await import('node:vm');
+function createContext(values) {
+  const store = values.store ?? values.session?.store ?? memorySink();
+  const pending = values.inspectionPending;
+  if (pending) store.journal.set(`live:inspection:${pending.run}:${pending.inspection}`, {
+    run:pending.run,inspection:pending.inspection,archive:pending.archive,phase:'active',ack:pending.ack,index:0,sequence:null});
+  const api = values.liveRequest && (async (...args) => {
+    const response = await values.liveRequest(...args);
+    if (args[0] === 'inspect_release') await store.saveRecovery(`live:inspection:${args[1].run}:${args[1].inspection}`,null);
+    return response;
+  });
+  const context = rawCreateContext({connected:true, restoring:false, connection:{state:null}, check:assert.ok, store,
+    runNotice:null, displayWriting:null,displayDirty:false,displayStamp:null,message(){},async saveDisplay(){},
+    inspected:null,outputMode:'answers',savedSelection:'',answerNumber:null,answerPage:0,
+    resultPage:0,resultPortPage:0,bindingPage:0,pendingNumber:0,pendingPage:0,pendingPortPage:0,pendingPath:[], session:values.session ?? {run:null},
+    request:values.request ?? api ?? (()=>{}), async saveEditor() {}, async restoreInspection() {}, ...values,
+    ...(api ? {liveRequest:api} : {})});
+  runInContext(productionSection('function attachBatch(', '// A cached response'),context);
+  return context;
+}
 const notebookSource = readFileSync(new URL('./notebook.mjs', import.meta.url), 'utf8');
 function productionSection(start, end) {
   const first = notebookSource.indexOf(start), last = notebookSource.indexOf(end, first);
@@ -1170,7 +1243,7 @@ for (const active of [false, true]) await test(`Cancel resumes only a quiescent 
     if (!controls.has(id)) controls.set(id, {});
     return controls.get(id);
   }, safe:action => action(), check:assert.ok, inspectionCanceled:false, inspecting:active, inspectionPending:{},
-  session:{async cancel() { calls.push('cancel'); }}, async inspect() { calls.push('inspect'); }});
+  session:{run:null, async cancel() { calls.push('cancel'); }}, async inspect() { calls.push('inspect'); context.inspectionPending = null; }});
   runInContext(productionSection('  async function finishInspection()', '  function renderInspectionControls()')
     + productionSection("  $('cancel').onclick", "  $('alternatives').onchange"), context);
   await controls.get('cancel').onclick();
@@ -1339,6 +1412,403 @@ for (const outcome of ['cancel', 'done', 'error']) await test(`inspection ${outc
   assert.deepEqual(calls.slice(before), ['inspect_release']);
   assert.equal(context.inspectionPending, null);
   assert.equal(stream.total, 1);
+});
+
+function reloadServer(batch) {
+  const calls = [], effects = [], views = new Map();
+  let receipt = null, loseStep = false;
+  const fetcher = async (url, options) => {
+    const route = url.slice(5), payload = JSON.parse(options.body);
+    calls.push({route,payload});
+    let response = {};
+    if (route === 'hello') response = {boot:'f'.repeat(32)};
+    else if (route === 'reserve') response = {owner:1};
+    else if (payload.command !== undefined) {
+      if (receipt?.command === payload.command) {
+        assert.equal(receipt.body,options.body); response = receipt.response;
+      } else {
+        effects.push(route);
+        if (route === 'start') response = {run:1,...tables};
+        if (route === 'inspect') { response = {inspection:'1'}; views.set('1',true); }
+        if (route === 'step') response = {step:{done:false}};
+        receipt = {command:payload.command,body:options.body,response};
+      }
+      if (route === 'step' && loseStep) { loseStep=false; throw Error('Lost accepted Step'); }
+    } else if (route === 'status') response = {canceled:false};
+    else if (route === 'advance' || route === 'inspect_advance') response = batch;
+    else if (route === 'cancel' || route === 'inspect_cancel') response = {done:true,pending:batch};
+    else if (route === 'inspect_release') views.delete(payload.inspection);
+    return {ok:true,status:200,text:async()=>JSON.stringify(response)};
+  };
+  return {fetcher,calls,effects,views,loseStep:()=>{loseStep=true;}};
+}
+for (const afterCommit of [false,true]) await test(`reload replays scalar checkpoint after ${afterCommit ? 'committed' : 'rejected'} mid-answer flush`,async()=>{
+  const store=memorySink(), batch={sequence:81,events:[...answer(801),...answer(802)],applications:2,delivery_done:true,exhausted:true};
+  const server=reloadServer(batch);
+  const first=testConnection(store,server.fetcher), session=new RunSession(first.request,()=>{},store);
+  await session.start(untouched,false,false);
+  session.stream=new OutputAssembler(tables,8);
+  let flushes=0;
+  store[afterCommit ? 'afterCommit' : 'beforeCommit']=()=>{if (++flushes===2) throw Error('Page disappeared');};
+  await assert.rejects(session.advance(),/Page disappeared/);
+  const saved=await store.recovery('live:run:1');
+  assert.equal(saved.sequence,81); assert.equal(saved.ack,null); assert.ok(saved.index>0);
+  assert.equal(saved.response,undefined); assert.equal(JSON.stringify(saved).includes('"events"'),false);
+  const index=saved.index, archive=session.archive;
+  await first.close(); store.beforeCommit=store.afterCommit=null;
+  const second=testConnection(store,server.fetcher), restored=new RunSession(second.request,()=>{},store);
+  const before=server.calls.length;
+  await restored.restore();
+  assert.equal(restored.status,'paused'); assert.equal(restored.running,false);
+  assert.equal(server.calls.slice(before).some(call=>call.route==='advance'||call.route==='resume'),false);
+  assert.equal(restored.pendingDelivery.index,index);
+  let pushes=0; const push=restored.stream.push.bind(restored.stream);
+  restored.stream.push=event=>{push(event);pushes++;};
+  await restored.advance();
+  assert.equal(pushes,batch.events.length-index);
+  assert.equal(server.calls.at(-1).payload.ack,null);
+  assert.equal(restored.ack,81); assert.equal(restored.stream.total,2);
+  assert.equal(store.archives.get(archive).answers.size,2);
+  assert.equal(store.archives.get(archive).parts.size,20);
+  const complete=await store.recovery('live:run:1');
+  assert.equal(complete.sequence,null); assert.equal(complete.index,0); assert.equal(complete.ack,81);
+  await second.close();
+});
+await test('reload of accepted Step polls its application without issuing a second Step',async()=>{
+  const store=memorySink(),server=reloadServer({sequence:82,events:[],applications:1,delivery_done:false,exhausted:false,step:{done:true,event:'1',rule:0,shared:false}});
+  const first=testConnection(store,server.fetcher),session=new RunSession(first.request,()=>{},store);
+  await session.start(untouched,false,false);
+  server.loseStep(); await assert.rejects(session.step(),/Lost accepted Step/);
+  await first.close();
+  const second=testConnection(store,server.fetcher),restored=new RunSession(second.request,()=>{},store);
+  await restored.restore(); assert.equal(restored.stepPending,true);
+  const result=await restored.step(); assert.equal(result.applications,1);
+  assert.equal(server.effects.filter(route=>route==='step').length,1);
+  assert.equal((await store.recovery('live:run:1')).stepPending,false);
+  await second.close();
+});
+await test('reload closes a closing run before accessing its absent source or archive',async()=>{
+  const store=memorySink(),server=reloadServer({events:[]});
+  const first=testConnection(store,server.fetcher);
+  await first.request('start',{...untouched,record_history:false}); await first.close();
+  const saved=await store.recovery('live:run:1');
+  await store.saveRecovery('live:run:1',{...saved,phase:'closing'});
+  await store.saveRecovery('live:source:1',null);
+  store.tables=async()=>{throw Error('Closing metadata must not be read');};
+  const second=testConnection(store,server.fetcher),restored=new RunSession(second.request,()=>{},store);
+  await restored.restore(); assert.equal(restored.run,null); assert.equal(restored.runs.size,0);
+  assert.equal(await store.recovery('live:run:1'),null);
+  assert.equal(server.calls.at(-1).route,'close'); await second.close();
+});
+for (const canceled of [false,true]) await test(`production inspection reload ${canceled ? 'cancels' : 'finishes'} the retained scalar batch`,async()=>{
+  const store=memorySink(),batch={sequence:91,events:[...answer(901),...answer(902)],done:true};
+  const server=reloadServer(batch),first=testConnection(store,server.fetcher);
+  await first.request('start',{...untouched,record_history:false});
+  const view=await first.request('inspect',{run:1,choices:{}});
+  const key='live:inspection:1:1',stream=new OutputAssembler(tables,8),pending={response:batch,index:0};
+  let writes=0;
+  store.beforeCommit=()=>{if(++writes===2) throw Error('Reload inspection');};
+  await assert.rejects(deliverCachedOutput(store,view.archive,stream,pending,false,{
+    id:key,serialize:first.request.checkpoint,value:()=>({phase:'active'})}),/Reload inspection/);
+  const saved=await store.recovery(key); assert.ok(saved.index>0); assert.equal(saved.response,undefined);
+  if(canceled) await store.saveRecovery(key,{...saved,phase:'canceling'});
+  store.beforeCommit=null; await first.close();
+  const second=testConnection(store,server.fetcher); await second.initialize();
+  const context=createContext({store,request:second.request,liveRequest:(route,payload)=>second.request(route,payload),
+    session:{run:1},OutputAssembler,deliverCachedOutput,inspectionPending:null,inspectionCanceled:false,
+    inspected:null,outputMode:'answers',answerNumber:null,answerPage:0,
+    resetResultPages(){},async refreshSaved(){},message(){}});
+  runInContext(productionSection('  async function inspectOnce()', '  function renderInspectionControls()'),context);
+  await context.inspectOnce();
+  assert.equal(server.effects.filter(route=>route==='inspect').length,1);
+  assert.equal(store.archives.get(view.archive).answers.size,2);
+  assert.equal(store.archives.get(view.archive).parts.size,20);
+  assert.equal(await store.recovery(key),null);
+  assert.equal(server.views.size,0);
+  const replay=server.calls.findLast(call=>call.route===(canceled?'inspect_cancel':'inspect_advance'));
+  assert.ok(replay); if(!canceled) assert.equal(replay.payload.ack,null);
+  await second.close();
+});
+await test('metadata reload retains the selected lease and retires only other owned snapshots',async()=>{
+  const store=memorySink(),selection=new InspectionSelection();
+  selection.update([{id:'10',label:'Choice 10'}],[]); selection.choose('10','second');
+  selection.lease={run:1,snapshot:'11'};
+  await store.saveRecovery('live:snapshot:1:11',{run:1,snapshot:'11',phase:'active'});
+  await store.saveRecovery('live:snapshot:1:12',{run:1,snapshot:'12',phase:'release'});
+  const saved=selection.checkpoint(),restored=new InspectionSelection(),releases=[];
+  await restored.restore(store,async(route,payload)=>{releases.push([route,payload]);await store.saveRecovery(`live:snapshot:1:${payload.snapshot}`,null);},1,saved);
+  assert.deepEqual(restored.payload(1),{run:1,choices:{'10':false}});
+  assert.deepEqual(restored.lease,{run:1,snapshot:'11'});
+  assert.deepEqual(releases,[['snapshot_release',{run:1,snapshot:'12'}]]);
+});
+await test('reload completes source cancellation from its retained batch and keeps completed answers',async()=>{
+  const store=memorySink(),batch={sequence:92,events:[...answer(921),...answer(922).slice(0,5)],applications:1,delivery_done:false,exhausted:false};
+  const server=reloadServer(batch),first=testConnection(store,server.fetcher),session=new RunSession(first.request,()=>{},store);
+  await session.start(untouched,false,false); session.stream=new OutputAssembler(tables,8);
+  let writes=0;store.beforeCommit=()=>{if(++writes===2)throw Error('Reload cancellation');};
+  await assert.rejects(session.advance(),/Reload cancellation/);
+  const saved=await store.recovery('live:run:1');
+  await store.saveRecovery('live:run:1',{...saved,phase:'canceling'});
+  await first.close();store.beforeCommit=null;
+  const second=testConnection(store,server.fetcher),restored=new RunSession(second.request,()=>{},store);
+  const before=server.calls.length;
+  await restored.restore();
+  assert.equal(restored.status,'canceled'); assert.equal(restored.ack,92);
+  assert.equal(restored.stream.current,null);assert.equal(restored.stream.total,1);
+  assert.equal(store.archives.get(restored.archive).parts.size,10);
+  assert.equal(server.calls.slice(before).some(call=>call.route==='advance'),false);
+  await restored.deliverPending();
+  assert.equal((await store.recovery('live:run:1')).phase,'canceled','empty checkpoint preserves terminal phase');
+  await second.close();
+});
+await test('reload rejects a different retained sequence before appending any scalar',async()=>{
+  const store=memorySink(),batch={sequence:93,events:answer(931),applications:1,delivery_done:true};
+  const server=reloadServer(batch),first=testConnection(store,server.fetcher),session=new RunSession(first.request,()=>{},store);
+  await session.start(untouched,false,false);session.stream=new OutputAssembler(tables,8);
+  store.beforeCommit=()=>{throw Error('Reload');};await assert.rejects(session.advance(),/Reload/);
+  await first.close();store.beforeCommit=null;batch.sequence=94;
+  const second=testConnection(store,server.fetcher),restored=new RunSession(second.request,()=>{},store);
+  await restored.restore();const checkpoint=await store.recovery('live:run:1');
+  await assert.rejects(restored.advance(),/Retained output sequence changed/);
+  assert.deepEqual(await store.recovery('live:run:1'),checkpoint);
+  assert.equal(store.archives.get(restored.archive).parts.size,0);await second.close();
+});
+for(const admitted of [false,true]) await test(`mount restores editor with controller admission ${admitted}`,async()=>{
+  const store=memorySink(),boot='a'.repeat(32),selection=new InspectionSelection();
+  await store.saveRecovery('editor',{model:untouched,program:'unsynced program',query:'unsynced query',dirty:true,history:true,boot,run:7,selection:selection.checkpoint()});
+  const controls=new Map(),$=name=>{if(!controls.has(name))controls.set(name,{});return controls.get(name);};
+  let restored=false,refreshed=false;
+  const context=createContext({$,store,connected:false,restoring:true,editorWriting:null,editorDirty:false,
+    model:{program:{rules:[]},query:{kind:'true'}},dirty:false,clone:structuredClone,validateNotebook,
+    connection:{state:{boot},async initialize(){if(!admitted)throw Error('Other tab');}},
+    session:{run:null,async restore(run){assert.equal(run,7);restored=true;}},inspectionSelection:selection,
+    renderWorkspace(){},renderRun(){},renderInspectionControls(){},async refreshSaved(){refreshed=true;}});
+  runInContext(productionSection('  function saveEditor()', '  function message('),context);
+  if(admitted)await context.initialize();else await assert.rejects(context.initialize(),/Other tab/);
+  assert.equal(context.connected,admitted);assert.equal(restored,admitted);assert.equal(refreshed,true);
+  assert.equal($('program').value,'unsynced program');assert.equal($('query').value,'unsynced query');
+  assert.equal(context.dirty,true);assert.equal($('history').checked,true);
+  assert.deepEqual(structuredClone(context.model),untouched);
+});
+await test('a canceled advance preserves completions and discards the unfinished suffix',async()=>{
+  const store=memorySink(),batch={sequence:95,events:[...answer(951),...answer(952).slice(0,5)],applications:1,delivery_done:false,canceled:true};
+  const session=testSession(async route=>route==='start'?{run:95,...tables}:route==='advance'?batch:{},()=>{},store);
+  await session.start(untouched,false,false);
+  session.running=true;
+  await session.advance();
+  assert.equal(session.status,'canceled');assert.equal(session.running,false);assert.equal(session.timer,null);
+  assert.equal(session.stream.current,null);assert.equal(session.stream.total,1);
+  const saved=await store.recovery('live:run:95');
+  assert.equal(saved.phase,'canceled');assert.equal(saved.status.canceled,true);assert.equal(saved.ack,95);
+  assert.equal(store.archives.get(session.archive).parts.size,10);
+});
+await test('reload honors server cancellation when the durable phase still says paused',async()=>{
+  const store=memorySink(),batch={sequence:96,events:answer(961).slice(0,5),applications:0,delivery_done:false,canceled:false};
+  const server=reloadServer(batch),first=testConnection(store,server.fetcher),session=new RunSession(first.request,()=>{},store);
+  await session.start(untouched,false,false);await session.advance();await first.close();
+  assert.equal((await store.recovery('live:run:1')).phase,'paused');
+  const fetcher=(url,options)=>url==='/api/status'
+    ?Promise.resolve({ok:true,status:200,text:async()=>JSON.stringify({canceled:true,applications:0})})
+    :server.fetcher(url,options);
+  const second=testConnection(store,fetcher),restored=new RunSession(second.request,()=>{},store);
+  await restored.restore();
+  assert.equal(restored.status,'canceled');assert.equal(restored.stream.current,null);
+  assert.equal(store.archives.get(restored.archive).parts.size,0);
+  assert.equal(server.calls.at(-1).route,'cancel');await second.close();
+});
+
+await test('inspection reload honors canceled delivery when its journal phase is active',async()=>{
+  const store=memorySink(),batch={sequence:97,events:[...answer(971),...answer(972).slice(0,5)],done:true,canceled:true};
+  const server=reloadServer(batch),first=testConnection(store,server.fetcher);
+  await first.request('start',{...untouched,record_history:false});
+  const view=await first.request('inspect',{run:1,choices:{}});await first.close();
+  const second=testConnection(store,server.fetcher);await second.initialize();
+  const context=createContext({store,request:second.request,liveRequest:(route,payload)=>second.request(route,payload),
+    session:{run:1},OutputAssembler,deliverCachedOutput,inspectionPending:null,inspectionCanceled:false,
+    inspected:null,outputMode:'answers',answerNumber:null,answerPage:0,
+    resetResultPages(){},async refreshSaved(){},message(){}});
+  runInContext(productionSection('  async function inspectOnce()', '  function renderInspectionControls()'),context);
+  await context.inspectOnce();
+  assert.equal(context.inspectionPending,null);assert.equal(context.inspectionCanceled,true);
+  assert.equal(store.archives.get(view.archive).answers.size,1);
+  assert.equal(store.archives.get(view.archive).parts.size,10);
+  assert.equal(await store.recovery('live:inspection:1:1'),null);
+  await second.close();
+});
+await test('reload exposes Cancel after quota blocks accepted Start adoption',async()=>{
+  const store=memorySink(),server=reloadServer({events:[]}),first=testConnection(store,server.fetcher);
+  const save=store.saveRecovery.bind(store);let blocked=true;
+  store.saveRecovery=async(key,value)=>{if(blocked && key==='live:source:1')throw Error('Persistent quota');return save(key,value);};
+  await assert.rejects(first.request('start',{...untouched,record_history:false}),/Persistent quota/);
+  await first.close();
+  const second=testConnection(store,server.fetcher),session=new RunSession(second.request,()=>{},store);
+  const controls=new Map(),$=name=>{if(!controls.has(name))controls.set(name,{replaceChildren(){}});return controls.get(name);};
+  const context=createContext({$,store,connection:second,request:second.request,session,
+    connected:false,restoring:true,editorWriting:null,editorDirty:false,
+    model:untouched,dirty:false,clone:structuredClone,validateNotebook,inspectionSelection:session.selection,
+    inspecting:false,launching:false,busy:false,inspectionPending:null,inspectionCanceled:false,
+    el:()=>({}),message(){},renderWorkspace(){},renderInspectionControls(){},renderResults(){},async refreshSaved(){},safe:action=>action(),async inspect(){}});
+  runInContext(productionSection('  function saveEditor()', '  function message(')
+    +productionSection('  function renderRun()', '  function refreshSaved()')
+    +productionSection('  async function finishInspection()', '  function renderInspectionControls()')
+    +productionSection("  $('cancel').onclick", "  $('alternatives').onchange"),context);
+  await assert.rejects(context.initialize(),/Persistent quota/);
+  assert.equal(session.run,null);assert.equal(session.status,'idle');
+  assert.equal(context.connected,true);assert.equal(context.restoring,false);
+  assert.equal($('cancel').disabled,false);
+  const before=server.calls.length;
+  await assert.rejects($('cancel').onclick(),/Persistent quota/);
+  assert.ok(server.calls.slice(before).some(call=>call.route==='cancel'));
+  assert.equal((await store.recovery('controller')).pending.route,'start');
+  assert.equal(server.effects.filter(route=>route==='start').length,1);
+  context.restoring=true;context.renderRun();
+  for(const name of ['run','step','resume','cancel','inspect','execution'])assert.equal($(name).disabled,true);
+  blocked=false;await second.close();
+});
+await test('cancel recovery waits for ordinary recovery then retries with cancellation mode',async()=>{
+  let rejectOrdinary;const modes=[];
+  const api=async()=>({});
+  api.recover=options=>{
+    modes.push(options?.cancel===true);
+    if(!options?.cancel)return new Promise((_resolve,reject)=>{rejectOrdinary=reject;});
+    throw Error('Cancellation reached storage');
+  };
+  const session=new RunSession(api,()=>{},memorySink());
+  const ordinary=session.settleControl();
+  const cancellation=session.cancel();
+  rejectOrdinary(Error('Ordinary quota'));
+  await assert.rejects(ordinary,/Ordinary quota/);
+  await assert.rejects(cancellation,/Cancellation reached storage/);
+  assert.deepEqual(modes,[false,true]);
+});
+await test('restore loads owned runs before reporting a definitively rejected pending Step',async()=>{
+  const store=memorySink(),server=reloadServer({events:[]});
+  let lost=true;
+  const fetcher=async(url,options)=>{
+    if(url==='/api/step') {
+      if(lost){lost=false;throw Error('Lost rejected Step');}
+      return {ok:false,status:409,text:async()=>JSON.stringify({error:'Source was canceled'})};
+    }
+    return server.fetcher(url,options);
+  };
+  const first=testConnection(store,fetcher),initial=new RunSession(first.request,()=>{},store);
+  await initial.start(untouched,false,false);
+  await assert.rejects(initial.step(),/Lost rejected Step/);await first.close();
+  const second=testConnection(store,fetcher),restored=new RunSession(second.request,()=>{},store);
+  await assert.rejects(restored.restore(1),/Source was canceled/);
+  assert.equal((await store.recovery('controller')).pending,null);
+  assert.equal(restored.run,1);assert.equal(restored.runs.has(1),true);
+  assert.equal(restored.archive,initial.archive);assert.deepEqual(restored.submission,untouched);
+  assert.equal(restored.status,'paused');assert.equal(restored.running,false);
+  await restored.cancel();assert.equal(restored.status,'canceled');await second.close();
+});
+await test('mount restores selection context before surfacing a recovered command rejection',async()=>{
+  const store=memorySink(),boot='a'.repeat(32),selection=new InspectionSelection();
+  const savedSelection={lease:{run:7,snapshot:'8'},assignments:[['2','second']]};
+  await store.saveRecovery('editor',{model:untouched,program:'p',query:'q',dirty:true,history:true,boot,run:7,selection:savedSelection});
+  const controls=new Map(),$=name=>{if(!controls.has(name))controls.set(name,{});return controls.get(name);};
+  let metadata=false,inspection=false;
+  selection.restore=async(_store,_api,run,saved)=>{assert.equal(run,7);assert.deepEqual(saved,savedSelection);metadata=true;};
+  const context=createContext({$,store,connected:false,restoring:true,editorWriting:null,editorDirty:false,
+    model:untouched,dirty:false,clone:structuredClone,validateNotebook,request:()=>{},
+    connection:{state:{boot},async initialize(){}},
+    session:{run:null,async restore(){this.run=7;throw Error('Step rejected');}},inspectionSelection:selection,
+    async restoreInspection(){inspection=true;},renderWorkspace(){},renderRun(){},renderInspectionControls(){},async refreshSaved(){}});
+  runInContext(productionSection('  function saveEditor()', '  function message('),context);
+  await assert.rejects(context.initialize(),/Step rejected/);
+  assert.equal(metadata,true);assert.equal(inspection,true);assert.equal(context.connected,true);
+});
+await test('reload restores the inspected archive and pending navigation through bounded scene loading',async()=>{
+  const h=renderingHarness(),c=h.context,store=memorySink(),messages=[];
+  c.store=store;
+  c.session={run:1,archive:'source',status:'paused',applications:1,stream:null,async restore(){}};
+  Object.assign(c,{connection:{state:{boot:'a'.repeat(32)},async initialize(){}},request:()=>{},
+    inspectionSelection:new InspectionSelection(),clone:structuredClone,validateNotebook,
+    connected:false,restoring:true,model:untouched,dirty:false,editorWriting:null,editorDirty:false,
+    catalog:{records:[],next:null,prev:null},catalogCursor:null,catalogDirection:'next',catalogDirty:true,catalogStamp:'',
+    refreshing:null,refreshAgain:false,inspectionPending:null,renderWorkspace(){},renderRun(){},message:text=>messages.push(text)});
+  const display={mode:'inspect',inspectionArchive:'inspection',savedArchive:'',sourceArchive:'source',
+    answerNumber:1,answerPage:0,resultPage:1,resultPortPage:1,bindingPage:1,pendingNumber:1,pendingPage:1,pendingPortPage:1,pendingPath:[42,43]};
+  await store.saveRecovery('display',display);
+  await store.saveRecovery('editor',{model:untouched,program:'p(X) <=> (q(X); r(X)).',query:'p(A)',dirty:false,history:false,run:1,boot:'a'.repeat(32)});
+  store.list=async()=>({records:[],next:null,prev:null});
+  const pageReads=[];
+  store.page=async(archive,page)=>{pageReads.push({archive,page});return {id:archive,label:'Inspection',created:1,page:0,pages:1,total:1,answers:[{number:1,completion:'1',alternative:'0'}]};};
+  store.scene=(...args)=>new Promise(resolve=>h.reads.push({collection:args[0],number:args[1],options:args[2],resolve}));
+  runInContext(productionSection('  function saveEditor()', '  function message(')
+    +productionSection('  function refreshSaved()', '  function renderResults()'),c);
+  await c.initialize();
+  assert.equal(c.outputMode,'inspect');assert.equal(c.inspected.archive,'inspection');
+  assert.deepEqual([...c.pendingPath],[42,43]);assert.equal(c.answerNumber,1);
+  assert.deepEqual(pageReads,[{archive:'inspection',page:0}]);
+  assert.equal(h.reads.length,1);assert.equal(h.reads[0].collection,'inspection');
+  assert.deepEqual([...h.reads[0].options.pendingPath],[42,43]);
+  h.reads[0].resolve(h.scene());await Promise.all(h.tasks);
+  assert.equal(h.errors.length,0);assert.equal(h.$('pending-bodies').hidden,false);
+  assert.match(messages.at(-1),/restored paused at 1 applications.*Showing saved inspection/);
+  const persisted=await store.recovery('display');
+  assert.equal(persisted.inspectionArchive,'inspection');assert.equal(persisted.pendingPath.length,2);
+  assert.equal('facts' in persisted,false);assert.equal('events' in persisted,false);
+});
+await test('inspection display ownership persists before release and retries without reprojection',async()=>{
+  const store=memorySink(),batch={sequence:101,events:answer(1001),done:true},server=reloadServer(batch),connection=testConnection(store,server.fetcher);
+  await connection.request('start',{...untouched,record_history:false});
+  const view=await connection.request('inspect',{run:1,choices:{}});
+  const c=createContext({store,request:connection.request,liveRequest:(route,payload)=>connection.request(route,payload),
+    session:{run:1,archive:'source'},OutputAssembler,deliverCachedOutput,inspectionPending:null,inspectionCanceled:false,
+    resetResultPages(){},async refreshSaved(){},message(){}});
+  runInContext(productionSection('  function displayState()', '  async function initialize()')
+    +productionSection('  async function inspectOnce()', '  function renderInspectionControls()'),c);
+  const save=store.saveRecovery.bind(store);let blocked=true;
+  store.saveRecovery=async(key,value)=>{if(key==='display' && blocked)throw Error('Display quota');return save(key,value);};
+  await assert.rejects(c.inspectOnce(),/Display quota/);
+  assert.equal(server.views.size,1);assert.equal(c.inspectionPending.cleanup,'release');
+  assert.equal(store.archives.get(view.archive).answers.size,1);
+  const advances=server.calls.filter(call=>call.route==='inspect_advance').length;
+  blocked=false;await c.inspectOnce();
+  assert.equal(server.views.size,0);assert.equal((await store.recovery('display')).inspectionArchive,view.archive);
+  assert.equal(server.calls.filter(call=>call.route==='inspect_advance').length,advances);
+  await connection.close();
+});
+await test('terminal run status replaces welcome text once without overwriting later UI messages',async()=>{
+  const controls=new Map(),$=name=>{if(!controls.has(name))controls.set(name,{replaceChildren(){}});return controls.get(name);};
+  const messages=[],session={run:1,status:'done',applications:2,runs:new Map(),error:null};
+  const c=createContext({$,session,el:()=>({}),message:text=>messages.push(text),inspectionSelection:new InspectionSelection(),
+    inspecting:false,launching:false,busy:false,inspectionPending:null,renderResults(){},async refreshSaved(){},safe:action=>action()});
+  runInContext(productionSection('  function renderRun()', '  function refreshSaved()'),c);
+  c.renderRun();assert.match(messages.at(-1),/Run 1 completed/);
+  messages.push('Inspection saved.');c.renderRun();assert.equal(messages.at(-1),'Inspection saved.');
+  session.status='canceled';c.renderRun();assert.match(messages.at(-1),/Run 1 canceled/);
+});
+await test('source terminal delivery refreshes the catalog in inspection mode without per-tick lists',async()=>{
+  const controls=new Map(),$=name=>{if(!controls.has(name))controls.set(name,{replaceChildren(...children){this.children=children;}});return controls.get(name);};
+  const session={archive:'source',status:'running',ack:1},lists=[];
+  const c=createContext({$,session,inspected:{archive:'inspection'},outputMode:'inspect',
+    catalog:{records:[],next:null,prev:null},catalogCursor:null,catalogDirection:'next',catalogDirty:true,catalogStamp:'',
+    refreshing:null,refreshAgain:false,savedView:null,inspectionPending:null,
+    el:(tag,text,attrs)=>({tag,text,attrs}),renderResults(){},resetResultPages(){},
+    store:{list(options){assert.equal(options.size,32);return new Promise(resolve=>lists.push(resolve));},
+      async page(id){assert.equal(id,'inspection');return {id,page:0,pages:1,total:1,answers:[]};}}});
+  runInContext(productionSection('  function refreshSaved()', '  function renderResults()'),c);
+  const initial=c.refreshSaved();
+  const catalog=total=>({records:[{id:'source',label:'Run 1',total,created:1}],next:null,prev:null});
+  lists[0](catalog(0));await initial;
+  for(let i=0;i<5;i++)await c.refreshSaved();
+  assert.equal(lists.length,1);
+  session.status='done';session.ack=2;
+  const completed=c.refreshSaved();
+  assert.equal(lists.length,2,'terminal completion invalidates the source catalog entry');
+  lists[1](catalog(2));await completed;
+  assert.match($('saved-run').children.find(item=>item.attrs.value==='source').text,/Run 1 · 2 answers/);
+  for(let i=0;i<5;i++)await c.refreshSaved();
+  assert.equal(lists.length,2,'unchanged terminal state reuses the same bounded page');
+  assert.equal(c.outputMode,'inspect');assert.equal(c.savedView.id,'inspection');
+  session.status='canceled';const canceling=c.refreshSaved();
+  session.ack=3;c.refreshSaved();lists[2](catalog(2));
+  await new Promise(setImmediate);
+  assert.equal(lists.length,4,'a committed ack change during a list read is not lost');
+  lists[3](catalog(3));await canceling;
+  assert.match($('saved-run').children.find(item=>item.attrs.value==='source').text,/Run 1 · 3 answers/);
 });
 
 });

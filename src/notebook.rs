@@ -1019,6 +1019,10 @@ fn connection(mut stream: TcpStream, runtime: &Runtime, port: u16) -> io::Result
                 "text/javascript; charset=utf-8",
                 include_bytes!("../web/notebook.mjs").as_slice(),
             )),
+            "/connection.mjs" => Some((
+                "text/javascript; charset=utf-8",
+                include_bytes!("../web/connection.mjs").as_slice(),
+            )),
             "/answers.mjs" => Some((
                 "text/javascript; charset=utf-8",
                 include_bytes!("../web/answers.mjs").as_slice(),

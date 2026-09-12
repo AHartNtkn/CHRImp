@@ -1,5 +1,6 @@
 import { clone, at, atomOf, applyEdit, validateNotebook, renderGraph, renderScene } from './graph.mjs';
 import { OutputAssembler, IndexedAnswerStore } from './answers.mjs';
+import { NotebookConnection } from './connection.mjs';
 
 const check = (ok, message) => { if (!ok) throw new Error(message); };
 const uint = value => {
@@ -15,7 +16,31 @@ const id = value => {
 };
 
 export class InspectionSelection {
-  constructor() { this.choices = []; this.snapshots = []; this.assignments = new Map(); this.snapshot = ''; this.selectedSnapshot = null; this.cursors = {}; this.navigation = {}; this.loading = false; this.lease = null; this.retiring = null; this.operation = null; this.resetting = false; this.pendingCapture = null; }
+  constructor() { this.choices = []; this.snapshots = []; this.assignments = new Map(); this.snapshot = ''; this.selectedSnapshot = null; this.cursors = {}; this.navigation = {}; this.loading = false; this.lease = null; this.retiring = null; this.operation = null; this.resetting = false; this.pendingCapture = null; this.persist = async () => {}; }
+  checkpoint() {
+    return {choices:this.choices, snapshots:this.snapshots, assignments:[...this.assignments], snapshot:this.snapshot,
+      selectedSnapshot:this.selectedSnapshot, cursors:this.cursors, navigation:this.navigation, lease:this.lease};
+  }
+  async restore(store, api, run, saved = null) {
+    if (saved && (saved.snapshot || saved.lease?.run === run)) {
+      const lease = saved.lease && await store.recovery(`live:snapshot:${run}:${saved.lease.snapshot}`);
+      if (saved.snapshot || lease?.phase === 'active') {
+        this.update(saved.choices, saved.snapshots, true); this.assignments = new Map(saved.assignments);
+        this.snapshot = saved.snapshot; this.selectedSnapshot = saved.selectedSnapshot;
+        this.cursors = saved.cursors; this.navigation = saved.navigation;
+        this.lease = lease?.phase === 'active' ? saved.lease : null;
+      }
+    }
+    let after = null;
+    do {
+      const page = await store.recoveryPage(`live:snapshot:${run}:`, after);
+      for (const {value} of page.records) if (value.snapshot !== this.lease?.snapshot) {
+        await liveRequest('snapshot_release', {run,snapshot:value.snapshot}, api);
+      }
+      after = page.next;
+      if (after !== null) await new Promise(resolve => setTimeout(resolve, 0));
+    } while (after !== null);
+  }
   update(choices, snapshots, preserve = false) {
     const descriptors = (items, name) => {
       check(Array.isArray(items), `Inspection response needs ${name} descriptors.`);
@@ -51,6 +76,7 @@ export class InspectionSelection {
   }
   async releaseRetiring(api) {
     if (!this.retiring) return;
+    await this.persist(); // Publish the replacement selection before releasing its predecessor.
     const lease = this.retiring;
     await liveRequest('snapshot_release', lease, api);
     this.retiring = null;
@@ -71,6 +97,7 @@ export class InspectionSelection {
       }
       this.choices = []; this.snapshots = []; this.assignments.clear();
       this.snapshot = ''; this.selectedSnapshot = null; this.cursors = {}; this.navigation = {};
+      await this.persist();
     } finally { this.resetting = false; }
   }
   page(api, run, kind = null, direction = 'refresh', selection = null) {
@@ -127,6 +154,7 @@ export class InspectionSelection {
       }
       this.retiring = this.lease;
       this.lease = candidate;
+      await this.persist();
       await this.releaseRetiring(api);
     } finally { this.loading = false; }
   }
@@ -147,89 +175,7 @@ export class InspectionSelection {
   }
 }
 
-let serverBoot = null, serverOwner = null, attaching = null;
-let command = 0, pendingControl = null, controlTail = Promise.resolve();
-const controlRoutes = new Set(['start', 'inspect', 'step', 'resume', 'snapshot']);
-async function send(route, body) {
-  const response = await fetch(`/api/${route}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
-  });
-  const text = await response.text();
-  let data;
-  try { data = JSON.parse(text); } catch { throw new Error(`${response.status}: ${text.slice(0, 160) || 'Empty server response'}`); }
-  if (!response.ok) { const error = new Error(typeof data.error === 'string' ? data.error : data.error?.message ?? data.message ?? `Request failed (${response.status})`); error.retry = data.retry === true; error.status = response.status; error.code = data.code; throw error; }
-  return data;
-}
-async function owner() {
-  // Keep an accepted attach's identity when its response is lost.
-  serverBoot ??= send('hello', '{}').then(response => {
-    check(typeof response.boot === 'string' && /^[0-9a-f]{32}$/.test(response.boot), 'Invalid server identity.');
-    return response.boot;
-  }).catch(error => { serverBoot = null; throw error; });
-  const boot = await serverBoot;
-  attaching ??= (async () => {
-    if (serverOwner === null) {
-      const reserved = uint((await send('reserve', JSON.stringify({boot}))).owner);
-      check(reserved > 0, 'Invalid notebook owner.'); serverOwner = reserved;
-    }
-    await send('attach', JSON.stringify({boot, owner:serverOwner}));
-  })().catch(error => {
-    attaching = null;
-    // An overtaken reservation has never owned an execution. Its next attempt
-    // may reserve again; commands under an attached owner never change owners.
-    if (error.code === 'unknown_owner') serverOwner = null;
-    throw error;
-  });
-  await attaching;
-  return {boot, owner:serverOwner};
-}
-export async function request(route, payload) {
-  if (['hello', 'parse', 'format'].includes(route)) return send(route, JSON.stringify(payload));
-  const identity = await owner();
-  if (!controlRoutes.has(route)) return send(route, JSON.stringify({...payload, ...identity}));
-  return serializeControl(async () => {
-    const input = JSON.stringify({...payload, ...identity});
-    if (pendingControl) {
-      check(pendingControl.route === route && pendingControl.input === input, 'Recover the interrupted command before submitting another command.');
-    } else {
-      check(Number.isSafeInteger(command + 1), 'Control command sequence exhausted.');
-      pendingControl = {route, input, command:command + 1, body:JSON.stringify({...payload, ...identity, command:command + 1})};
-    }
-    return replayControl();
-  });
-}
-function serializeControl(action) {
-  const operation = controlTail.then(action);
-  controlTail = operation.catch(() => {});
-  return operation;
-}
-async function replayControl() {
-  try {
-    const response = await send(pendingControl.route, pendingControl.body);
-    command = pendingControl.command; pendingControl = null;
-    return response;
-  } catch (error) {
-    // Only a definite rejection permits a replacement. Ambiguous delivery
-    // keeps the exact request for replay, including after a lost response.
-    if (error.status >= 400 && error.status < 500 && !error.retry) pendingControl = null;
-    throw error;
-  }
-}
-request.recover = () => serializeControl(async () => {
-  if (!pendingControl) return null;
-  const route = pendingControl.route;
-  const {boot, owner, ...payload} = JSON.parse(pendingControl.input);
-  for (;;) {
-    try { return {route, payload, response:await replayControl()}; }
-    catch (error) {
-      if (!error.retry) throw error;
-      await send('maintenance', JSON.stringify({boot, owner, run:payload.run, budget:2048}));
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-  }
-});
-
-async function liveRequest(route, payload, api = request) {
+async function liveRequest(route, payload, api) {
     for (;;) {
       try { return await api(route, payload); }
       catch (error) {
@@ -240,9 +186,33 @@ async function liveRequest(route, payload, api = request) {
     }
   }
 
+function attachBatch(pending, response) {
+  check(Array.isArray(response.events), 'Output response needs events.');
+  check(pending.sequence == null || pending.sequence === response.sequence, 'Retained output sequence changed.');
+  check(Number.isSafeInteger(pending.index) && pending.index >= 0 && pending.index <= response.events.length, 'Retained output index is invalid.');
+  pending.response = response;
+}
+
 // A cached response is bounded by the server's delivery budget. On cancel,
 // preserve every complete alternative and retire only its unfinished suffix.
-export async function deliverCachedOutput(store, archive, stream, pending, cancel = false) {
+export async function deliverCachedOutput(store, archive, stream, pending, cancel = false, checkpoint = null) {
+  const flush = async (discard = false, complete = false) => {
+    if (!checkpoint) return discard ? store.discardPartial(archive, stream) : store.flush(archive, stream);
+    return checkpoint.serialize(async () => {
+      const previous = await store.recovery(checkpoint.id);
+      check(previous, 'Output recovery ownership is missing.');
+      const response = pending?.response;
+      const value = {...previous, ...checkpoint.value(complete, cancel),
+        ack:complete ? response?.sequence ?? previous.ack : previous.ack,
+        status:response ? Object.fromEntries(['done','delivery_done','exhausted','applications','step','error','canceled'].filter(key => response[key] !== undefined).map(key => [key,response[key]])) : previous.status,
+        sequence:complete ? null : response?.sequence ?? null,
+        index:complete ? 0 : pending?.index ?? 0};
+      if (previous.phase === 'closing' || (previous.phase === 'canceling' && !cancel)) value.phase = previous.phase;
+      if (cancel) value.status = {...value.status,canceled:true};
+      if (complete && (cancel || response?.step?.done)) value.stepPending = false;
+      await store.flush(archive, stream, {discard, recovery:{id:checkpoint.id,value}});
+    });
+  };
   const events = pending?.response?.events ?? [];
   let limit = events.length;
   if (cancel) {
@@ -251,24 +221,25 @@ export async function deliverCachedOutput(store, archive, stream, pending, cance
       if (events[index].kind === 'end') { limit = index + 1; break; }
     }
   }
-  if (!cancel || (pending && pending.index < limit)) await store.flush(archive, stream);
+  if (!cancel || (pending && pending.index < limit)) await flush();
   while (pending && pending.index < limit) {
     stream.push(events[pending.index]);
     pending.index++;
-    if (stream.needsFlush) await store.flush(archive, stream);
+    if (stream.needsFlush) await flush();
   }
   if (cancel) {
-    await store.discardPartial(archive, stream);
+    await flush(true, true);
     if (pending) pending.index = events.length;
-  } else await store.flush(archive, stream);
+  } else await flush(false, true);
 }
 
 export class RunSession {
-  constructor(api = request, notify = () => {}, store = new IndexedAnswerStore()) {
+  constructor(api, notify = () => {}, store = new IndexedAnswerStore()) {
     this.api = api; this.notify = notify; this.store = store; this.archive = null; this.pendingDelivery = null; this.run = null; this.status = 'idle';
     this.running = false; this.inFlight = null; this.timer = null; this.stream = null;
     this.applications = 0; this.error = null; this.starting = false; this.runs = new Map(); this.canceling = false; this.ack = null; this.selection = new InspectionSelection(); this.changingRun = false; this.pendingClose = null;
     this.recoveredControl = null; this.recovering = null;
+    this.stepPending = false;
   }
   async start(model, recordHistory = false, auto = true) {
     check(!this.starting && !this.changingRun, 'A run is already starting.');
@@ -280,41 +251,88 @@ export class RunSession {
       this.status = 'starting'; this.error = null; this.notify();
       const response = await this.api('start', { ...clone(this.submission), record_history: recordHistory });
       this.adoptStart({...this.submission, record_history:recordHistory}, response);
-      await this.ensureArchive();
       if (auto) await this.resume();
     } catch (error) { this.fail(error); throw error; }
     finally { this.starting = false; this.notify(); }
   }
-  async ensureArchive() {
-    if (this.stream && this.archive === null) this.archive = await this.store.create(this.stream.tables, `Run ${this.run}`);
-  }
   adoptStart(payload, response) {
+    check(typeof response.archive === 'string', 'Start response needs its registered archive.');
     const run = uint(response.run), stream = new OutputAssembler(response);
     const submission = clone(validateNotebook({program:payload.program, query:payload.query}));
     this.run = run; this.stream = stream; this.submission = submission;
-    this.ack = null; this.archive = null; this.pendingDelivery = null;
+    this.ack = null; this.archive = response.archive; this.pendingDelivery = null;
     this.recordHistory = payload.record_history === true;
-    this.applications = 0; this.exhausted = false; this.status = 'paused';
+    this.applications = 0; this.exhausted = false; this.status = 'paused'; this.stepPending = false;
   }
-  settleControl() {
-    this.recovering ??= this.recoverControl().finally(() => { this.recovering = null; });
+  checkpoint(action) { return this.api.checkpoint ? this.api.checkpoint(action) : action(); }
+  async restore(preferred = null) {
+    let recoveryError;
+    try { await this.api.recover?.(); } catch (error) { recoveryError = error; }
+    let after = null;
+    do {
+      const page = await this.store.recoveryPage('live:run:', after);
+      for (const {value} of page.records) {
+        if (value.phase === 'closing') { await this.api('close', {run:value.run}); continue; }
+        this.runs.set(value.run, {run:value.run, archive:value.archive,
+          status:['done','canceled'].includes(value.phase) ? value.phase : 'paused', applications:value.applications ?? 0});
+      }
+      after = page.next;
+      if (after !== null) await new Promise(resolve => setTimeout(resolve, 0));
+    } while (after !== null);
+    const run = this.runs.has(preferred) ? preferred : this.runs.keys().next().value;
+    if (run !== undefined) await this.loadRun(run);
+    this.notify();
+    if (recoveryError) throw recoveryError;
+  }
+  async loadRun(run) {
+    const saved = await this.store.recovery(`live:run:${run}`);
+    check(saved, 'Unknown saved execution.');
+    if (saved.phase === 'closing') { this.pendingClose = run; await this.finishClose(); return; }
+    const source = await this.store.recovery(`live:source:${run}`);
+    const tables = await this.store.tables(saved.archive);
+    check(source && tables, 'Execution source or archive metadata is missing.');
+    this.run = run; this.archive = saved.archive;
+    this.stream = saved.assembler ? OutputAssembler.restore(tables, saved.assembler) : new OutputAssembler(tables);
+    this.submission = source.submission;
+    this.recordHistory = source.recordHistory === true;
+    this.ack = saved.ack ?? null; this.applications = saved.applications ?? 0; this.exhausted = saved.exhausted ?? false;
+    this.pendingDelivery = saved.sequence != null ? {response:null,sequence:saved.sequence,index:saved.index ?? 0} : null;
+    this.stepPending = saved.stepPending === true;
+    this.pendingClose = null;
+    this.status = ['done','canceled'].includes(saved.phase) ? saved.phase : 'paused';
+    this.running = false; this.error = null;
+    if (saved.phase !== 'canceled') {
+      const live = await this.api('status', {run});
+      check(typeof live.canceled === 'boolean', 'Execution status needs cancellation state.');
+      if (live.canceled || saved.phase === 'canceling') {
+        this.status = 'canceled'; this.stepPending = false;
+        await this.cancel();
+      }
+    }
+  }
+  settleControl(options = {}) {
+    if (options.cancel && this.recovering) {
+      return this.recovering.catch(() => {}).then(() => this.settleControl(options));
+    }
+    this.recovering ??= this.recoverControl(options).finally(() => { this.recovering = null; });
     return this.recovering;
   }
-  async recoverControl() {
+  async recoverControl(options) {
     // Let the metadata consumer adopt a successful response before recovering
     // its interrupted capture. It shares the same single receipt authority.
     if (this.selection.operation) await this.selection.operation.catch(() => {});
     for (;;) {
-      this.recoveredControl ??= await this.api.recover?.() ?? null;
+      const held = this.recoveredControl;
+      this.recoveredControl ??= await this.api.recover?.(options) ?? null;
       const recovered = this.recoveredControl;
       if (!recovered) return;
       const {route, payload, response} = recovered;
+      if (held && options.cancel) await this.api('cancel', {run:route === 'start' ? response.run : payload.run});
       if (route === 'start') {
         if (!recovered.adopted) {
           this.adoptStart(payload, response);
           recovered.adopted = true;
         }
-        await this.ensureArchive();
       } else if (route === 'snapshot') {
         if (!recovered.adopted) {
           await this.selection.releaseRetiring(this.api);
@@ -340,13 +358,25 @@ export class RunSession {
   }
   async deliverPending(cancel = false) {
     if (!this.stream) return;
-    await this.ensureArchive();
+    check(typeof this.archive === 'string', 'Output archive ownership is missing.');
     const pending = this.pendingDelivery;
-    await deliverCachedOutput(this.store, this.archive, this.stream, pending, cancel);
+    if (pending && !pending.response) {
+      const response = await this.api('advance', {run:this.run,budget:2048,ack:this.ack});
+      attachBatch(pending, response);
+    }
+    cancel ||= pending?.response.canceled === true;
+    await deliverCachedOutput(this.store, this.archive, this.stream, pending, cancel, {
+      id:`live:run:${this.run}`, serialize:action => this.checkpoint(action),
+      value:complete => ({run:this.run, archive:this.archive,
+        ...(cancel || pending ? {phase:cancel ? (complete ? 'canceled' : 'canceling') : pending.response.delivery_done && complete ? 'done' : 'paused'} : {}),
+        applications:pending?.response.applications ?? this.applications, exhausted:pending?.response.exhausted ?? this.exhausted}),
+    });
+    if (cancel) { this.running = false; this.status = 'canceled'; this.stepPending = false; }
     if (!pending) return;
     const response = pending.response;
     if (response.delivery_done) this.stream.finish();
     this.ack = response.sequence ?? this.ack;
+    if (cancel || response.step?.done) this.stepPending = false;
     this.pendingDelivery = null;
     return response;
   }
@@ -364,6 +394,7 @@ export class RunSession {
     this.error = null; this.running = true; this.status = 'running'; this.notify();
     try {
       await liveRequest('resume', { run }, this.api);
+      this.stepPending = false;
       if (this.run === run && this.running) this.schedule();
     } catch (error) { if (this.run === run) this.fail(error); throw error; }
   }
@@ -376,16 +407,18 @@ export class RunSession {
     check(this.pendingClose === null, 'Finish closing the execution first.');
     if (this.inFlight) return this.inFlight;
     check(this.run !== null && this.stream, 'Start a run first.');
-    const pending = this.pendingDelivery ? Promise.resolve(this.pendingDelivery.response) : this.api('advance', { run: this.run, budget: 2048, ack: this.ack });
+    const pending = this.pendingDelivery?.response ? Promise.resolve(this.pendingDelivery.response) : this.api('advance', { run: this.run, budget: 2048, ack: this.ack });
     this.inFlight = (async () => {
       try {
         const response = await pending;
         check(Array.isArray(response.events), 'Advance response needs output events.');
-        this.pendingDelivery ??= { response, index: 0 };
+        if (this.pendingDelivery) attachBatch(this.pendingDelivery,response);
+        else this.pendingDelivery = { response, index: 0 };
         await this.deliverPending();
         this.applications = uint(response.applications);
         this.exhausted = response.exhausted;
-        if (response.delivery_done) { this.stream.finish(); this.running = false; this.status = 'done'; }
+        if (response.canceled) { this.running = false; this.status = 'canceled'; }
+        else if (response.delivery_done) { this.stream.finish(); this.running = false; this.status = 'done'; }
         else this.status = this.running ? 'running' : 'paused';
         this.notify(); return response;
       } catch (error) { this.fail(error); throw error; }
@@ -398,7 +431,10 @@ export class RunSession {
     check(this.run !== null, 'Start a run first.');
     this.pause(); if (this.inFlight) await this.inFlight;
     if (['done', 'canceled'].includes(this.status)) return;
-    await liveRequest('step', { run: this.run, choices }, this.api);
+    if (!this.stepPending) {
+      await liveRequest('step', { run: this.run, choices }, this.api);
+      this.stepPending = true;
+    }
     let response;
     do {
       response = await this.advance();
@@ -407,7 +443,7 @@ export class RunSession {
     return response;
   }
   rememberRun() {
-    if (this.run !== null) this.runs.set(this.run, { run: this.run, stream: this.stream, archive: this.archive, recordHistory: this.recordHistory, applications: this.applications, submission: this.submission, status: this.status, exhausted: this.exhausted, ack: this.ack });
+    if (this.run !== null) this.runs.set(this.run, { run: this.run, archive: this.archive, recordHistory: this.recordHistory, applications: this.applications, status: this.status });
   }
   async switchRun(run) {
     check(!this.changingRun && !this.starting, 'An execution change is already in progress.');
@@ -418,7 +454,7 @@ export class RunSession {
       await this.settleControl(); await this.deliverPending(); this.rememberRun();
       check(this.runs.has(run), 'Unknown execution.');
       await this.selection.reset(this.api);
-      Object.assign(this, this.runs.get(run)); this.running = false; this.error = null;
+      await this.loadRun(run);
     } finally { this.changingRun = false; this.notify(); }
   }
   async finishClose() {
@@ -450,10 +486,14 @@ export class RunSession {
     try {
       this.pause();
       if (this.inFlight) await this.inFlight.catch(() => {});
-      await this.settleControl();
+      await this.settleControl({cancel:true});
       if (this.run !== null) {
         const canceled = await this.api('cancel', { run: this.run });
-        if (canceled.pending && canceled.pending.sequence !== this.ack) this.pendingDelivery ??= {response: canceled.pending, index: 0};
+        if (canceled.pending && canceled.pending.sequence !== this.ack) {
+          if (this.pendingDelivery) attachBatch(this.pendingDelivery,canceled.pending);
+          else this.pendingDelivery = {response:canceled.pending,index:0};
+        }
+        check(!this.pendingDelivery || this.pendingDelivery.response, 'Canceled output batch is missing.');
       }
       this.status = this.run === null ? 'idle' : 'canceled'; this.running = false;
       await this.deliverPending(true);
@@ -485,14 +525,85 @@ function mountNotebook() {
   let path = ['query'], selected = null, page = 0, portPage = 0, dirty = false, busy = false, revision = 0;
   let undo = [], redo = [], debounce, inspected = null, outputMode = 'answers', answerNumber = null;
   const store = new IndexedAnswerStore();
+  const connection = new NotebookConnection(store), request = connection.request;
+  let connected = false, restoring = true, editorWriting = null, editorDirty = false;
+  let displayWriting = null, displayDirty = false, displayStamp = null;
   let savedView = null, savedSelection = '', answerPage = 0, inspectionPending = null, inspecting = false, launching = false;
   let resultPage = 0, resultPortPage = 0, bindingPage = 0;
   let pendingNumber = 0, pendingPath = [], pendingPage = 0, pendingPortPage = 0;
   let catalog = {records:[], next:null, prev:null}, catalogCursor = null, catalogDirection = 'next', catalogDirty = true, catalogStamp = '';
   let refreshing = null, refreshAgain = false, sceneLoading = false, desiredScene = null, loadedSceneKey = null;
-  let inspectionCanceled = false;
+  let inspectionCanceled = false, runNotice = null;
   const session = new RunSession(request, renderRun, store);
   const inspectionSelection = session.selection;
+  inspectionSelection.persist = saveEditor;
+  function saveEditor() {
+    if (!connected || restoring) return Promise.resolve();
+    editorDirty = true;
+    editorWriting ??= (async () => {
+      while (editorDirty) {
+        editorDirty = false;
+        await store.saveRecovery('editor', {model,program:$('program').value,query:$('query').value,dirty,
+          history:$('history').checked,run:session.run,boot:connection.state.boot,selection:inspectionSelection.checkpoint()});
+      }
+    })().finally(() => { editorWriting = null; });
+    return editorWriting;
+  }
+  function displayState() {
+    return {mode:outputMode,inspectionArchive:inspected?.archive ?? null,savedArchive:savedSelection,sourceArchive:session.archive,
+      answerNumber,answerPage,resultPage,resultPortPage,bindingPage,pendingNumber,pendingPage,pendingPortPage,pendingPath:[...pendingPath]};
+  }
+  function saveDisplay() {
+    if (!connected || restoring) return Promise.resolve();
+    if (JSON.stringify(displayState()) === displayStamp && !displayWriting) return Promise.resolve();
+    displayDirty = true;
+    displayWriting ??= (async () => {
+      while (displayDirty) {
+        displayDirty = false;
+        const value = displayState(), stamp = JSON.stringify(value);
+        if (stamp === displayStamp) continue;
+        await store.saveRecovery('display',value);
+        displayStamp = stamp;
+      }
+    })().finally(() => { displayWriting = null; });
+    return displayWriting;
+  }
+  function restoreDisplay(saved) {
+    if (!saved) return;
+    savedView = null; desiredScene = null; loadedSceneKey = null;
+    outputMode = saved.mode;
+    inspected = saved.inspectionArchive ? {archive:saved.inspectionArchive} : null;
+    savedSelection = saved.savedArchive || (saved.sourceArchive !== session.archive ? saved.sourceArchive : '') || '';
+    answerNumber = saved.answerNumber; answerPage = saved.answerPage;
+    resultPage = saved.resultPage; resultPortPage = saved.resultPortPage; bindingPage = saved.bindingPage;
+    pendingNumber = saved.pendingNumber; pendingPage = saved.pendingPage; pendingPortPage = saved.pendingPortPage; pendingPath = [...saved.pendingPath];
+  }
+  async function initialize() {
+    const editor = await store.recovery('editor'), display = await store.recovery('display');
+    if (editor) {
+      model = clone(validateNotebook(editor.model)); $('program').value = editor.program; $('query').value = editor.query;
+      dirty = editor.dirty; $('history').checked = editor.history;
+    }
+    try {
+      await connection.initialize();
+      connected = true;
+      let recoveryError;
+      try { await session.restore(editor?.boot === connection.state.boot ? editor.run : null); }
+      catch (error) { recoveryError = error; }
+      if (session.run !== null) {
+        await inspectionSelection.restore(store,request,session.run,
+          editor?.boot === connection.state.boot && editor.run === session.run ? editor.selection : null);
+        await restoreInspection();
+      }
+      if (recoveryError) throw recoveryError;
+    } finally {
+      restoreDisplay(display);
+      restoring = false; renderWorkspace(); renderRun(); renderInspectionControls(); await refreshSaved();
+    }
+    await saveEditor();
+    if (session.run !== null) message(`Run ${session.run} restored ${session.status} at ${session.applications} applications.${outputMode === 'inspect' && inspected ? ' Showing saved inspection.' : ''}${session.stepPending ? ' Step continues the unfinished application.' : ''}`);
+    else if (editor || display) message(outputMode === 'inspect' && inspected ? 'Notebook restored. Showing saved inspection.' : 'Notebook restored.');
+  }
   function message(text, error = false) { $('message').textContent = text; $('message').classList.toggle('error', error); }
   async function safe(action) { try { return await action(); } catch (error) { message(error.message, true); } }
   function remember() { undo.push(clone(model)); if (undo.length > 40) undo.shift(); redo = []; }
@@ -505,7 +616,7 @@ function mountNotebook() {
     if (JSON.stringify(model) !== JSON.stringify(response)) remember();
     model = clone({ program: response.program, query: response.query }); revision++; dirty = false; selected = null;
     try { at(model, path); } catch { path = ['query']; }
-    renderWorkspace(); message('Text and graph are in sync.');
+    renderWorkspace(); await saveEditor(); message('Text and graph are in sync.');
   }
   async function commit(next, history = 'edit') {
     check(!dirty && !busy, 'Sync the source before editing the diagram.');
@@ -522,12 +633,14 @@ function mountNotebook() {
       if (selected) { try { at(model, selected.path); } catch { selected = null; } }
       message(session.run === null ? 'Text and graph are in sync.' : 'Edits apply to the next run.');
     } finally { busy = false; renderWorkspace(); }
+    await saveEditor();
   }
   const edit = op => commit(applyEdit(model, op));
   const select = value => { selected = value; renderWorkspace(); };
   function navigate(next) { path = next; selected = null; page = portPage = 0; renderWorkspace(); }
   function renderWorkspace() {
-    const disabled = dirty || busy;
+    const disabled = !connected || restoring || dirty || busy;
+    for (const name of ['program','query','sync','history']) $(name).disabled = !connected || restoring;
     $('graph-tools').disabled = disabled; $('inspector').disabled = disabled;
     $('undo').disabled = disabled || !undo.length; $('redo').disabled = disabled || !redo.length;
     $('target').replaceChildren(el('option', 'Query', { value: 'query' }), ...model.program.rules.map((rule, i) => el('option', rule.name || `Rule ${i + 1}`, { value: String(i) })));
@@ -612,10 +725,16 @@ function mountNotebook() {
     $('pause').disabled = !session.running;
     $('resume').disabled = session.run === null || session.running || ['done', 'canceled'].includes(session.status) || session.starting;
     $('step').disabled = session.status === 'canceled' || session.starting || !!session.inFlight || busy || launching || inspecting;
-    $('cancel').disabled = (session.run === null && session.status !== 'error') || session.starting;
+    $('cancel').disabled = (session.run === null && session.status !== 'error' && !connection.state?.pending) || session.starting;
     $('inspect').disabled = (session.run === null && !inspectionPending) || session.starting || inspecting || launching;
-    $('snapshot').disabled = !session.recordHistory || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
+    $('snapshot').disabled = !connected || restoring || !session.recordHistory || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
     if (session.error) message(session.error.message, true);
+    else if (connected && !restoring && runNotice !== `${session.run}:${session.status}`) {
+      runNotice = `${session.run}:${session.status}`;
+      if (session.status === 'done') message(`Run ${session.run} completed. Answers are saved.`);
+      else if (session.status === 'canceled') message(`Run ${session.run} canceled. Completed answers are saved.`);
+    }
+    if (!connected || restoring) for (const name of ['execution','release-run','run','pause','resume','step','cancel','inspect','snapshot']) $(name).disabled = true;
     renderResults(); safe(refreshSaved);
   }
   function refreshSaved() {
@@ -624,7 +743,8 @@ function mountNotebook() {
     refreshing = (async () => {
       while (refreshAgain) {
         refreshAgain = false;
-        const stamp = `${session.archive}|${inspected?.archive}`;
+        const terminal = ['done','canceled'].includes(session.status) ? `${session.status}:${session.ack}` : '';
+        const stamp = `${session.archive}|${inspected?.archive}|${terminal}`;
         if (stamp !== catalogStamp) { catalogStamp = stamp; catalogDirty = true; }
         if (catalogDirty) {
           const cursor = catalogCursor, direction = catalogDirection;
@@ -644,7 +764,7 @@ function mountNotebook() {
         $('saved-run').value = savedSelection;
         $('collections-prev').disabled = !catalog.prev;
         $('collections-next').disabled = !catalog.next;
-        if (savedView?.id !== view?.id) resetResultPages();
+        if (savedView && savedView.id !== view?.id) resetResultPages();
         savedView = view; answerPage = view?.page ?? 0;
         $('saved-page').value = answerPage + 1;
         $('saved-page').max = view?.pages ?? 1;
@@ -653,6 +773,7 @@ function mountNotebook() {
         $('saved-next').disabled = !view || answerPage + 1 >= view.pages;
         $('clear-answers').disabled = !view || (view.id === session.archive && session.run !== null) || view.id === inspectionPending?.archive;
         renderResults();
+        await saveDisplay();
       }
     })().finally(() => { refreshing = null; });
     return refreshing;
@@ -705,6 +826,7 @@ function mountNotebook() {
         resultPage = info.page; resultPortPage = info.portPage; pager('result', info, renderResults);
         renderPending(scene.pending);
         loadedSceneKey = request.key;
+        await saveDisplay();
       }
     } finally { sceneLoading = false; }
   }
@@ -731,69 +853,105 @@ function mountNotebook() {
     try { await inspectOnce(); } finally { inspecting = false; renderRun(); }
   }
   async function inspectOnce() {
+    await restoreInspection();
     if (!inspectionPending) {
       await session.finishClose();
       check(session.run !== null, 'Start a run first.');
       session.pause(); if (session.inFlight) await session.inFlight;
       const run = session.run, tables = session.stream.tables;
-      const response = await liveRequest('inspect', inspectionSelection.payload(run));
+      const response = await liveRequest('inspect', inspectionSelection.payload(run), request);
       check(session.run === run, 'The run changed during inspection.');
+      check(typeof response.archive === 'string', 'Inspection response needs its registered archive.');
       inspectionCanceled = false;
-      inspectionPending = { stream: new OutputAssembler(tables), response: null, index: 0, archive: null, run, inspection: response.inspection, ack: null };
+      inspectionPending = { stream: new OutputAssembler(tables), response: null, index: 0, archive: response.archive, run, inspection: response.inspection, ack: null };
       await inspectionSelection.page(request, run); renderInspectionControls();
     }
     const pending = inspectionPending;
-    pending.archive ??= await store.create(pending.stream.tables, `Inspection of run ${pending.run}`);
+    const key = `live:inspection:${pending.run}:${pending.inspection}`;
+    check(typeof pending.archive === 'string', 'Inspection archive ownership is missing.');
+    const checkpoint = {id:key, serialize:action => request.checkpoint ? request.checkpoint(action) : action(),
+      value:() => ({run:pending.run,inspection:pending.inspection,archive:pending.archive,
+        ...(inspectionCanceled ? {phase:'canceling'} : {}),failure:pending.failure ?? null})};
     while (!pending.cleanup) {
       if (inspectionCanceled) {
         let response;
         do {
-          response = await liveRequest('inspect_cancel', { run: pending.run, inspection: pending.inspection, budget: 2048 });
+          response = await liveRequest('inspect_cancel', { run: pending.run, inspection: pending.inspection, budget: 2048 }, request);
           if (response.pending && response.pending.sequence !== pending.ack
               && response.pending.sequence !== pending.response?.sequence) {
-            pending.response = response.pending; pending.index = 0;
+            if (pending.sequence != null) attachBatch(pending,response.pending);
+            else { pending.response = response.pending; pending.index = 0; }
           }
-          await deliverCachedOutput(store, pending.archive, pending.stream, pending, true);
+          check(pending.sequence == null || pending.response, 'Canceled inspection output batch is missing.');
+          await deliverCachedOutput(store, pending.archive, pending.stream, pending, true, checkpoint);
           pending.ack = pending.response?.sequence ?? pending.ack;
         } while (!response.done);
         break;
       }
-      pending.response ??= await request('inspect_advance', { run: pending.run, inspection: pending.inspection, budget: 2048, ack: pending.ack });
-      await deliverCachedOutput(store, pending.archive, pending.stream, pending);
+      if (!pending.response) attachBatch(pending, await request('inspect_advance', { run: pending.run, inspection: pending.inspection, budget: 2048, ack: pending.ack }));
+      if (pending.response.canceled) { inspectionCanceled = true; continue; }
+      await deliverCachedOutput(store, pending.archive, pending.stream, pending, false, checkpoint);
       if (pending.response.error) {
         const failure = pending.response.error;
         let discarded;
-        do { discarded = await liveRequest('inspect_cancel', {run: pending.run, inspection: pending.inspection, budget: 2048}); } while (!discarded.done);
+        do { discarded = await liveRequest('inspect_cancel', {run: pending.run, inspection: pending.inspection, budget: 2048}, request); } while (!discarded.done);
         pending.failure = failure;
         break;
       }
       pending.ack = pending.response.sequence;
       if (pending.response.done) { pending.stream.finish(); break; }
-      pending.response = null; pending.index = 0;
+      pending.response = null; pending.sequence = null; pending.index = 0;
       await new Promise(resolve => setTimeout(resolve, 0));
     }
     if (pending.cleanup !== 'release') {
       pending.cleanup = 'persist';
-      await store.discardPartial(pending.archive, pending.stream);
+      await checkpoint.serialize(async () => {
+        const previous = await store.recovery(key);
+        await store.discardPartial(pending.archive, pending.stream, {id:key,value:{...previous,
+          phase:'release',cleanup:'release',failure:pending.failure ?? null,index:0,sequence:null,ack:pending.ack}});
+      });
       pending.cleanup = 'release';
     }
-    await liveRequest('inspect_release', { run: pending.run, inspection: pending.inspection });
+    if (!pending.failure && !pending.displaySaved) {
+      inspected = {archive:pending.archive}; outputMode = 'inspect'; answerNumber = null; answerPage = 0; resetResultPages();
+      await refreshSaved(); await saveDisplay(); pending.displaySaved = true;
+    }
+    await liveRequest('inspect_release', { run: pending.run, inspection: pending.inspection }, request);
     inspectionPending = null;
     if (pending.failure) throw new Error(`Inspection failed: ${pending.failure}`);
-    inspected = { archive: pending.archive };
-    outputMode = 'inspect'; answerNumber = null; answerPage = 0; resetResultPages();
-    await refreshSaved(); message(inspectionCanceled ? 'Inspection stopped; completed graphs are saved.' : 'Inspection saved.');
+    message(inspectionCanceled ? 'Inspection stopped; completed graphs are saved.' : 'Inspection saved.');
   }
 
   async function finishInspection() {
     check(!inspecting, 'Wait for the active inspection before changing executions.');
     inspectionCanceled = true;
-    if (inspectionPending) await inspect();
+    do {
+      if (inspectionPending) { inspectionCanceled = true; await inspect(); }
+      await restoreInspection();
+    } while (inspectionPending);
+  }
+  async function restoreInspection() {
+    if (inspectionPending || session.run === null) return;
+    for (;;) {
+      const page = await store.recoveryPage(`live:inspection:${session.run}:`, null, 1);
+      const saved = page.records[0]?.value;
+      if (!saved) return;
+      if (saved.phase === 'release') {
+        await liveRequest('inspect_release', {run:saved.run,inspection:saved.inspection}, request);
+        continue;
+      }
+      const tables = await store.tables(saved.archive);
+      inspectionPending = {...saved, stream:saved.assembler ? OutputAssembler.restore(tables,saved.assembler) : new OutputAssembler(tables),
+        response:saved.sequence == null && (saved.status?.done || saved.status?.error) ? {...saved.status,sequence:saved.ack,events:[]} : null,
+        sequence:saved.sequence ?? null,index:saved.index ?? 0,ack:saved.ack ?? null};
+      inspectionCanceled = saved.phase === 'canceling';
+      return;
+    }
   }
 
   function renderInspectionControls() {
-    const unavailable = session.starting || session.changingRun || inspectionSelection.resetting;
-    $('snapshot').disabled = !session.recordHistory || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
+    const unavailable = !connected || restoring || session.starting || session.changingRun || inspectionSelection.resetting;
+    $('snapshot').disabled = !connected || restoring || !session.recordHistory || inspecting || inspectionSelection.loading || session.starting || session.changingRun;
     $('choices').replaceChildren();
     if (!inspectionSelection.choices.length) $('choices').append(el('p', session.run === null ? 'Start a run to inspect its choices.' : inspectionSelection.navigation.next_choice === undefined ? 'Inspect the graph to load available choices.' : 'No choices in this state.'));
     inspectionSelection.choices.forEach(item => {
@@ -801,7 +959,7 @@ function mountNotebook() {
       select.append(el('option', 'Either', { value: 'either' }), el('option', 'First', { value: 'first' }), el('option', 'Second', { value: 'second' }));
       select.disabled = unavailable;
       select.value = inspectionSelection.assignments.get(item.id) ?? 'either';
-      select.onchange = () => safe(() => inspectionSelection.choose(item.id, select.value));
+      select.onchange = () => safe(async () => { inspectionSelection.choose(item.id, select.value); await saveEditor(); });
       label.append(select); $('choices').append(label);
     });
     $('choice-page').textContent = `${inspectionSelection.choices.length} choices on this page`;
@@ -830,7 +988,7 @@ function mountNotebook() {
     try { await pending; } finally { renderInspectionControls(); }
   });
   for (const name of ['program', 'query']) $(name).addEventListener('input', () => {
-    revision++; dirty = true; renderWorkspace(); clearTimeout(debounce);
+    revision++; dirty = true; renderWorkspace(); safe(saveEditor); clearTimeout(debounce);
     debounce = setTimeout(() => safe(syncSource), 650);
   });
   $('sync').onclick = () => safe(syncSource);
@@ -851,7 +1009,7 @@ function mountNotebook() {
     try {
     await syncSource(); await finishInspection(); inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0; answerNumber = null; resetResultPages();
     await session.start(model, $('history').checked); renderInspectionControls(); message('Running the submitted notebook.');
-    } finally { launching = false; renderInspectionControls(); renderRun(); }
+    } finally { launching = false; renderInspectionControls(); renderRun(); await saveEditor(); }
   });
   $('step').onclick = () => safe(async () => {
     check(!launching, 'A step is already in progress.'); launching = true; renderRun();
@@ -863,7 +1021,7 @@ function mountNotebook() {
       const name = session.submission.program.rules[response.step.rule]?.name ?? `Rule ${response.step.rule + 1}`;
       message(response.step.shared ? `${name} applied across the selection and other alternatives.` : `${name} applied.`);
     } else { message('No further rule applies in this selection.'); }
-    } finally { launching = false; renderInspectionControls(); renderRun(); }
+    } finally { launching = false; renderInspectionControls(); renderRun(); await saveEditor(); }
   });
   $('execution').onchange = () => safe(async () => {
     if (!$('execution').value) return;
@@ -872,10 +1030,10 @@ function mountNotebook() {
     await session.switchRun(run);
     inspected = null; outputMode = 'answers'; savedSelection = ''; savedView = null; answerPage = 0;
     answerNumber = null; resetResultPages(); renderResults();
-    renderInspectionControls(); await refreshSaved();
+    await restoreInspection(); renderInspectionControls(); await refreshSaved(); await saveEditor();
   });
   $('release-run').onclick = () => safe(async () => {
-    await finishInspection(); await session.closeRun(); renderInspectionControls(); message('Execution released. Saved answers remain available.');
+    await finishInspection(); await session.closeRun(); await saveEditor(); renderInspectionControls(); message('Execution released. Saved answers remain available.');
   });
   $('pause').onclick = () => session.pause(); $('resume').onclick = () => safe(() => session.resume());
   $('cancel').onclick = () => safe(async () => { inspectionCanceled = true; await session.cancel(); if (!inspecting) await finishInspection(); }); $('inspect').onclick = () => safe(inspect);
@@ -899,7 +1057,9 @@ function mountNotebook() {
     if (session.archive === collection) session.archive = null;
     if (inspected?.archive === collection) inspected = null;
     savedSelection = ''; savedView = null; answerNumber = null; answerPage = 0;
-    await refreshSaved(); message('Saved answers cleared.');
+    await refreshSaved(); await saveDisplay(); message('Saved answers cleared.');
   });
+  $('history').onchange = () => safe(saveEditor);
   renderWorkspace(); renderRun(); renderInspectionControls();
+  safe(initialize);
 }
