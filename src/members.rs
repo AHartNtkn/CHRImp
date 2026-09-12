@@ -61,6 +61,15 @@ impl Members {
             visits: 0,
         }
     }
+    /// Descend a supported subtree without following its new parent.
+    pub(crate) fn subtree(g: &Graph, root: Root, variable: u64, scope: Condition) -> Self {
+        let mut result = Self::new(g, root, variable, scope);
+        result.resolver = None;
+        result.pending.insert(variable, scope);
+        result.queue.push_back(variable);
+        result.phase = Phase::Next;
+        result
+    }
     pub fn root(&self) -> Root {
         self.root
     }

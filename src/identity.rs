@@ -574,6 +574,50 @@ struct Edit {
     remove: bool,
     context: Condition,
 }
+/// Owned activation delta from one completed merge. Its seeds cannot be paired
+/// with another root. Retain `root()` and trace its conditions across collection;
+/// move it into `Wake::from_delta` or finish incremental cancellation.
+#[must_use]
+pub struct MergeDelta {
+    root: Root,
+    seeds: VecDeque<(u64, Condition)>,
+    discarding: bool,
+}
+impl MergeDelta {
+    pub fn root(&self) -> Root {
+        self.root
+    }
+    pub fn condition_roots(&self) -> impl Iterator<Item = Condition> + '_ {
+        self.seeds.iter().map(|(_, c)| *c)
+    }
+    pub fn discard_tick(&mut self) -> bool {
+        self.discarding = true;
+        if self.seeds.pop_front().is_some() {
+            return false;
+        }
+        self.seeds = VecDeque::new();
+        true
+    }
+    pub(crate) fn into_parts(self) -> (Root, VecDeque<(u64, Condition)>) {
+        assert!(!self.discarding, "discarded merge delta cannot activate");
+        (self.root, self.seeds)
+    }
+}
+impl Trace for MergeDelta {
+    fn trace(&self, cursor: &mut TraceCursor) -> Step {
+        match cursor.phase {
+            0 => cursor.vector(self.seeds.len(), |i, child| {
+                if child.phase == 0 {
+                    child.fields(&[self.seeds[i].1])
+                } else {
+                    Step::Done
+                }
+            }),
+            _ => Step::Done,
+        }
+    }
+}
+
 /// Staged union: only the returned complete root may replace the query root.
 /// Parent/rank writes and reverse incidence publish together. `changed_support`
 /// identifies the region requiring equality-sensitive match activation.
@@ -590,6 +634,7 @@ pub struct Merge {
     right_rank: Option<Partition>,
     rank: u64,
     changed: Condition,
+    delta: VecDeque<(u64, Condition)>,
     edits: VecDeque<Edit>,
     boolean: Option<Job>,
     phase: MergePhase,
@@ -611,6 +656,7 @@ impl Merge {
             right_rank: None,
             rank: 0,
             changed: Condition::FALSE,
+            delta: VecDeque::new(),
             edits: VecDeque::new(),
             boolean: None,
             phase: if x == y || scope == Condition::FALSE {
@@ -622,6 +668,20 @@ impl Merge {
     }
     pub fn roots(&self) -> [Root; 2] {
         [self.base, self.staged]
+    }
+    /// Transfer the completed merge's activation obligation exactly once.
+    /// An unchanged merge, or a subsequent take, returns None.
+    pub fn take_delta(&mut self) -> Option<MergeDelta> {
+        assert_eq!(self.discard, 0, "discarded merge cannot transfer a delta");
+        assert!(matches!(self.phase, MergePhase::Done));
+        if self.delta.is_empty() {
+            return None;
+        }
+        Some(MergeDelta {
+            root: self.staged,
+            seeds: std::mem::take(&mut self.delta),
+            discarding: false,
+        })
     }
     pub fn changed_support(&self) -> Condition {
         self.changed
@@ -635,6 +695,7 @@ impl Merge {
             .chain(self.right_rank.iter().flat_map(|p| p.roots()))
             .chain(self.boolean.iter().flat_map(|j| j.roots()))
             .chain(self.edits.iter().map(|e| e.context))
+            .chain(self.delta.iter().map(|(_, c)| *c))
     }
     fn next_pair(&mut self) -> Option<(u64, Condition, u64, Condition)> {
         if self.l.is_none() {
@@ -669,6 +730,7 @@ impl Merge {
         } else {
             (r, l)
         };
+        self.delta.push_back((loser, context));
         self.edits.push_back(Edit {
             key: Some([PARENT, loser, winner, 0]),
             remove: false,
@@ -754,6 +816,12 @@ impl Merge {
                 if self.edits.pop_front().is_none() {
                     self.edits = VecDeque::new();
                     self.discard = 7;
+                }
+            }
+            7 => {
+                if self.delta.pop_front().is_none() {
+                    self.delta = VecDeque::new();
+                    self.discard = 8;
                 }
             }
             _ => return true,
@@ -918,6 +986,13 @@ impl Trace for Merge {
             6 => cursor.vector(self.edits.len(), |i, child| {
                 if child.phase == 0 {
                     child.fields(&[self.edits[i].context])
+                } else {
+                    Step::Done
+                }
+            }),
+            7 => cursor.vector(self.delta.len(), |i, child| {
+                if child.phase == 0 {
+                    child.fields(&[self.delta[i].1])
                 } else {
                     Step::Done
                 }

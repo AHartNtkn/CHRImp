@@ -1,5 +1,43 @@
 mod support;
 use support::{Reader, engine, facts, finish};
+
+#[test]
+fn growing_alias_chain_activates_deltas_instead_of_rewalking_the_winner() {
+    let n = 128;
+    let mut query = vec!["p(V0)".to_owned(), format!("q(V{n})")];
+    query.extend((0..n).map(|i| format!("merge(V{i},V{})", i + 1)));
+    let mut e = engine(
+        "p(X),q(X) ==> hit(X). merge(X,Y) <=> X=Y.",
+        &query.join(","),
+    );
+    let mut reader = Reader::default();
+    let mut answers = 0;
+    for _ in 0..120_000 {
+        e.advance(1);
+        if let Some(answer) = reader.next(&mut e) {
+            answers += 1;
+            assert_eq!(answer.variables.len(), n + 1);
+            assert!(answer.variables.iter().all(|&v| v == answer.variables[0]));
+            assert_eq!(facts(&e, &answer), ["hit", "p", "q"]);
+            assert!(
+                answer
+                    .rows
+                    .iter()
+                    .all(|row| row.ports == [answer.variables[0]])
+            );
+        }
+        if e.delivery_done() {
+            break;
+        }
+    }
+    assert!(
+        e.delivery_done(),
+        "singleton joins must not repeatedly expand the accumulated winner class"
+    );
+    assert_eq!(e.applications(), (n + 1) as u64);
+    assert_eq!(answers, 1);
+}
+
 #[test]
 fn growing_search_does_not_block_a_finite_sibling_or_budget_return() {
     for budget in [1, 7, 100] {

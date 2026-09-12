@@ -5,11 +5,11 @@
 
 use crate::condition::{Arena, Condition, Job, Operation, Progress};
 use crate::graph::{Graph, Occurrences};
-use crate::identity::ResolveStatus;
+use crate::identity::{MergeDelta, ResolveStatus};
 use crate::members::Members;
 use crate::store::Root;
 use crate::trace::{Cursor as TraceCursor, Step, Trace};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WakeStatus {
@@ -33,6 +33,7 @@ enum Phase {
 /// Callers retain returned supports; disjoint fragments may arrive separately.
 pub struct Wake {
     members: Members,
+    seeds: VecDeque<(u64, Condition)>,
     cursor: Option<Occurrences>,
     member_support: Condition,
     occurrence: u64,
@@ -47,6 +48,29 @@ impl Wake {
         Self {
             discard: 0,
             members: Members::new(g, root, variable, scope),
+            seeds: VecDeque::new(),
+            cursor: None,
+            member_support: Condition::FALSE,
+            occurrence: 0,
+            fresh: Condition::FALSE,
+            seen: BTreeMap::new(),
+            boolean: None,
+            phase: Phase::Members,
+        }
+    }
+    /// Consume the delta's paired root and seeds. This is subtree activation;
+    /// `new` independently enumerates a full class for low-level callers.
+    /// On each seed context the new parent leaves the loser, so its descendants
+    /// are exactly its old class. Every newly satisfied head equality has a
+    /// port in that class, in a repeated head-variable slot. Those occurrences
+    /// therefore provide complete anchors even with identity-only dispatch.
+    pub fn from_delta(g: &Graph, delta: MergeDelta) -> Self {
+        let (root, mut seeds) = delta.into_parts();
+        let (variable, scope) = seeds.pop_front().expect("changed merge seed");
+        Self {
+            discard: 0,
+            members: Members::subtree(g, root, variable, scope),
+            seeds,
             cursor: None,
             member_support: Condition::FALSE,
             occurrence: 0,
@@ -64,6 +88,7 @@ impl Wake {
             .condition_roots()
             .chain([self.member_support, self.fresh])
             .chain(self.seen.values().copied())
+            .chain(self.seeds.iter().map(|(_, c)| *c))
             .chain(self.boolean.iter().flat_map(Job::roots))
     }
     fn poll(&mut self, a: &mut Arena) -> Option<Condition> {
@@ -106,6 +131,12 @@ impl Wake {
                     self.discard = 4;
                 }
             }
+            4 => {
+                if self.seeds.pop_front().is_none() {
+                    self.seeds = VecDeque::new();
+                    self.discard = 5;
+                }
+            }
             _ => return true,
         }
         false
@@ -122,6 +153,11 @@ impl Wake {
                 }
                 ResolveStatus::Pending => {}
                 ResolveStatus::Done => {
+                    if let Some((v, c)) = self.seeds.pop_front() {
+                        self.members = Members::subtree(g, self.root(), v, c);
+                        return WakeStatus::Pending;
+                    }
+                    self.seeds = VecDeque::new();
                     self.member_support = Condition::FALSE;
                     self.fresh = Condition::FALSE;
                     self.phase = Phase::Cleanup;
@@ -199,6 +235,13 @@ impl Trace for Wake {
             1 => cursor.fields(&[self.member_support, self.fresh]),
             2 => cursor.values(&self.seen),
             3 => cursor.optional(self.boolean.as_ref()),
+            4 => cursor.vector(self.seeds.len(), |i, child| {
+                if child.phase == 0 {
+                    child.fields(&[self.seeds[i].1])
+                } else {
+                    Step::Done
+                }
+            }),
             _ => Step::Done,
         }
     }

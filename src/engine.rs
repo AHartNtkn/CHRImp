@@ -645,20 +645,14 @@ impl Engine {
                 if let Some(root) = merge.tick(&mut self.graph, &mut self.arena) {
                     self.state.graph = root;
                     let scope = merge.changed_support();
+                    let delta = merge.take_delta();
                     self.finish_body_record(id);
                     self.record(SnapshotKind::Merge, self.active);
-                    let Instruction::Equal(x, _) = self.code.instructions[b.instruction] else {
-                        unreachable!()
-                    };
-                    if scope != Condition::FALSE {
+
+                    if let Some(delta) = delta {
                         self.spawn(
                             scope,
-                            Task::Wake(Box::new(Wake::new(
-                                &self.graph,
-                                root,
-                                b.variables[x],
-                                scope,
-                            ))),
+                            Task::Wake(Box::new(Wake::from_delta(&self.graph, delta))),
                         );
                     }
                     return true;
