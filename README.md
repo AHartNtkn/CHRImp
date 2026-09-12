@@ -43,6 +43,27 @@ p(X) \ q(X) <=> r(X).       % keep p, consume q, add r
 choose(X) <=> (left(X);right(X)).
 ```
 
+Names contain ASCII letters, digits, and underscores. Relation names start lowercase;
+variables start uppercase or with `_`. `_` is an ordinary named variable: repeated
+uses refer to the same variable within a query or rule. Each rule has its own variable
+scope. Variables appearing only in a rule body are fresh for each application.
+
+Rules end with a period and may have a unique name, such as
+`rewrite @ p(X) <=> q(X).` Head relations are separated by commas; both sides of
+`\` must contain at least one relation. A query's final period is optional.
+`%` and `//` begin line comments.
+
+In bodies and queries, `,` means conjunction and binds more tightly than `;`:
+`a(X),b(X);c(X)` means `(a(X),b(X));c(X)`. Parentheses group expressions.
+`true` succeeds without adding a relation; `fail` rejects the alternative.
+A relation with no ports may be written `tag` or `tag()`; use `true()` or `fail()`
+to name ordinary relations with those names. Different arities, such as `p(X)`
+and `p(X,Y)`, are separate relation signatures.
+
+The graph editor preserves expression groups in text: `()` is an empty conjunction,
+`(a(X),)` a one-item conjunction, and `(a(X);)` a one-arm disjunction.
+An empty disjunction is invalid. Expressions support up to 128 nested groups.
+
 Only `;` creates search alternatives. Competing rule applications commit to a schedule. Each successful alternative returns its residual graph when all applicable work settles; equal graphs from separate alternatives remain separate answers. `fail` rejects its alternative.
 
 Standard output is newline-delimited JSON. A `program` event supplies relation signatures and query-variable names. Each answer streams from `begin` through `end`, with variable mappings, distinct relation occurrences, and ports in argument order. An answer is flushed as soon as it finishes, including when another alternative continues indefinitely.
