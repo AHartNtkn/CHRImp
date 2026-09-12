@@ -1,5 +1,4 @@
 mod support;
-use chr::condition::Condition;
 use support::{Reader, engine, facts, finish};
 #[test]
 fn executes_all_head_modes_and_reaches_residual_normal_form() {
@@ -57,13 +56,14 @@ fn failure_is_explicit_and_budget_exhaustion_is_unfinished() {
     assert!(e.take_output().is_none());
     for _ in 0..10000 {
         e.advance(1);
-        if e.exhausted() {
+        if e.delivery_done() && e.pending_tasks() == 0 {
             break;
         }
     }
     assert!(e.exhausted());
     assert!(e.take_output().is_none());
-    assert_eq!(e.failed(), Condition::TRUE);
+    assert!(e.delivery_done());
+    assert_eq!(e.pending_tasks(), 0);
 }
 #[test]
 fn independent_choices_do_not_multiply_common_rewrite_execution() {
@@ -103,7 +103,6 @@ fn disconnected_failure_excludes_exactly_its_alternative() {
     let mut e = engine("bad(Z) <=> fail.", "answer(X),(bad(Y);good(Y))");
     let a = finish(&mut e);
     assert_eq!(facts(&e, &a), ["answer", "good"]);
-    let decision = e.choices().next().unwrap().1.decision;
     let mut reader = Reader::default();
     for _ in 0..10000 {
         e.advance(1);
@@ -112,7 +111,7 @@ fn disconnected_failure_excludes_exactly_its_alternative() {
             break;
         }
     }
-    assert_eq!(e.failed(), decision);
+    assert_eq!(e.pending_tasks(), 0);
     assert!(e.delivery_done());
 }
 #[test]

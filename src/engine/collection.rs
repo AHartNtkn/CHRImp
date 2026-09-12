@@ -193,7 +193,7 @@ impl Engine {
                     vec![self.state.history]
                 },
                 pending_roots,
-                conditions: [self.active, self.failed]
+                conditions: [self.active]
                     .into_iter()
                     .filter(|root| !root.is_terminal())
                     .collect(),
@@ -571,7 +571,7 @@ impl Trace for Task {
 impl Trace for Body {
     fn trace(&self, c: &mut TraceCursor) -> Step {
         match c.phase {
-            0 => c.fields(&[self.scope, self.decision, self.pending_active]),
+            0 => c.fields(&[self.scope, self.decision]),
             1 => c.optional(self.job.as_ref()),
             2 => c.optional(self.merge.as_ref()),
             _ => Step::Done,

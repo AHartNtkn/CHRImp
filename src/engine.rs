@@ -73,7 +73,6 @@ enum BodyPhase {
     Post,
     Merge,
     Fail,
-    Failed,
     Choice,
     Left,
     Right,
@@ -90,7 +89,6 @@ struct Body {
     update: Option<Update>,
     merge: Option<Merge>,
     decision: Condition,
-    pending_active: Condition,
 }
 impl Body {
     fn new(event: u64, instruction: usize, variables: Arc<Vec<u64>>, scope: Condition) -> Self {
@@ -106,7 +104,6 @@ impl Body {
             update: None,
             merge: None,
             decision: Condition::FALSE,
-            pending_active: Condition::FALSE,
         }
     }
 }
@@ -135,7 +132,6 @@ pub struct Engine {
     ids: FreshIds,
     variables: Arc<Vec<u64>>,
     active: Condition,
-    failed: Condition,
     queue: VecDeque<Scheduled>,
     parked: BTreeMap<u64, Scheduled>,
     next_task: u64,
@@ -187,7 +183,6 @@ impl Engine {
             ids: FreshIds::default(),
             variables: Arc::new(vec![]),
             active: Condition::TRUE,
-            failed: Condition::FALSE,
             queue: VecDeque::new(),
             parked: BTreeMap::new(),
             next_task: 0,
@@ -236,9 +231,6 @@ impl Engine {
     }
     pub fn applications(&self) -> u64 {
         self.applications
-    }
-    pub fn failed(&self) -> Condition {
-        self.failed
     }
     pub fn exhausted(&self) -> bool {
         self.active == Condition::FALSE
@@ -602,18 +594,10 @@ impl Engine {
                 }
             }
             BodyPhase::Fail => {
-                if let Some(c) = poll(&mut b.job, &mut self.arena) {
-                    b.pending_active = c;
-                    b.job = Some(self.arena.start(Operation::Or(self.failed, b.scope)));
-                    b.phase = BodyPhase::Failed;
-                }
-            }
-            BodyPhase::Failed => {
-                if let Some(c) = poll(&mut b.job, &mut self.arena) {
-                    self.active = b.pending_active;
-                    self.failed = c;
+                if let Some(active) = poll(&mut b.job, &mut self.arena) {
+                    self.active = active;
                     self.finish_body_record(id);
-                    self.record(SnapshotKind::Failure, self.active);
+                    self.record(SnapshotKind::Failure, b.scope);
                     return true;
                 }
             }

@@ -272,3 +272,64 @@ fn collection_defers_view_mutations_but_allows_owned_scalar_delivery() {
     e.release_inspection(id).unwrap();
     e.release_snapshot(snapshot).unwrap();
 }
+
+#[test]
+fn recorded_failure_preserves_the_rejected_region_until_its_view_is_released() {
+    let mut e = recording("bad(X) ==> fail.", "bad(A);good(A)");
+    let answers = run(&mut e);
+    assert_eq!(answers.len(), 1);
+    assert_eq!(support::facts(&e, &answers[0]), ["good"]);
+    collect(&mut e);
+    let snapshots = e.snapshots().collect::<Vec<_>>();
+    let failure = snapshots
+        .iter()
+        .find(|s| matches!(s.kind, SnapshotKind::Failure))
+        .unwrap()
+        .id;
+    for snapshot in snapshots {
+        if snapshot.id != failure {
+            e.release_snapshot(snapshot.id).unwrap();
+        }
+    }
+    e.cancel();
+    for _ in 0..200000 {
+        e.advance(1);
+        if e.cancel_done() {
+            break;
+        }
+    }
+    assert!(e.cancel_done());
+    let view = e.start_inspection(Some(failure), vec![]).unwrap();
+    e.release_snapshot(failure).unwrap();
+    let failed = inspection(&mut e, view, true);
+    assert_eq!(failed.len(), 1);
+    assert_eq!(support::facts(&e, &failed[0]), ["bad"]);
+    assert_eq!(failed[0].variables, answers[0].variables);
+    e.release_inspection(view).unwrap();
+    collect(&mut e);
+    assert_eq!(e.memory().graph_nodes, 0);
+    assert_eq!(e.memory().conditions, 0);
+    assert_eq!(e.memory().obligation_descriptors, 0);
+}
+
+#[test]
+fn explicit_failed_alternatives_remain_distinct_in_recorded_history() {
+    let mut e = recording("", "fail;fail");
+    assert!(run(&mut e).is_empty());
+    collect(&mut e);
+    let failures = e
+        .snapshots()
+        .filter(|s| matches!(s.kind, SnapshotKind::Failure))
+        .map(|s| s.id)
+        .collect::<Vec<_>>();
+    assert_eq!(failures.len(), 2);
+    for snapshot in failures {
+        let view = e.start_inspection(Some(snapshot), vec![]).unwrap();
+        let alternatives = inspection(&mut e, view, true);
+        assert_eq!(alternatives.len(), 1);
+        assert!(alternatives[0].rows.is_empty());
+        e.release_inspection(view).unwrap();
+    }
+    assert!(e.delivery_done());
+    assert!(e.take_output().is_none());
+}

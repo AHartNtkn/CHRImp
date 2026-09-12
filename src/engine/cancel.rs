@@ -130,7 +130,6 @@ impl Engine {
                 };
                 self.pending_root = self.obligations.empty();
                 self.active = Condition::FALSE;
-                self.failed = Condition::FALSE;
                 self.variables = Arc::new(Vec::new());
                 self.cancellation.roots_released = true;
                 self.request_collection();

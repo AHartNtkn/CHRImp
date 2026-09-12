@@ -1,5 +1,4 @@
 mod support;
-use chr::condition::Condition;
 use support::{Reader, engine, facts, finish};
 #[test]
 fn growing_search_does_not_block_a_finite_sibling_or_budget_return() {
@@ -61,7 +60,6 @@ fn failure_and_completion_leave_no_stranded_work_or_lane_request() {
         assert_eq!(e.pending_tasks(), 0);
         if query == "fail" {
             assert_eq!(outputs, 0);
-            assert_eq!(e.failed(), Condition::TRUE);
         } else {
             assert_eq!(outputs, 1);
         }

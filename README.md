@@ -8,7 +8,7 @@ cargo run --offline -- --notebook
 
 Open the printed URL. Edit programs and queries as text or graphs, then run or step through execution. History recording is optional and off by default. Saved answers remain in this browser; execution handles and recorded states last until released or the server stops. Use `--port PORT` to choose a port.
 
-Step pauses after one rule application in the selected alternative. Its inspection shows current relations and pending body expressions; open a conjunction or disjunction to inspect its contents. Choice and history controls load one page at a time and preserve your selection while you browse.
+Step pauses after one rule application in the selected alternative. Its inspection shows current relations and pending body expressions; open a conjunction or disjunction to inspect its contents. Choice and history controls load one page at a time and preserve your selection while you browse. Recorded failure states show rejected alternatives for inspection; they are never emitted as successful answers.
 
 Run a program with a relational query:
 
