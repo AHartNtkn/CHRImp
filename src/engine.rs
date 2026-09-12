@@ -718,8 +718,14 @@ impl Engine {
             }
             BodyPhase::Acquire => {
                 if self.acquire(Owner::Task(id)) {
-                    b.phase = BodyPhase::Filter;
-                    b.job = Some(self.arena.start(Operation::And(b.scope, self.active)));
+                    let operation = Operation::And(b.scope, self.active);
+                    if let Some(scope) = self.arena.direct(operation) {
+                        b.scope = scope;
+                        b.phase = BodyPhase::Apply;
+                    } else {
+                        b.phase = BodyPhase::Filter;
+                        b.job = Some(self.arena.start(operation));
+                    }
                 }
             }
             BodyPhase::Filter => {
@@ -1035,10 +1041,10 @@ mod balanced_phase_tests {
         assert!(e.delivery_done());
         assert_eq!(answers, 7);
         assert!(internal);
+        assert!(!phases.contains(&(BodyPhase::Filter as u8)));
         for phase in [
             BodyPhase::Dispatch,
             BodyPhase::Acquire,
-            BodyPhase::Filter,
             BodyPhase::Apply,
             BodyPhase::Choice,
             BodyPhase::Left,
@@ -1129,5 +1135,85 @@ mod parking_tail_tests {
         ports.sort();
         assert_eq!(variables, ports);
         assert_eq!(variables.iter().collect::<BTreeSet<_>>().len(), 4);
+    }
+}
+
+#[cfg(test)]
+mod body_direct_tests {
+    use super::*;
+
+    #[test]
+    fn acquired_body_uses_exact_identities_and_resumes_mixed_support() {
+        let code = crate::program::prepare(
+            &crate::syntax::parse_program("p(X) <=> q(X).").unwrap(),
+            &crate::syntax::parse_query("p(A)").unwrap(),
+        )
+        .unwrap();
+        let mut e = Engine::new(Arc::new(code));
+        let (x_id, x) = e.arena.fresh_choice();
+        let (y_id, y) = e.arena.fresh_choice();
+        for (scope, active, expected) in [
+            (Condition::TRUE, Condition::TRUE, Some(Condition::TRUE)),
+            (x, Condition::TRUE, Some(x)),
+            (Condition::TRUE, x, Some(x)),
+            (x, x, Some(x)),
+            (x, x.not(), Some(Condition::FALSE)),
+            (x, y, None),
+        ] {
+            e.active = active;
+            let mut b = Body::new(0, 0, Arc::new(Vec::new()), scope);
+            b.phase = BodyPhase::Acquire;
+            // An existing writer prevents both the shortcut and the general job.
+            e.lane = Some(Owner::Completion);
+            assert!(!e.body_tick(99, &mut b));
+            assert!(matches!(b.phase, BodyPhase::Acquire));
+            assert!(b.job.is_none());
+            assert_eq!(b.scope, scope);
+            assert!(e.waiting.pop_front() == Some(Owner::Task(99)));
+            assert!(e.requested.remove(&Owner::Task(99)));
+            e.lane = Some(Owner::Task(99));
+            assert!(!e.body_tick(99, &mut b));
+            if let Some(expected) = expected {
+                assert!(matches!(b.phase, BodyPhase::Apply));
+                assert!(b.job.is_none());
+                assert_eq!(b.scope, expected);
+            } else {
+                assert!(matches!(b.phase, BodyPhase::Filter));
+                assert!(b.job.is_some());
+                for _ in 0..100 {
+                    if matches!(b.phase, BodyPhase::Apply) {
+                        break;
+                    }
+                    let roots: Vec<_> = b
+                        .job
+                        .as_ref()
+                        .unwrap()
+                        .roots()
+                        .chain([scope, active, x, y])
+                        .collect();
+                    let mut gc = e.arena.collect(roots.into_iter());
+                    while !gc.tick(&mut e.arena) {}
+                    drop(gc);
+                    assert!(!e.body_tick(99, &mut b));
+                }
+                assert!(matches!(b.phase, BodyPhase::Apply));
+                for a in [false, true] {
+                    for b_value in [false, true] {
+                        assert_eq!(
+                            e.arena.evaluate(b.scope, |id| {
+                                if id == x_id {
+                                    a
+                                } else {
+                                    assert_eq!(id, y_id);
+                                    b_value
+                                }
+                            }),
+                            a && b_value
+                        );
+                    }
+                }
+            }
+            assert!(e.lane == Some(Owner::Task(99)));
+        }
     }
 }
