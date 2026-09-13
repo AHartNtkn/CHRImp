@@ -22,13 +22,13 @@ validation:
   observer_equivalence: Graph-pruning/arena and cleanup-probe deltas explain permitted iteration variation.
   allocation: Optimized observable allocator calibration and allocation extraction/default detection pass.
   conditional_readers: Projection boundaries and default/diagnostics harness tests pass.
-  synthesis: 7 validated first-answer prefixes and 10 censored results; no supplied witnesses.
+  synthesis: Behavior synthesis has 45 baseline observations, nine CPU profiles and two heap profiles; four queries finish and five cap at three seconds.
   challenges: Native latency, residency and coupled interventions detected; unchanged control has no signal.
 
 remaining:
   targeted_diagnoses:
     status: open
-    gap: Useful maintained diagnoses of censored synthesis and expensive conditional-reader runs.
+    gap: Maintained diagnosis of the expensive conditional-reader run.
   observer_calibration:
     owner: Mendel
     status: results_available
@@ -37,6 +37,7 @@ remaining:
     evidence: /tmp/chrimp-observer-calibration/report.md
 
 evidence:
+  behavior_diagnosis: ../../behavior-synthesis-performance.md
   risk_model: notes/T001-risks.md
   tools_and_metrics: ../../performance.md
   native_challenges: /tmp/chr-native-challenge/report.md
