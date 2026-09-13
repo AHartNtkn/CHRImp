@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import sys
+sys.path.insert(0, str(Path(__file__).parents[1] / "examples"))
 
 spec = importlib.util.spec_from_file_location("chr_profile", Path(__file__).parents[1] / "examples/profile.py")
 profile = importlib.util.module_from_spec(spec)

@@ -87,3 +87,19 @@ Allocation JSON records process-wide successful allocation/reallocation counts, 
 The final `allocations=` JSON is sampled after the workload function returns, before serializing that report and before process shutdown. Earlier reports contribute allocation traffic to subsequent checkpoints. Snapshots are consistent at quiescent single-thread checkpoints; atomics make counting safe across threads but do not make simultaneous counter reads an atomic snapshot. Engine object-count checkpoints remain available alongside byte accounting.
 
 The `diagnostics` feature compiles engine counters and the measure allocator in. Default builds contain neither; these instrumented timings require observer-overhead calibration and must not be substituted for baseline timing. Allocation stack attribution, full ownership timelines, and baseline/detailed comparisons remain outstanding suite work.
+
+## External limits and process resources
+
+Build the desired binary first, then run it directly:
+
+```sh
+python3 examples/supervise.py --measure --seconds 10 --out /tmp/chr-run -- target/release/examples/measure rewrite 128 5000000 5
+python3 examples/supervise.py --seconds 10 --out /tmp/chr-cli-run -- target/release/chr examples/proofs.chr --query 'edge(A,B,AB),edge(B,A,BA)'
+python3 -m unittest discover -s tests -p supervise_test.py
+```
+
+The new output directory contains stdout/stderr and `run.json`: exact command, working directory, executable hash, host, limits, status, elapsed time, user/system CPU, peak resident KiB, minor/major faults, voluntary/involuntary context switches and filesystem block counts. Build flags/revision belong to the campaign metadata still under construction; a binary hash alone does not reconstruct a build.
+
+Linux `pidfd` readiness enforces the wall deadline without busy polling. After the deadline, the process group receives an interrupt and then a hard kill after a one-second grace; CPU profiling uses five seconds to flush sampling data. A run remains censored even if it handles the interrupt and exits zero. Live children in the original process group are killed before reaping the leader; termination is checked for up to one second and reported separately. A normal exit with leftover group members is failed; a deadline remains censored with its cleanup result attached. The supervisor manages native CHR/profiler processes that stay in their launch group; it is not containment for commands that detach into another group/session. Launch/pre-exec and kernel-uninterruptible termination are not made preemptible by a user-space deadline. Address-space limits are per process, file-size limits per file, and CPU limits per process; these are not aggregate process-tree or disk quotas. SIGXCPU/SIGXFSZ are identified; other failures retain their status and stderr without guessing whether a cap caused them. `--measure` recognizes that harness's incomplete exit code; arbitrary CLI exit 2 is an error.
+
+Resource accounting comes from Linux `wait4` for the launched process and descendants it waited for. It includes pre-exec/launcher work and, for profiling, perf itself. Peak RSS is a high-water mark, not summed process-tree memory or live allocation bytes. Fork/pre-exec memory can impose a floor on small workloads; `launch_parent_rss_kib` exposes the launch context. Filesystem blocks are kernel accounting, not bytes or syscall counts. These metrics complement engine/allocation measurements; subtracting CPU from wall time does not identify a particular blocking cause.

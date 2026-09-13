@@ -144,12 +144,11 @@ tasks:
         the exact unblock.
     write_scopes:
       PM: *id001
-    progress: Generated families, native CPU flamegraphs, per-engine work diagnostics and scoped requested-allocation
-      accounting are implemented. Baseline/detailed observation now shares execution and validation, with explicit
-      unavailable fields, phase deadline checks and mode-equivalence controls. Remaining T002 work includes expanded
-      lifetime/preparation interactions, representation/ownership attribution, allocation stacks and broader calibration.
-      T003 machine-readable supervised routine/deep comparisons and detectors and T004 independent challenges remain
-      required.
+    progress: Generated workloads, native CPU profiles, engine/allocation diagnostics, baseline/detail modes and
+      shared external native supervision with resource accounting are implemented and calibrated. Remaining T002
+      work includes lifetime/preparation interactions, representation/ownership attribution, allocation stacks and
+      broader calibration. T003 maintained supervised campaigns, structured comparisons/detectors and T004 independent
+      challenges remain required.
     evidence:
       - 'cargo test --release --example measure: 23 passed, including generated end-to-end cases across shapes and
         seeds.'
@@ -187,6 +186,19 @@ tasks:
       - Independent review found cleanup final-time classification and cancellation report contamination plus repeated-field
         parser loss. Fixed and mode/regression checks rerun. Adversarial wall-deadline perturbation checks remain
         part of supervisor validation.
+      - Shared examples/supervise.py runs native commands with Linux pidfd deadlines, per-process address-space/CPU
+        and per-file limits, wait4 resource counters, original-group cleanup before leader reaping, terminal outcomes
+        and raw logs. CPU profiling uses the same implementation.
+      - 'python3 -m unittest discover -s tests -p supervise_test.py: 11 live-process tests passed: CPU/sleep/touched-memory
+        attribution, wait-propagated CPU, wall/CPU/file limits, interrupt escalation, actual original-group child
+        termination, unrelated-child preservation, CLI exit mapping and terminal launch-error reports.'
+      - 'python3 -m unittest discover -s tests -p profile_test.py: 4 passed. /tmp/chrimp-profile-supervision-final/profile.json:
+        complete, 67 samples, validated folding and process resource metadata.'
+      - Independent supervisor review identified post-reap PGID reuse risk, missing termination verification and
+        error/outcome issues; corrected. Scope explicitly limited to original process group, with launcher RSS floor,
+        per-process rather than aggregate quotas, detached processes and kernel-uninterruptible/launch caveats visible.
+        T003 must establish applicability and bounds for actual maintained campaigns, not claim arbitrary process
+        containment.
   - id: T003
     type: worker
     assignee: Worker
@@ -249,9 +261,8 @@ checks:
     result: pass
     task: T002
     commands:
-      - cargo test --offline --example measure
-      - cargo test --offline --features diagnostics --example measure
-      - cargo build --offline --release --features diagnostics --example measure
-      - python3 -m unittest discover -s tests -p measure_observation_test.py
-      - cargo clippy --offline --features diagnostics --example measure -- -D warnings
-      - cargo fmt --check
+      - python3 -m unittest discover -s tests -p supervise_test.py
+      - python3 -m unittest discover -s tests -p profile_test.py
+      - python3 examples/profile.py --out /tmp/chrimp-profile-supervision-final -- notebook-behavior-i 1 50000000
+        15
+      - git diff --check

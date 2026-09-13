@@ -13,13 +13,11 @@ import os
 from pathlib import Path
 import platform
 import re
-import resource
 import shutil
-import signal
 import subprocess
 import sys
-import time
 from urllib.parse import quote
+from supervise import run as supervise
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -63,30 +61,6 @@ def outcome(code, limited, cli):
     return "completed" if code == 0 else "failed"
 
 
-def record(command, out, seconds, memory_mib):
-    def limits():
-        resource.setrlimit(resource.RLIMIT_AS, (memory_mib * 1024**2,) * 2)
-        resource.setrlimit(resource.RLIMIT_CPU, (int(seconds) + 5,) * 2)
-
-    with (out / "workload.log").open("w") as stdout, (out / "perf.log").open("w") as stderr:
-        start = time.monotonic()
-        process = subprocess.Popen(command, cwd=ROOT, stdout=stdout, stderr=stderr, start_new_session=True, preexec_fn=limits)
-        limited = False
-        try:
-            process.wait(timeout=seconds)
-        except subprocess.TimeoutExpired:
-            limited = True
-            # SIGINT lets perf finish writing the sampled data. A stuck child or
-            # recorder still has a hard stop; the result remains censored.
-            os.killpg(process.pid, signal.SIGINT)
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
-        return process.returncode, limited, time.monotonic() - start
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", required=True, type=Path, help="new directory for raw profile, metadata and flame.svg")
@@ -128,9 +102,20 @@ def main():
     }
     meta = out / "profile.json"
     meta.write_text(json.dumps(metadata, indent=2) + "\n")
-    code, limited, elapsed = record(command, out, args.seconds, args.memory_mib)
-    metadata.update(returncode=code, external_limit=limited, elapsed_seconds=elapsed,
-                    status=outcome(code, limited, args.cli))
+    try:
+        with (out / "workload.log").open("w") as stdout, (out / "perf.log").open("w") as stderr:
+            resources = supervise(command, ROOT, stdout, stderr, args.seconds, args.memory_mib, grace=5)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        metadata.update(status="supervisor_error", error=str(error))
+        meta.write_text(json.dumps(metadata, indent=2) + "\n")
+        raise
+    code = resources["returncode"]
+    limited = resources["limit_reason"] is not None
+    status = outcome(code, limited, args.cli)
+    if not limited and resources["descendants_signaled_after_exit"]:
+        status = "failed"
+    metadata.update(returncode=code, external_limit=limited, elapsed_seconds=resources["wall_seconds"],
+                    status=status, process_resources=resources)
     meta.write_text(json.dumps(metadata, indent=2) + "\n")
     if metadata["status"] == "failed":
         raise RuntimeError(f"profiling/workload failed with status {code}; see {out / 'perf.log'} and workload.log")
