@@ -17,6 +17,8 @@ use std::{
 
 #[path = "interactions.rs"]
 mod interactions;
+#[path = "sessions.rs"]
+pub mod sessions;
 pub use interactions::Options as InteractionOptions;
 
 pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive life-held-output life-archive-fixed life-archive-rotate life-inspections runtime";

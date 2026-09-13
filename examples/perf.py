@@ -73,6 +73,15 @@ def classify(process, events, case):
         if any(u.get('complete') is not True or u.get('answers')!=1 or u.get('applications')!=int(not options.get('empty')) or u.get('prepared_owners_after_engine_drop')!=1 for u in uses): return 'report_error'
         preparations=1 if case=='prepare-reuse' else len(uses)
         if len(result.get('prepare_ms',[]))!=preparations or len(result.get('prepared_drop_ms',[]))!=preparations: return 'report_error'
+    elif case=='runtime-sessions':
+        options=config.get('sessions')
+        if not isinstance(options,dict) or result.get('options')!=options: return 'report_error'
+        if result.get('censored') is not False or result.get('cleanup_complete') is not True: return 'report_error'
+        expected={'history_completed':options['closed'],'retained_completed':options['retained'],'answers':config['size'],'tiny_answers':1,'finite_applications':options['rows'],'closed_verified':options['retained']+2+int(options['work']>0)}
+        if any(result.get(k)!=v for k,v in expected.items()): return 'report_error'
+        if result.get('background_applications',-1)<options['work']: return 'report_error'
+        for key in ('after_close_spools','after_drop_spools'):
+            if result.get(key) is not None and any(result[key].get(k)!=0 for k in ('files','descriptors','logical_bytes')): return 'report_error'
     elif case.startswith('life-') or case == 'runtime':
         if result.get('censored') is not False: return 'report_error'
     else:
@@ -121,7 +130,7 @@ def deadline_signal(*_):
 
 def sample_values(sample):
     result = next(e['data'] for e in sample['records'] if e['kind'] == 'result')
-    values = {'process': {k:v for k,v in sample['process'].items() if k not in ('limits', 'returncode', 'descendant_pids')}, 'workload':{k:result[k] for k in ('times_ms','work','memory_counts','first_event','first_answer','source_exhausted','native_peak_rss_estimate_kib','program_bytes','query_bytes','generation_ms','parse_program_ms','parse_query_ms','prepare_ms','uses','prepared_drop_ms','syntax_source_drop_ms','elapsed_ms') if k in result}}
+    values = {'process': {k:v for k,v in sample['process'].items() if k not in ('limits', 'returncode', 'descendant_pids')}, 'workload':{k:result[k] for k in ('times_ms','work','memory_counts','first_event','first_answer','source_exhausted','native_peak_rss_estimate_kib','program_bytes','query_bytes','generation_ms','parse_program_ms','parse_query_ms','prepare_ms','uses','prepared_drop_ms','syntax_source_drop_ms','elapsed_ms','source_ms','tiny_answer_ms','tiny_answer_work','source','setup','cleanup','source_and_setup','runtime_drop_ms','before_close_memory','retained_spools','after_history_spools','before_close_spools','after_close_spools','after_drop_spools','background_applications','finite_applications') if k in result}}
     for kind in ('phase','diagnostics'):
         occurrences=Counter()
         grouped={}

@@ -148,8 +148,9 @@ tasks:
       limits and raw results. Four independently parameterized retention/concurrency workloads check held output,
       fixed/rotating archives and concurrent unread inspections. Preparation shape/reuse/direct destruction now has bounded native cases and independent result/work/ownership
       oracles. Fresh-production/equality/consumption cases and bounded routine/deep sweeps now run. Remaining work includes
-      session churn/replay, representation/ownership and allocation-stack attribution, calibrated material/growth
-      regression decisions, broader control calibration and independent challenges.
+      representation/ownership and allocation-stack attribution, broader calibration/detection challenges, remaining
+      end-to-end query inventory/diagnoses and independent full-scope review. Runtime session churn/replay and
+      control-qualified cost/scaling comparisons now have maintained commands and specific sensitivity evidence.
     evidence:
       - 'cargo test --release --example measure: 23 passed, including generated end-to-end cases across shapes and
         seeds.'
@@ -236,6 +237,21 @@ tasks:
       - /tmp/chrimp-routine-first completed the initial21-point selection in36.85sec:20points each completed5samples,
         behavior-W each of5samples censored. /tmp/chrimp-deep-interactions completed19selected interaction points
         with3samples each in1.71sec. No calibrated regression gate is claimed; status reports execution outcomes.
+      - perf_regress.py compares suite mean costs and adjacent-size ratios against two unchanged control campaigns,
+        with observed control-span qualification and one Holm family. Resolution scales with family size; exact
+        two-sided complements and mathematically insufficient resolution are explicit. Seven regression tests pass,
+        including a1000-hypothesis signal, false-positive control and preserved suite/report failure precedence.
+      - Six native points with9repeats supplied unchanged controls and a held-out benign campaign (zero signals).
+        A real80ms startup-delay variant raised6process-wall signals, observed mean increases80-82ms. Evidence:
+        /tmp/chrimp-gate-benign-final.json and /tmp/chrimp-gate-delayed-comparison.json. These are builder calibration,
+        not the required independent unseen challenge set. Full noisy-control sensitivity remains unfinished.
+      - runtime-sessions covers retired-history and retained-completed owners independently, tiny queries, scalar
+        batch size, replay frequency and background progress. Exact answers/applications, frozen replay invariance,
+        public owner invalidation and scoped spool descriptor/file release are checked.13points with3samples each
+        completed in1.82sec at /tmp/chrimp-runtime-session-sweeps.
+      - Independent session review corrected initial-deadline failure classification and loss of already validated
+        tiny-answer progress. Four runtime session tests pass in release and diagnostics modes, including stopping
+        at the measured tiny-answer work boundary. Eleven runner tests, four suite tests, clippy/fmt pass.
   - id: T003
     type: worker
     assignee: Worker

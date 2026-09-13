@@ -682,6 +682,9 @@ fn main() -> ExitCode {
     let args = env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() || args == ["--help"] || args == ["--list"] {
         println!(
+            "runtime-sessions: SIZE finite answers; --closed retired session count, --retained live completed sessions, --rows width, --batch scalar batch1..4096, --replay-every batch cadence (0off), --work background application target (0off)."
+        );
+        println!(
             "Preparation: {}; SIZE inactive rules (zero allowed); --heads N --arity N --repeats N --width N --depth N --uses N --empty. Repeated ports, body structure and sequential engine uses vary independently. Defaults 1/1/0/1/0/1, with a one-step query; --empty uses true.",
             preparation::CASES
         );
@@ -708,6 +711,11 @@ fn main() -> ExitCode {
         let is_preparation = preparation::CASES
             .split_whitespace()
             .any(|case| case == args[0]);
+        let is_sessions = lifecycle::sessions::CASES
+            .split_whitespace()
+            .any(|case| case == args[0]);
+        let mut session_options = false;
+        let mut sessions = lifecycle::sessions::Options::default();
         let is_fresh = fresh::CASES.split_whitespace().any(|case| case == args[0]);
         let (mut fresh_depth, mut order) = (4usize, "grouped".to_string());
         let (mut depth_option, mut order_option) = (false, false);
@@ -760,8 +768,24 @@ fn main() -> ExitCode {
                         _ => unreachable!(),
                     }
                 }
+                "--closed" | "--retained" | "--batch" | "--replay-every" => {
+                    session_options = true;
+                    let flag = &args[i];
+                    i += 1;
+                    let value = args
+                        .get(i)
+                        .ok_or("missing session option")?
+                        .parse::<usize>()
+                        .map_err(|_| "invalid session option")?;
+                    match flag.as_str() {
+                        "--closed" => sessions.closed = value,
+                        "--retained" => sessions.retained = value,
+                        "--batch" => sessions.batch = value,
+                        "--replay-every" => sessions.replay_every = value,
+                        _ => unreachable!(),
+                    }
+                }
                 "--work" | "--cadence" => {
-                    interaction_options = true;
                     let flag = &args[i];
                     i += 1;
                     let value = args
@@ -769,13 +793,19 @@ fn main() -> ExitCode {
                         .ok_or("missing interaction option")?
                         .parse::<u64>()
                         .map_err(|_| "invalid interaction option")?;
-                    if value == 0 {
+                    if value == 0 && !(is_sessions && flag == "--work") {
                         return Err("positive work/cadence required".into());
                     }
-                    if flag == "--work" {
-                        work = value;
+                    if is_sessions && flag == "--work" {
+                        sessions.work = value;
+                        session_options = true;
                     } else {
-                        cadence = value;
+                        interaction_options = true;
+                        if flag == "--work" {
+                            work = value;
+                        } else {
+                            cadence = value;
+                        }
                     }
                 }
                 "--seed" | "--shape" => {
@@ -856,16 +886,32 @@ fn main() -> ExitCode {
         {
             return Err("preparation cases use their shape/use options, not rows/prefix/generated/lifecycle options".into());
         }
+        if session_options && !is_sessions {
+            return Err("session options require runtime-sessions".into());
+        }
+        if is_sessions && (generated_options || prefix.is_some() || interaction_options) {
+            return Err("runtime-sessions requires full output and its session options".into());
+        }
+        sessions.rows = rows;
         observation::configure(detailed);
         report::emit(
             "configuration",
-            serde_json::json!({"case": args[0], "size": n, "rows": rows, "prefix": prefix, "seed": seed, "shape": shape, "detailed": detailed, "diagnostics_feature": cfg!(feature = "diagnostics"), "max_ticks": max_ticks, "timeout_seconds": seconds, "continued_work": interaction.then_some(work), "rotation_cadence": interaction.then_some(cadence), "preparation": is_preparation.then_some(prep), "fresh_depth": is_fresh.then_some(fresh_depth), "fresh_order": is_fresh.then_some(&order)}),
+            serde_json::json!({"case": args[0], "size": n, "rows": rows, "prefix": prefix, "seed": seed, "shape": shape, "detailed": detailed, "diagnostics_feature": cfg!(feature = "diagnostics"), "max_ticks": max_ticks, "timeout_seconds": seconds, "continued_work": interaction.then_some(work), "rotation_cadence": interaction.then_some(cadence), "preparation": is_preparation.then_some(prep), "fresh_depth": is_fresh.then_some(fresh_depth), "fresh_order": is_fresh.then_some(&order), "sessions": is_sessions.then_some(sessions)}),
         );
         println!(
             "measurement_mode={} diagnostics_feature={}",
             if detailed { "detailed" } else { "baseline" },
             cfg!(feature = "diagnostics")
         );
+        if is_sessions {
+            let result =
+                lifecycle::sessions::run(n, sessions, max_ticks, Duration::from_secs(seconds))?;
+            report::emit("result", result.clone());
+            if let Some(error) = result["error"].as_str() {
+                return Err(error.into());
+            }
+            return Ok(result["status"] == "COMPLETE");
+        }
         if is_fresh {
             let workload = fresh::make(&args[0], n, rows, fresh_depth, &order)?;
             return run_workload(

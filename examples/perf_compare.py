@@ -21,37 +21,37 @@ DEFAULT_METRICS = ['workload.times_ms.source_delivery', 'workload.first_answer.m
                    'diagnostics.source.0.allocation.process_peak_requested_bytes']
 
 
-def permutation_probability(a, b, seed=0):
-    """Two-sided permutation of the absolute median difference.
+def permutation_probability(a, b, seed=0, draws=9999):
+    """Two-sided permutation of the absolute mean difference.
 
     The null assumes exchangeable independent observations. Shared machine drift
     can violate that assumption; a detected change does not identify its cause.
     """
     joined=a+b; total=len(joined); count=len(a)
-    observed=abs(statistics.median(a)-statistics.median(b))
+    observed=abs(statistics.fmean(a)-statistics.fmean(b))
     def extreme(indices):
         selected=set(indices)
         left=[v for i,v in enumerate(joined) if i in selected]
         right=[v for i,v in enumerate(joined) if i not in selected]
-        return abs(statistics.median(left)-statistics.median(right)) >= observed
+        return abs(statistics.fmean(left)-statistics.fmean(right)) >= observed
     combinations=math.comb(total,count)
     if combinations <= 10000:
         hits=sum(extreme(indices) for indices in itertools.combinations(range(total),count))
         return hits/combinations, 'exact', combinations
-    rng=random.Random(seed); draws=9999
+    rng=random.Random(seed)
     hits=sum(extreme(rng.sample(range(total),count)) for _ in range(draws))
     return (hits+1)/(draws+1), 'monte_carlo', draws
 
 
-def compare_metric(a, b):
+def compare_metric(a, b, draws=9999):
     if not a or not b:
         return {'status':'unavailable','before_n':len(a),'after_n':len(b)}
-    old,new=statistics.median(a),statistics.median(b)
+    old,new=statistics.fmean(a),statistics.fmean(b)
     result={'status':'insufficient_evidence','before_n':len(a),'after_n':len(b),
-            'before_median':old,'after_median':new,'absolute_change':new-old,
+            'before_mean':old,'after_mean':new,'before_median':statistics.median(a),'after_median':statistics.median(b),'absolute_change':new-old,
             'ratio':new/old if old else None,'before_range':[min(a),max(a)],'after_range':[min(b),max(b)]}
     if min(len(a),len(b)) < 5: return result
-    probability,method,draws=permutation_probability(a,b)
+    probability,method,draws=permutation_probability(a,b,draws=draws)
     result.update(p_value=probability,method=method,assignments=draws,status='uncertain')
     return result
 
@@ -85,7 +85,8 @@ def load(directory):
         if type(sample.get('warmup')) is not bool: raise ValueError('missing sample warmup flag')
         events=records('\n'.join('measurement='+json.dumps(e) for e in sample.get('records',[])))
         config=[e['data'] for e in events if e['kind']=='configuration']
-        configs.extend(config)
+        # Null optional dimensions mean the option does not apply to this case.
+        configs.extend({k:v for k,v in c.items() if v is not None} for c in config)
         if sample['status']=='completed':
             if len(config)!=1 or classify(sample['process'],events,config[0]['case'])!='completed':
                 raise ValueError('completed sample contradicts its measured outcome')
@@ -112,7 +113,7 @@ def comparison(before, after, metrics):
             'metrics':findings,
             'before_outcomes':dict(Counter(s['status'] for s in os if not s['warmup'])),
             'after_outcomes':dict(Counter(s['status'] for s in ns if not s['warmup'])),
-            'interpretation':'Two-sided median-difference permutation evidence with Holm family correction; increases need materiality/scaling assessment. Sparse, censored or missing observations cannot establish absence of regression. Machine drift and serial group order can confound differences. Native RSS is the whole harness address-space peak; wait4 RSS includes launcher overhead.'}
+            'interpretation':'Two-sided mean-difference permutation evidence with Holm family correction; increases need materiality/scaling assessment. Sparse, censored or missing observations cannot establish absence of regression. Machine drift and serial group order can confound differences. Native RSS is the whole harness address-space peak; wait4 RSS includes launcher overhead.'}
 
 
 def main():

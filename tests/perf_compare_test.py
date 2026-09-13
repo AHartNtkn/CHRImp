@@ -14,7 +14,7 @@ compare=importlib.util.module_from_spec(spec);spec.loader.exec_module(compare)
 class ComparisonTests(unittest.TestCase):
     def test_exact_complete_separation_and_ties(self):
         p,method,n=compare.permutation_probability([1,2,3],[4,5,6])
-        self.assertEqual((p,method,n),(.2,'exact',20))
+        self.assertEqual((p,method,n),(.1,'exact',20))
         self.assertEqual(compare.permutation_probability([1]*5,[1]*5)[0],1)
         self.assertEqual(compare.permutation_probability([1,2,3],[4,5,6]),compare.permutation_probability([4,5,6],[1,2,3]))
 
@@ -31,8 +31,8 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(result['control']['status'],'uncertain')
         self.assertEqual(result['missing']['status'],'unavailable')
 
-    def test_same_median_different_tails_is_not_a_median_change(self):
-        self.assertEqual(compare.permutation_probability([0,0,5,5,5],[5,5,5,100,100])[0],1)
+    def test_same_mean_different_distributions_is_not_a_mean_change(self):
+        self.assertEqual(compare.permutation_probability([0,0,5,5,5],[3,3,3,3,3])[0],1)
 
     def test_raw_outcomes_validation_and_censoring(self):
         with tempfile.TemporaryDirectory() as directory:

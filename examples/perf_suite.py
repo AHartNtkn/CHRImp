@@ -34,6 +34,7 @@ def plan(mode, seed):
     sweep('proof-diamond','proof-dag','size',[4,7] if mode=='routine' else [4,7,10,13],options=('--shape','diamond'),risk='reconvergent derivation amplification')
     sweep('fairness','fair-grow','size',[1,4] if mode=='routine' else [1,2,4,8],options=('--rows',8),risk='finite answer latency competing with continuing growth')
     sweep('archive','life-archive-rotate','size',[1,4],options=('--rows',4,'--work',32,'--cadence',4),risk='retained ownership and turnover')
+    sweep('sessions-history','runtime-sessions','closed',[0,8] if mode=='routine' else [0,4,16,64],size=4,options=('--rows',4,'--batch',4),risk='historical retired sessions versus fresh request cost')
     sweep('prepare-shape','prepare-reuse','heads',[1,4] if mode=='routine' else [1,2,4,8],size=32,options=('--arity',4,'--width',8,'--uses',4),risk='preparation shape independent of result size')
     for case in ('arithmetic-decompose','lambda','type-i','behavior-i','behavior-w'):
         sweep('notebook-'+case,'notebook-'+case,'size',[1],risk='end-to-end validated query or honest bounded prefix')
@@ -42,6 +43,9 @@ def plan(mode, seed):
             for variant in (seed, seed+1):
                 sweep(f'bits-{shape}-seed{variant}','graph-bits','size',[4,8],options=('--shape',shape,'--seed',variant),risk='conditional graph topology and contradiction correlations')
                 sweep(f'walks-{shape}-seed{variant}','graph-walks','size',[4,8,16],options=('--shape',shape,'--seed',variant,'--rows',2),risk='graph degree, duplicate edges and ordered matching')
+        sweep('sessions-retained','runtime-sessions','retained',[0,4,16],size=4,options=('--rows',4,'--batch',4),risk='live completed sessions versus new execution latency')
+        sweep('sessions-batch','runtime-sessions','batch',[1,4,64],size=8,options=('--rows',8,'--work',32,'--replay-every',2),risk='tiny scalar reads and replay while source progresses')
+        sweep('sessions-replay','runtime-sessions','replay-every',[0,1,4],size=4,options=('--rows',4,'--work',32,'--retained',4),risk='replay amplification with continuing work and retained owners')
         for case in ('life-held-output','life-archive-fixed','life-inspections'):
             sweep(case,case,'size',[1,4,8],options=('--rows',4,'--work',64),risk='continuing source with independent concurrent owners')
         sweep('archive-cadence','life-archive-rotate','cadence',[1,4,16],size=4,options=('--rows',4,'--work',64),risk='fixed retained population versus turnover frequency')
@@ -83,7 +87,7 @@ def main():
     parser.add_argument('--diagnostics',action='store_true')
     parser.add_argument('--seconds',type=float,help='aggregate execution/analysis budget; default routine120, deep600')
     parser.add_argument('--sample-seconds',type=float,default=5)
-    parser.add_argument('--repeat',type=int,default=5)
+    parser.add_argument('--repeat',type=int,default=12)
     parser.add_argument('--memory-mib',type=int,default=4096)
     parser.add_argument('--seed',type=int,default=0)
     parser.add_argument('--only',action='append',help='run selected family, repeat flag for several')

@@ -100,6 +100,20 @@ class NativeRecordTests(unittest.TestCase):
                 self.assertEqual(sample['status'],'completed')
                 self.assertTrue((out/f'{index}.stdout').is_file())
 
+    def test_runtime_sessions_preserve_outputs_work_and_owner_release(self):
+        binary=Path(__file__).parents[1]/'target/release/examples/measure'
+        run=subprocess.run([str(binary),'runtime-sessions','3','100000','5','--closed','2','--retained','2','--rows','2','--batch','1','--replay-every','1','--work','4'],capture_output=True,text=True,timeout=15)
+        self.assertEqual(run.returncode,0,run.stderr)
+        events=perf.records(run.stdout)
+        self.assertEqual(perf.classify(process(),events,'runtime-sessions'),'completed')
+        result=next(e['data'] for e in events if e['kind']=='result')
+        self.assertEqual(result['finite_applications'],2)
+        self.assertGreater(result['source']['replays'],0)
+        self.assertEqual(result['after_drop_spools']['descriptors'],0)
+        self.assertIn('workload.tiny_answer_ms',perf.sample_values(dict(process=process(),records=events)))
+        result['cleanup_complete']=False
+        self.assertEqual(perf.classify(process(),events,'runtime-sessions'),'report_error')
+
     def test_fresh_cases_require_full_work_oracle(self):
         binary=Path(__file__).parents[1]/'target/release/examples/measure'
         for case,applications in [('fresh-contract',26),('fresh-unmerged',18)]:
