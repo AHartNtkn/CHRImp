@@ -62,7 +62,7 @@ visual_board:
     url: null
   reason: Use concise file state; a visual process surface does not advance this architectural
     decision.
-active_task: T006
+active_task: T007
 tasks:
   - id: T001
     type: pm
@@ -216,21 +216,18 @@ tasks:
     receipt:
       result: done
       changed_files:
-        - /tmp/chr-arch-structural/src/program.rs
-        - /tmp/chr-arch-structural/src/program/constructors.rs
+        - /tmp/chr-arch-structural/examples/constructor_probe.rs
+        - /tmp/chr-arch-structural/src/engine.rs
+        - /tmp/chr-arch-structural/src/engine/cancel.rs
+        - /tmp/chr-arch-structural/src/engine/collection.rs
+        - /tmp/chr-arch-structural/src/engine/compact.rs
+        - /tmp/chr-arch-structural/src/engine/normalization.rs
         - /tmp/chr-arch-structural/src/graph.rs
         - /tmp/chr-arch-structural/src/graph/constructors.rs
-        - /tmp/chr-arch-structural/src/identity.rs
-        - /tmp/chr-arch-structural/src/engine.rs
-        - /tmp/chr-arch-structural/src/engine/normalization.rs
-        - /tmp/chr-arch-structural/src/wake.rs
         - /tmp/chr-arch-structural/src/graph/prune.rs
-        - /tmp/chr-arch-structural/src/engine/collection.rs
-        - /tmp/chr-arch-structural/src/engine/cancel.rs
-        - /tmp/chr-arch-structural/src/engine/compact.rs
-        - /tmp/chr-arch-structural/src/engine/obligations.rs
-        - /tmp/chr-arch-structural/src/engine/diagnostics.rs
-        - /tmp/chr-arch-structural/examples/constructor_probe.rs
+        - /tmp/chr-arch-structural/src/identity.rs
+        - /tmp/chr-arch-structural/src/program.rs
+        - /tmp/chr-arch-structural/src/program/constructors.rs
         - /tmp/chr-arch-structural/tests/constructor_lowering.rs
       summary: Direct normalization gives 3.57x over priority on controlled 256-description
         input and 1.49x on unrestricted identity. B/W remain censored; deterministic cancellation
@@ -252,7 +249,7 @@ tasks:
   - id: T006
     type: pm
     assignee: PM
-    status: active
+    status: done
     objective: Select a consequential next architecture experiment from observed conditional-state
       rebuilding costs and independently assessed reuse opportunities.
     inputs:
@@ -264,6 +261,42 @@ tasks:
       - No combined whole-head/normalization experiment without meaningful interaction.
       - Bound each targeted study to 10 minutes; choose one next decision or conclude the
         frontier is sufficient.
+    receipt:
+      result: done
+      summary: CPU confirms substantial compaction cost; independent reviews prioritize avoiding
+        temporary choice ownership over eager/lazy rebasing. Source proves actual evaluator
+        conditional-dispatch region eligible. Memoization deferred without recurrence evidence.
+      note: notes/T006-conditional-dispatch.md
+      harness: codex
+  - id: T007
+    type: worker
+    assignee: Worker
+    status: active
+    objective: Implement and validate source-derived conditional dispatch that avoids doomed
+      choice creation, with direct-normalization control.
+    inputs:
+      - notes/T006-conditional-dispatch.md
+      - /tmp/chr-arch-conditional-dispatch
+    allowed_files:
+      - /tmp/chr-arch-conditional-dispatch/src/program/constructors.rs
+      - /tmp/chr-arch-conditional-dispatch/src/engine.rs
+      - /tmp/chr-arch-conditional-dispatch/src/engine/normalization.rs
+      - /tmp/chr-arch-conditional-dispatch/src/engine/dispatch.rs
+      - /tmp/chr-arch-conditional-dispatch/src/graph/constructors.rs
+      - /tmp/chr-arch-conditional-dispatch/src/engine/collection.rs
+      - /tmp/chr-arch-conditional-dispatch/src/engine/cancel.rs
+      - /tmp/chr-arch-conditional-dispatch/src/engine/compact.rs
+      - /tmp/chr-arch-conditional-dispatch/examples/constructor_probe.rs
+      - /tmp/chr-arch-conditional-dispatch/tests/constructor_lowering.rs
+    verify:
+      - Focused semantic and conditional-dispatch tests
+      - Affected release tests and experimental command build
+    stop_if:
+      - 45-minute initial implementation budget expires; return evidence instead of silently
+        extending.
+      - Requires a general boundary runtime; report missing responsibility instead of silently
+        expanding.
+    agent_id: 01a09935-dd83-7411-9e01-d83f1cbd9efa
     receipt: null
   - id: T999
     type: pm
