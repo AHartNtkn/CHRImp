@@ -128,6 +128,7 @@ fn execute(
 fn diagnostic_checkpoint(engine: &Engine, start: Instant) -> serde_json::Value {
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
     serde_json::json!({"elapsed_ms": elapsed_ms, "work": engine.diagnostics(),
+        "shared_restrictions": engine.restriction_diagnostics(),
         "memory_counts": engine.memory(), "pending_tasks": engine.pending_tasks(),
         "exhausted": engine.exhausted(), "delivery_done": engine.delivery_done(),
         "cancel_done": engine.cancel_done()})

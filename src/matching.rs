@@ -376,15 +376,16 @@ impl Matches {
             _ => None,
         };
         let mut source = Source::new(g, self.root.clone(), atom.relation, scope, lookup, anchor);
-        if anchor.is_none() && atom.args.len() <= crate::graph::restriction::MAX_PORTS {
-            if let Lookup::Port { port, .. } = lookup {
-                let mut bound = [None; crate::graph::restriction::MAX_PORTS];
-                for (i, &slot) in atom.args.iter().enumerate() {
-                    bound[i] = self.bindings[slot];
-                }
-                if let Some(subscriber) = g.restriction(&self.root, atom.relation, port, bound) {
-                    source.kind = SourceKind::Shared(subscriber);
-                }
+        if anchor.is_none()
+            && atom.args.len() <= crate::graph::restriction::MAX_PORTS
+            && let Lookup::Port { port, .. } = lookup
+        {
+            let mut bound = [None; crate::graph::restriction::MAX_PORTS];
+            for (i, &slot) in atom.args.iter().enumerate() {
+                bound[i] = self.bindings[slot];
+            }
+            if let Some(subscriber) = g.restriction(&self.root, atom.relation, port, bound) {
+                source.kind = SourceKind::Shared(subscriber);
             }
         }
         self.frames.push(Frame {

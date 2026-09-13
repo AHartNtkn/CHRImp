@@ -119,6 +119,8 @@ The repeat command builds before timing unless `--binary` selects an existing bi
 
 `measurement=` lines are versioned JSON emitted directly from measured values. Configuration, result, diagnostics, allocations and lifecycle phase records are separate; named memory gauges replace positional interpretation. The runner does not scrape display text and rejects missing/duplicate/inconsistent final results. Per-phase and per-rule diagnostic summaries retain scope; cumulative checkpoints must not be summed as exclusive work. The aggregate sample budget reserves interrupt/cleanup grace and can end before the requested repeat count, reported as aggregate censoring. A campaign alarm also bounds parsing and summarization; processing interrupted by that deadline retains a censored record and raw output. Prebuilt-binary toolchain/source details are explicitly unverified local context. Build has a separate five-minute cap. This repeat command is infrastructure for routine/deep comparisons; the separate suite and regression commands below provide campaign selection and calibrated comparisons; this command reports regression assessment as not performed.
 
+Shared matching arrangements report `shared_restrictions` alongside engine work in diagnostic measurements and CLI checkpoints. `producer_candidates` counts raw rows inspected while building shared partitions; `indexed_candidate_visits` counts candidates presented to matchers. Include both when assessing row inspection work. Partition lookups, projected ports, reuse, and current/peak retained rows and partitions expose the construction and retention costs. These counters are diagnostics-only.
+
 ## Retention and concurrency interactions
 
 ```sh

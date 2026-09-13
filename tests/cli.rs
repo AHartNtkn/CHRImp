@@ -154,6 +154,11 @@ fn native_query_diagnostics_are_opt_in_and_preserve_answers() {
             report["source"]["work"]["rules"]
         );
         assert_eq!(report["after_cancel"]["pending_tasks"], 0);
+        assert!(report["source"]["shared_restrictions"]["producer_candidates"].is_u64());
+        assert_eq!(
+            report["after_cancel"]["shared_restrictions"]["retained_rows"],
+            0
+        );
         // A live Engine owns its current coordinate epoch even after source cancellation.
         for (name, value) in report["after_cancel"]["memory_counts"].as_object().unwrap() {
             assert_eq!(

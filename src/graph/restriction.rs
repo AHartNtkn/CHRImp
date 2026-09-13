@@ -206,11 +206,11 @@ impl Graph {
         let mut mask = 0;
         for (i, value) in bound.iter().enumerate() {
             // The chosen port's value identifies the bucket itself.
-            if i != port {
-                if let Some(value) = value {
-                    mask |= 1 << i;
-                    values[i] = *value;
-                }
+            if i != port
+                && let Some(value) = value
+            {
+                mask |= 1 << i;
+                values[i] = *value;
             }
         }
         let key = Key {
