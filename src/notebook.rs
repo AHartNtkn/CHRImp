@@ -866,7 +866,15 @@ impl Runtime {
                     .map(|s| s.id.0.to_string());
                 let snapshots: Vec<_> = snapshot_rows.into_iter().map(|s| {
                     let action = match s.kind { SnapshotKind::Initial=>"initial query",SnapshotKind::Requested=>"retained view",SnapshotKind::Application{..}=>"rule application",SnapshotKind::Post{..}=>"relation posted",SnapshotKind::Merge=>"variables merged",SnapshotKind::Choice=>"disjunction",SnapshotKind::Failure=>"failure",SnapshotKind::NormalForm=>"normal form" };
-                    json!({"id":s.id.0.to_string(),"label":format!("State {} · {action}",s.id.0)})
+                    let mut row = json!({"id":s.id.0.to_string(),"label":format!("State {} · {action}",s.id.0)});
+                    if let SnapshotKind::Application { rule, .. } = s.kind {
+                        let name = e.engine.program().rules()[rule].name.as_deref();
+                        row["rule"] = json!(rule);
+                        row["name"] = json!(name);
+                        row["label"] = json!(format!("State {} · rule {}{}", s.id.0, rule + 1,
+                            name.map(|n| format!(" · {n}")).unwrap_or_default()));
+                    }
+                    row
                 }).collect();
                 json!({"choices":choices,"snapshots":snapshots,"next_choice":next_choice,"next_snapshot":next_snapshot,"prev_choice":prev_choice,"prev_snapshot":prev_snapshot})
             }

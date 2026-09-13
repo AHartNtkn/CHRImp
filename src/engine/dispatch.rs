@@ -14,7 +14,9 @@ enum Phase {
     Uncovered,
     Accumulate,
     Failure,
+    FailureRemaining,
     Admit,
+    Retire,
     Generative,
     Done,
 }
@@ -25,6 +27,8 @@ pub(super) struct Dispatch {
     cursor: Option<store::Cursor>,
     partition: Condition,
     uncovered: Condition,
+    remaining: Condition,
+    active: Condition,
     failed: Condition,
     hit: Condition,
     occurrence: u64,
@@ -35,7 +39,7 @@ pub(super) struct Dispatch {
 }
 enum Status {
     Pending,
-    Active(Condition),
+    Active(Condition, Condition),
     Arm(usize, Condition),
     Generative(Condition),
     Done,
@@ -55,6 +59,8 @@ impl Dispatch {
             cursor: None,
             partition: Condition::FALSE,
             uncovered: scope,
+            remaining: scope,
+            active: Condition::FALSE,
             failed: Condition::FALSE,
             hit: Condition::FALSE,
             occurrence: 0,
@@ -63,6 +69,9 @@ impl Dispatch {
             job: None,
             phase: Phase::Resolve,
         }
+    }
+    pub fn pending_scope(&self) -> Condition {
+        self.remaining
     }
     pub fn root(&self) -> Root {
         self.root.clone()
@@ -133,18 +142,38 @@ impl Dispatch {
             }
             Phase::Failure => {
                 if let Some(active) = poll(&mut self.job, a) {
+                    self.active = active;
+                    self.job = Some(a.start(Operation::Difference(self.remaining, self.failed)));
+                    self.phase = Phase::FailureRemaining;
+                }
+            }
+            Phase::FailureRemaining => {
+                if let Some(scope) = poll(&mut self.job, a) {
+                    self.remaining = scope;
                     self.phase = Phase::Admit;
-                    return Status::Active(active);
+                    return Status::Active(self.active, self.failed);
                 }
             }
             Phase::Admit => {
                 if let Some((arm, support)) = self.selected.pop_first() {
-                    return Status::Arm(arm as usize, support);
+                    self.arm = Some(arm as usize);
+                    self.hit = support;
+                    self.job = Some(a.start(Operation::Difference(self.remaining, support)));
+                    self.phase = Phase::Retire;
+                } else {
+                    self.phase = Phase::Generative;
                 }
-                self.phase = Phase::Generative;
+            }
+            Phase::Retire => {
+                if let Some(scope) = poll(&mut self.job, a) {
+                    self.remaining = scope;
+                    self.phase = Phase::Admit;
+                    return Status::Arm(self.arm.unwrap(), self.hit);
+                }
             }
             Phase::Generative => {
                 self.phase = Phase::Done;
+                self.remaining = Condition::FALSE;
                 if self.uncovered != Condition::FALSE {
                     return Status::Generative(self.uncovered);
                 }
@@ -172,7 +201,14 @@ impl Dispatch {
 impl Trace for Dispatch {
     fn trace(&self, c: &mut TraceCursor) -> Step {
         match c.phase {
-            0 => c.fields(&[self.partition, self.uncovered, self.failed, self.hit]),
+            0 => c.fields(&[
+                self.partition,
+                self.uncovered,
+                self.failed,
+                self.hit,
+                self.remaining,
+                self.active,
+            ]),
             1 => c.optional(self.resolve.as_ref()),
             2 => c.optional(self.job.as_ref()),
             3 => c.values(&self.selected),
@@ -191,9 +227,13 @@ impl Engine {
             .tick(&self.graph, &mut self.arena, self.active)
         {
             Status::Pending => {}
-            Status::Active(active) => {
+            Status::Active(active, failed) => {
                 self.semantic_regions |= self.active != active;
                 self.active = active;
+                if failed != Condition::FALSE {
+                    self.sync_obligation(id, b);
+                    self.record(SnapshotKind::Failure, failed);
+                }
             }
             Status::Arm(instruction, scope) => {
                 self.normalization_stats.known_arm_admissions += 1;
@@ -227,10 +267,9 @@ mod tests {
         let code = Arc::new(
             crate::program::prepare(&p, &crate::syntax::parse_query("start(R)").unwrap()).unwrap(),
         );
-        for phase in 0..9 {
+        for phase in 0..11 {
             for cancel in [false, true] {
-                let mut e =
-                    Engine::with_normalization(code.clone(), NormalizationMode::Dispatch).unwrap();
+                let mut e = Engine::new(code.clone());
                 let mut answers = 0;
                 let mut found = false;
                 for _ in 0..200_000 {

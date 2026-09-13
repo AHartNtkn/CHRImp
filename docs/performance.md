@@ -306,3 +306,15 @@ python3 examples/perf_suite.py deep --only life-archive-rotate-conditional-owner
 The four lifecycle interaction cases also accept `-conditional`: held output, fixed archive, rotating archive, and partly unread inspectors. Owner-count and continuing-work sweeps vary independently. Snapshot/inspection cases keep a fixed relational payload while a nullary rewrite creates explicit choices with a known surviving arm. Projection selects that surviving prefix; it does not enumerate unfinished failing histories. Archives overlap capture and release, while inspector cases release the snapshot handle so inspectors themselves must retain the old state.
 
 The oracles verify exact committed payloads, newly born choices, retained choice pins through collection, reader completion, and release while the source is still live. Projection-only draining after the declared source-work prefix must perform zero additional source applications. The report separates admitted, held, resumed, and unpinned phases, followed by cancellation and final reclamation. Work and snapshot lifetimes can legitimately amplify inspection/reclamation cost; larger cases retain honest censoring at their declared limits.
+
+## Constructor source probe
+
+`constructor_probe` uses the same automatically prepared execution plan as the CLI and notebook. It accepts a source file and query, or the saved behavior-I query:
+
+```sh
+cargo build --offline --release --example constructor_probe
+target/release/examples/constructor_probe --behavior-i --first --steps 5000000
+target/release/examples/constructor_probe program.chr --query 'app(R,A,B),app(R,C,D)' --steps 500000
+```
+
+The probe reports source progress and bounded cleanup separately. A cleanup limit is a censored release, not a completed timing. Its normalization counters describe admitted work, not CPU shares. Preparation-reuse measurements use the shared immutable prepared plan; source recognition is not repeated for each engine. Historical comparison modes remain on the research branches.

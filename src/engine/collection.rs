@@ -334,15 +334,14 @@ impl Engine {
                 };
                 if let Some(task) = task {
                     if !c.task_roots {
-                        if let Task::Body(b) = &task.task {
-                            if let Some(n) = &b.normalizer {
-                                if let Some(roots) = n.root_group(c.slot) {
-                                    c.graph_roots.extend(roots);
-                                    c.slot += 1;
-                                    self.collector = Some(c);
-                                    return true;
-                                }
-                            }
+                        if let Task::Body(b) = &task.task
+                            && let Some(n) = &b.normalizer
+                            && let Some(roots) = n.root_group(c.slot)
+                        {
+                            c.graph_roots.extend(roots);
+                            c.slot += 1;
+                            self.collector = Some(c);
+                            return true;
                         }
                         c.slot = 0;
                         match &task.task {
@@ -364,10 +363,6 @@ impl Engine {
                                 }
                                 if let Some(dispatch) = &b.dispatch {
                                     c.graph_roots.push(dispatch.root());
-                                }
-                                if let Some(state) = &b.terminal_state {
-                                    c.graph_roots.push(state.graph.clone());
-                                    c.history_roots.push(state.history.clone());
                                 }
                                 if let Some(u) = &b.update {
                                     c.graph_roots.extend(u.roots());

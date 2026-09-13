@@ -1,4 +1,4 @@
-//! Experimental whole-program derivation of constructor consistency.
+//! Whole-program applicability and source provenance for constructor lowering.
 use super::{Instruction, Prepared, RulePlan};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -10,10 +10,12 @@ pub(crate) struct ConstructorChoice {
 }
 
 #[derive(Clone, Debug)]
-pub struct Constructors {
+pub(crate) struct Constructors {
     pub(crate) relations: BTreeSet<usize>,
     pub(crate) rules: BTreeSet<usize>,
     pub(crate) terminal: BTreeSet<usize>,
+    pub(crate) consistency: BTreeMap<usize, usize>,
+    pub(crate) clashes: BTreeMap<(usize, usize), usize>,
     pub(crate) choices: BTreeMap<usize, Arc<ConstructorChoice>>,
 }
 fn equalities(code: &Prepared, i: usize, out: &mut Vec<(usize, usize)>) -> bool {
@@ -53,7 +55,7 @@ impl Constructors {
     /// Remaining consumers may keep one constructor while consuming controls.
     /// The whole-program checks exclude multiplicity/history observers and
     /// nonterminal constructor consumption, so an attachment stays valid until
-    /// coalescence or terminal failure. This is experimental admission, not a
+    /// coalescence or terminal failure. This is compiler applicability, not a
     /// restriction on the language.
     pub fn recognize(code: &Prepared) -> Result<Self, String> {
         let mut by_relation = BTreeMap::new();
@@ -85,14 +87,14 @@ impl Constructors {
             return Err("no exact constructor consistency subsystem".into());
         }
         let relations: BTreeSet<_> = by_relation.keys().copied().collect();
-        let mut clashes = BTreeSet::new();
+        let mut clashes = BTreeMap::new();
         for (i, r) in code.rules.iter().enumerate() {
             if r.kept != 0 || !pair(r) || !matches!(code.instructions[r.body], Instruction::Fail) {
                 continue;
             }
             let (a, b) = (r.heads[0].relation, r.heads[1].relation);
             if a != b && relations.contains(&a) && relations.contains(&b) {
-                if !clashes.insert((a.min(b), a.max(b))) {
+                if clashes.insert((a.min(b), a.max(b)), i).is_some() {
                     return Err("duplicate constructor clash".into());
                 }
                 rules.insert(i);
@@ -178,14 +180,12 @@ impl Constructors {
             relations,
             rules,
             terminal,
+            consistency: by_relation,
+            clashes,
             choices,
         })
     }
-    pub fn rule_count(&self) -> usize {
-        self.rules.len()
-    }
-    pub(crate) fn consumer_code(&self, code: &Prepared) -> Prepared {
-        let mut result = code.clone();
+    pub(crate) fn lower_triggers(&self, result: &mut Prepared) {
         for ts in result
             .triggers
             .iter_mut()
@@ -204,6 +204,5 @@ impl Constructors {
         };
         result.indexed_end = ends(&result.triggers);
         result.merge_indexed_end = ends(&result.merge_triggers);
-        result
     }
 }

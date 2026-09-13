@@ -1,10 +1,10 @@
-//! Structural normalization and conditional dispatch controls; source graph events on stdout.
-//! Usage: constructor_probe baseline|priority|direct|dispatch --behavior-i [--first] [--steps N] [--seconds S]
-//!    or: constructor_probe MODE PROGRAM.chr --query 'BODY' [same limits]
+//! Production source execution with bounded answer and resource reporting.
+//! Usage: constructor_probe --behavior-i [--first] [--steps N] [--seconds S]
+//!    or: constructor_probe PROGRAM.chr --query 'BODY' [same limits]
 //! Dispatch retains each selected original arm, including its leading post.
-//! Historical source stepping is outside this experiment. No production default changes.
+//! Uses the same prepared compiler plan and engine as the CLI and notebook.
 use chr::{
-    engine::{Engine, NormalizationMode},
+    engine::Engine,
     observe::Output,
     program::prepare,
     syntax::{Body, Program, parse_program, parse_query},
@@ -22,23 +22,13 @@ use allocation::{Phase, during};
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let mut args = std::env::args().skip(1);
-    let mode_name = args
-        .next()
-        .ok_or("expected baseline|priority|direct|dispatch")?;
-    if mode_name == "--help" {
+    let input = args.next().ok_or("expected --behavior-i or PROGRAM.chr")?;
+    if input == "--help" {
         println!(
-            "constructor_probe baseline|priority|direct|dispatch (--behavior-i | PROGRAM.chr --query 'BODY') [--first] [--steps N] [--seconds S]\nStreams source answer events to stdout; result and work/memory evidence to stderr. --seconds limits source execution, followed by bounded cancellation. Historical rule stepping is unsupported. Build with --features diagnostics for existing allocation/engine counters."
+            "constructor_probe (--behavior-i | PROGRAM.chr --query 'BODY') [--first] [--steps N] [--seconds S]\nStreams source answer events to stdout; resource evidence to stderr. Build with --features diagnostics for allocation/engine counters."
         );
         return Ok(());
     }
-    let mode = match mode_name.as_str() {
-        "baseline" => NormalizationMode::Baseline,
-        "priority" => NormalizationMode::Priority,
-        "direct" => NormalizationMode::Direct,
-        "dispatch" => NormalizationMode::Dispatch,
-        _ => return Err("expected baseline|priority|direct|dispatch".into()),
-    };
-    let input = args.next().ok_or("expected --behavior-i or PROGRAM.chr")?;
     let (p, q): (Program, Body) =
         during(Phase::Setup, || -> Result<_, Box<dyn std::error::Error>> {
             if input == "--behavior-i" {
@@ -77,7 +67,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let mut e = during(Phase::Setup, || -> Result<_, Box<dyn std::error::Error>> {
         let code = Arc::new(prepare(&p, &q)?);
-        Ok(Engine::with_normalization(code, mode)?)
+        Ok(Engine::new(code))
     })?;
     let setup_seconds = start.elapsed().as_secs_f64();
     let mut stdout = io::BufWriter::new(io::stdout().lock());
@@ -135,7 +125,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let cleanup_done = e.cancel_done();
     let after = e.memory();
-    let mut result = serde_json::json!({"status":status,"mode":mode_name,"steps":steps,"answers":answers,"applications":applications,"setup_seconds":setup_seconds,"source_seconds":source_seconds,"cleanup_seconds":cleanup.elapsed().as_secs_f64(),"cleanup_done":cleanup_done,"normalization":stats,"memory_before_cleanup":{"graph_nodes":memory.graph_nodes,"occurrences":memory.occurrences,"conditions":memory.conditions,"pending_nodes":memory.pending_nodes,"choices":memory.choices},"memory_after_cleanup":{"graph_nodes":after.graph_nodes,"occurrences":after.occurrences,"conditions":after.conditions,"pending_nodes":after.pending_nodes,"choices":after.choices}});
+    let mut result = serde_json::json!({"status":status,"steps":steps,"answers":answers,"applications":applications,"setup_seconds":setup_seconds,"source_seconds":source_seconds,"cleanup_seconds":cleanup.elapsed().as_secs_f64(),"cleanup_done":cleanup_done,"normalization":stats,"memory_before_cleanup":{"graph_nodes":memory.graph_nodes,"occurrences":memory.occurrences,"conditions":memory.conditions,"pending_nodes":memory.pending_nodes,"choices":memory.choices},"memory_after_cleanup":{"graph_nodes":after.graph_nodes,"occurrences":after.occurrences,"conditions":after.conditions,"pending_nodes":after.pending_nodes,"choices":after.choices}});
     #[cfg(feature = "diagnostics")]
     {
         result["allocations_before_cleanup"] = serde_json::to_value(allocation_before_cleanup)?;

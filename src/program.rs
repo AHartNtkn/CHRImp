@@ -1,6 +1,6 @@
 //! Prepared variable slots, relation signatures and reusable rule bodies.
 
-pub mod constructors;
+pub(crate) mod constructors;
 use crate::syntax::{self, Body, ParseError, Program};
 use std::collections::HashMap;
 
@@ -63,6 +63,7 @@ impl RulePlan {
 /// ```
 #[derive(Clone)]
 pub struct Prepared {
+    pub(crate) constructors: Option<std::sync::Arc<constructors::Constructors>>,
     pub(crate) signatures: Vec<Signature>,
     pub(crate) instructions: Vec<Instruction>,
     pub(crate) rules: Vec<RulePlan>,
@@ -245,7 +246,8 @@ pub fn prepare(program: &Program, query: &Body) -> Result<Prepared, ParseError> 
     };
     let normal_end = indexed_end(&triggers);
     let merge_end = indexed_end(&merge_triggers);
-    Ok(Prepared {
+    let mut code = Prepared {
+        constructors: None,
         signatures: builder.signatures,
         instructions: builder.instructions,
         rules,
@@ -256,7 +258,12 @@ pub fn prepare(program: &Program, query: &Body) -> Result<Prepared, ParseError> 
         merge_indexed_end: merge_end,
         query,
         query_variables: variables.names,
-    })
+    };
+    if let Ok(plan) = constructors::Constructors::recognize(&code) {
+        plan.lower_triggers(&mut code);
+        code.constructors = Some(std::sync::Arc::new(plan));
+    }
+    Ok(code)
 }
 
 #[cfg(test)]

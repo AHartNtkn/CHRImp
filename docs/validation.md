@@ -14,11 +14,16 @@ The implemented language includes variable-only relation arguments, explicit equ
 | Notebook protocol, editing, recovery and recording | `tests/notebook.rs`, `tests/inspection.rs`, `tests/pending_body.rs`, `web/*.test.mjs` |
 | Autonomous notebook execution and shared CLI driver | `src/runtime.rs`, `tests/cli.rs`, `tests/notebook.rs`; the HTTP test leaves execution running without requests, then reads its retained answers |
 | Arithmetic, type synthesis, behavior synthesis and lambda notebooks | `examples/*.chrnb`, `tests/notebook_arithmetic.rs`, `tests/notebook_synthesis.rs`, `tests/notebook_lambda.rs` |
+| Automatic structural normalization, conditional dispatch and source observation | `tests/constructor_lowering.rs`, `tests/normalization_observation.rs`, `tests/cli.rs`, `tests/notebook.rs` |
 | Validated public execution plans and borrowed graph access | Compile-fail examples in `src/program.rs` and `src/engine.rs`, plus `tests/lifecycle.rs` |
 
 Notebook tests check execution without browser requests, exact replay of retained output, explicit pause/resume/step/cancel, and control responsiveness during continuing execution. The synthesis checks use independent SK reduction and type inference; the lambda benchmark checks a permitted reduction history and its exact residual graph.
 
 Fair service includes source work, completion, observation and reclamation. A frozen pending-work view excludes unfinished scopes; children are admitted before their parent obligation retires. The FIFO mutation lane revalidates against current state before publication. Immutable readers and explicit snapshots retain their dependencies. Tests exercise these obligations under divergence, conditional updates, collection and cancellation; they are not a formal proof over every program.
+
+Prepared programs derive constructor applicability once, and both ordinary and recording engines share that plan. Exact same-tag consistency and complete cross-tag failure rules support conditional identity attachments; whole-program consumer checks protect their validity. Programs outside that admitted class execute general CHR. Recognized disjunctions reuse known conditional tag support, retaining the selected original arm and its field semantics; uncovered support executes the original generative disjunction. Independent choices retain their multiplicity, and cycles require no occurs check.
+
+Structural applications retain their source rule IDs and names. A logical step stops after head consumption with the actual RHS pending; field equalities then execute as source bodies, and terminal failure retains the mutation lane until its active support is updated. Recording captures actual source-corresponding Post, Merge, Application and Failure events. Dispatch inspection exposes only alternatives still pending. History controls recording without selecting a different executor. This schedule need not match historical prototype schedules, so their timing results are not production measurements.
 
 ## Performance and limits
 

@@ -169,3 +169,69 @@ fn native_query_diagnostics_are_opt_in_and_preserve_answers() {
         assert!(String::from_utf8_lossy(&observed.stderr).contains("--features diagnostics"));
     }
 }
+
+#[test]
+fn full_source_cli_preserves_conditional_fields_and_terminal_consumers() {
+    let notebook: serde_json::Value =
+        serde_json::from_str(include_str!("../examples/behavior-synthesis.chrnb")).unwrap();
+    let program: chr::syntax::Program =
+        serde_json::from_value(notebook["program"].clone()).unwrap();
+    let path = std::env::temp_dir().join(format!("chr-production-cli-{}.chr", std::process::id()));
+    std::fs::write(&path, chr::syntax::format_program(&program)).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_chr")).arg(&path).args([
+        "--query", "apply_k(T,X,R,O),k(T),constant(X,C),symbol_x(C),cons(A,Y,E),cons(B,Z,F),nil(E),nil(F),no_c(Y),k(Z),(R=A,A=B;nil(R))"
+    ]).output().unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let events: Vec<serde_json::Value> = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|s| serde_json::from_str(s).unwrap())
+        .collect();
+    let header = &events[0];
+    let mut variables = vec![];
+    let mut facts = Vec::<String>::new();
+    let mut answers = 0;
+    let mut merged_answers = 0;
+    for event in &events[1..] {
+        match event["kind"].as_str().unwrap() {
+            "begin" => {
+                variables.clear();
+                facts.clear();
+            }
+            "variable" => variables.push(event["variable"].clone()),
+            "fact" => facts.push(
+                header["signatures"][event["relation"].as_u64().unwrap() as usize]["name"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned(),
+            ),
+            "end" => {
+                let v = |name| {
+                    &variables[header["variables"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .position(|v| v == name)
+                        .unwrap()]
+                };
+                let merged = v("A") == v("B");
+                assert_eq!(v("Y") == v("Z"), merged);
+                assert_eq!(v("E") == v("F"), merged);
+                assert_eq!(v("O") == v("X"), merged);
+                let count = |name| facts.iter().filter(|f| *f == name).count();
+                assert_eq!(count("no_c"), usize::from(!merged));
+                assert_eq!(count("cons"), if merged { 1 } else { 2 });
+                assert_eq!(count("nil"), if merged { 1 } else { 4 });
+                answers += 1;
+                merged_answers += usize::from(merged);
+            }
+            _ => {}
+        }
+    }
+    assert_eq!((answers, merged_answers), (2, 1));
+}

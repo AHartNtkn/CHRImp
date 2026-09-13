@@ -367,7 +367,6 @@ impl Compact {
                                     && body.update.is_none()
                                     && body.normalizer.is_none()
                                     && body.dispatch.is_none()
-                                    && body.terminal_state.is_none()
                             );
                             // Pending bodies have not acquired the mutation lane,
                             // so their scope still equals the scheduling support.
