@@ -480,3 +480,80 @@ fn rotating_conditional_archives_transfer_to_independent_inspections_without_los
         0
     );
 }
+
+#[test]
+fn selected_independent_choices_retain_linear_state_while_output_is_held() {
+    use chr::{condition::Condition, observe::Output};
+    for n in [16, 32, 64] {
+        for readers in [1, 2] {
+            let query = format!("keep(),{}", vec!["(true;true)"; n].join(","));
+            let mut e = recording("", &query);
+            let mut normal = None;
+            for _ in 0..200_000 {
+                e.advance(1);
+                normal = e
+                    .snapshots()
+                    .find(|s| matches!(s.kind, SnapshotKind::NormalForm))
+                    .map(|s| s.id);
+                if normal.is_some() {
+                    break;
+                }
+            }
+            let normal = normal.expect("shared normal form before answer enumeration");
+            e.cancel();
+            for _ in 0..200_000 {
+                e.advance(1);
+                if e.cancel_done() {
+                    break;
+                }
+            }
+            assert!(e.cancel_done());
+            let others: Vec<_> = e
+                .snapshots()
+                .filter(|s| s.id != normal)
+                .map(|s| s.id)
+                .collect();
+            for id in others {
+                e.release_snapshot(id).unwrap();
+            }
+            collect(&mut e);
+            assert_eq!(e.choices().count(), n);
+            assert!(e.choices().all(|(_, b)| b.support == Condition::TRUE));
+            let choices: Vec<_> = e.choices().map(|(&id, _)| (id, true)).collect();
+            let ids: Vec<_> = (0..readers)
+                .map(|_| e.start_inspection(Some(normal), choices.clone()).unwrap())
+                .collect();
+            e.release_snapshot(normal).unwrap();
+            for &id in &ids {
+                let mut opened = false;
+                for _ in 0..200_000 {
+                    e.advance_inspection(id, 1).unwrap();
+                    if let Some(event) = e.take_inspection_output(id).unwrap() {
+                        assert!(matches!(event, Output::Begin { .. }));
+                        opened = true;
+                        break;
+                    }
+                }
+                assert!(opened);
+                e.advance_inspection(id, 200_000).unwrap();
+                assert!(!e.inspection_status(id).unwrap().done);
+            }
+            collect(&mut e);
+            // A final selected conjunction is linear. Keeping every expanded
+            // intermediate prefix would instead pin a quadratic population.
+            assert!(
+                e.memory().conditions <= 4 * n,
+                "n={n}, readers={readers}, held={}",
+                e.memory().conditions
+            );
+            for id in ids {
+                assert!(e.discard_inspection(id, 200_000).unwrap());
+                e.release_inspection(id).unwrap();
+                collect(&mut e);
+            }
+            assert_eq!(e.memory().conditions, 0);
+            assert_eq!(e.memory().choices, 0);
+            assert_eq!(e.memory().inspections, 0);
+        }
+    }
+}
