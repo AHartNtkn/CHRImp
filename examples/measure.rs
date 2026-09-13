@@ -1184,4 +1184,33 @@ mod tests {
         assert_eq!(e.applications(), applications as u64);
         assert_eq!(applications, (2 * n) as u64);
     }
+    #[test]
+    fn common_and_alias_consumption_controls_check_complete_outputs_and_sharing() {
+        for case in ["common", "alias-consume"] {
+            let mut w = families::make(case, 8, 1).unwrap();
+            let expected_answers = w.answers.unwrap();
+            let expected_apps = w.apps.unwrap();
+            let mut e = Engine::new(Arc::new(
+                prepare(
+                    &parse_program(&w.program).unwrap(),
+                    &parse_query(&w.query).unwrap(),
+                )
+                .unwrap(),
+            ));
+            let mut reader = Reader::default();
+            for _ in 0..1_000_000 {
+                e.advance(1);
+                while let Some(event) = e.take_output() {
+                    reader.push(event, &e, &mut w).unwrap();
+                }
+                if e.delivery_done() {
+                    break;
+                }
+            }
+            assert!(e.delivery_done() && e.exhausted(), "{case}");
+            assert_eq!(reader.answers, expected_answers, "{case}");
+            assert_eq!(e.applications(), expected_apps, "{case}");
+            assert!(w.expected.is_empty(), "{case}");
+        }
+    }
 }

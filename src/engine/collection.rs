@@ -361,6 +361,9 @@ impl Engine {
                                         }
                                     }
                                 }
+                                if let Some(rejection) = &b.rejection {
+                                    c.graph_roots.push(rejection.root());
+                                }
                                 if let Some(dispatch) = &b.dispatch {
                                     c.graph_roots.push(dispatch.root());
                                 }
@@ -731,11 +734,17 @@ impl Trace for Task {
 impl Trace for Body {
     fn trace(&self, c: &mut TraceCursor) -> Step {
         match c.phase {
-            0 => c.fields(&[self.scope, self.decision]),
+            0 => c.fields(&[
+                self.scope,
+                self.decision,
+                self.split_scopes[0],
+                self.split_scopes[1],
+            ]),
             1 => c.optional(self.job.as_ref()),
             2 => c.optional(self.merge.as_ref()),
             3 => c.optional(self.normalizer.as_deref()),
             4 => c.optional(self.dispatch.as_deref()),
+            5 => c.optional(self.rejection.as_deref()),
             _ => Step::Done,
         }
     }

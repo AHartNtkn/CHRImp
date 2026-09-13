@@ -7,6 +7,89 @@ use std::sync::Arc;
 pub(crate) struct ConstructorChoice {
     pub key: usize,
     pub arms: BTreeMap<usize, usize>,
+    pub rejection: BTreeMap<usize, Vec<FailureConsumer>>,
+}
+
+/// A two-head terminal consumer, specialized against a proposed leading post.
+/// Tests read existing identity only; local consumer slots bind to row ports.
+#[derive(Debug)]
+pub(crate) struct FailureConsumer {
+    pub rule: usize,
+    pub relation: usize,
+    pub tests: Vec<(usize, ConsumerValue)>,
+}
+#[derive(Debug)]
+pub(crate) enum ConsumerValue {
+    Body(usize),
+    Port(usize),
+}
+fn failure_consumers(
+    code: &Prepared,
+    terminal: &BTreeSet<usize>,
+    atom: &super::Atom,
+    relations: &BTreeSet<usize>,
+) -> Vec<FailureConsumer> {
+    let mut out = vec![];
+    for &rule in terminal {
+        let r = &code.rules[rule];
+        if r.heads.len() != 2 {
+            continue;
+        }
+        let Some(position) = r.heads.iter().position(|h| h.relation == atom.relation) else {
+            continue;
+        };
+        let constructor = &r.heads[position];
+        // Repeated constructor-head slots impose additional existing-identity
+        // tests. Such consumers continue through ordinary source execution.
+        if !distinct(&constructor.args) {
+            continue;
+        }
+        let other = &r.heads[1 - position];
+        // On surviving support the marker remains, or its consumption keeps
+        // an incompatible constructor at the SAME key. Constructor admission
+        // already proves those attachments persist through coalescence/merges.
+        // RHS posts and descendant keys are not witnesses: they leave a gap.
+        let key_port = other.args.iter().position(|&v| v == constructor.args[0]);
+        if code.rules.iter().any(|consumer| {
+            !matches!(code.instructions[consumer.body], Instruction::Fail)
+                && consumer.heads[consumer.kept..]
+                    .iter()
+                    .filter(|h| h.relation == other.relation)
+                    .any(|marker| {
+                        !key_port.is_some_and(|port| {
+                            consumer.heads[..consumer.kept].iter().any(|kept| {
+                                relations.contains(&kept.relation)
+                                    && kept.relation != atom.relation
+                                    && kept.args[0] == marker.args[port]
+                            })
+                        })
+                    })
+        }) {
+            continue;
+        }
+        let mut slots: BTreeMap<usize, ConsumerValue> = constructor
+            .args
+            .iter()
+            .copied()
+            .zip(atom.args.iter().copied().map(ConsumerValue::Body))
+            .collect();
+        let mut tests = vec![];
+        for (port, &slot) in other.args.iter().enumerate() {
+            match slots.get(&slot) {
+                Some(ConsumerValue::Body(s)) => tests.push((port, ConsumerValue::Body(*s))),
+                Some(ConsumerValue::Port(p)) => tests.push((port, ConsumerValue::Port(*p))),
+                None => {
+                    slots.insert(slot, ConsumerValue::Port(port));
+                }
+            }
+        }
+        out.push(FailureConsumer {
+            rule,
+            relation: other.relation,
+            tests,
+        });
+    }
+    out
 }
 
 #[derive(Clone, Debug)]
@@ -146,6 +229,7 @@ impl Constructors {
             }
             let mut key = None;
             let mut arms = BTreeMap::new();
+            let mut rejection = BTreeMap::new();
             let supported = items.iter().all(|&arm| {
                 let leading = match &code.instructions[arm] {
                     Instruction::And(items) => items.first().copied().unwrap_or(arm),
@@ -164,6 +248,10 @@ impl Constructors {
                     return false;
                 }
                 key = Some(root);
+                let consumers = failure_consumers(code, &terminal, atom, &relations);
+                if !consumers.is_empty() {
+                    rejection.insert(arm, consumers);
+                }
                 arms.insert(atom.relation, arm).is_none()
             });
             if supported {
@@ -172,6 +260,7 @@ impl Constructors {
                     Arc::new(ConstructorChoice {
                         key: key.unwrap(),
                         arms,
+                        rejection,
                     }),
                 );
             }

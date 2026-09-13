@@ -2,7 +2,7 @@
 
 The compiler and ownership spikes demonstrate useful work avoidance. Reverse ordering demonstrates a representation-scaling improvement with an adverse ordering tradeoff. Projected overlap avoids intermediate construction but replaces it with predicate traversal. Relative completion does not establish a general benefit. Shared expressions improve prefix storage but incur severe allocation growth during exact queries.
 
-These are diagnostic conclusions, not program-runtime rankings. No engine integration is part of this reassessment.
+These are diagnostic conclusions, not program-runtime rankings. The subsequent integration combines compiler and ownership; its current measurements and production status are in [optimization state](optimization-state.md).
 
 ## Method and limits
 

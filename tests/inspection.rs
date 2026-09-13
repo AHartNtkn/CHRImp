@@ -406,3 +406,77 @@ fn held_view_preserves_its_choice_prefix_while_later_choices_are_compacted() {
     collect(&mut e);
     assert!(e.memory().choices < 16);
 }
+
+#[test]
+fn rotating_conditional_archives_transfer_to_independent_inspections_without_losing_answers() {
+    let mut e = recording(
+        "edge(X,Y) ==> reverse(Y,X).",
+        "(edge(A,B);edge(A,B)),keep(A)",
+    );
+    let expected = run(&mut e);
+    assert_eq!(
+        expected.len(),
+        2,
+        "explicit duplicate alternatives remain distinct"
+    );
+    let mut snapshots = e.snapshots().collect::<Vec<_>>();
+    let normal = snapshots
+        .iter()
+        .filter(|s| matches!(s.kind, SnapshotKind::NormalForm))
+        .map(|s| s.id)
+        .collect::<Vec<_>>();
+    assert!(!normal.is_empty());
+    let mut readers = vec![];
+    for _ in 0..2 {
+        readers.push(
+            normal
+                .iter()
+                .map(|&id| e.start_inspection(Some(id), vec![]).unwrap())
+                .collect::<Vec<_>>(),
+        );
+    }
+    // Neither chronological release nor a single archive owner is assumed.
+    // Collection between releases reconciles a different overlapping inventory.
+    while !snapshots.is_empty() {
+        let snapshot = snapshots.remove(snapshots.len() / 2);
+        e.release_snapshot(snapshot.id).unwrap();
+        collect(&mut e);
+    }
+    for group in readers {
+        let mut actual = vec![];
+        for id in group {
+            actual.extend(inspection(&mut e, id, true));
+            e.release_inspection(id).unwrap();
+            collect(&mut e);
+        }
+        assert_eq!(actual.len(), expected.len());
+        for answer in &expected {
+            let position = actual
+                .iter()
+                .position(|a| a.variables == answer.variables && a.rows == answer.rows)
+                .expect("each retained alternative has its original identities and multiset");
+            actual.remove(position);
+        }
+        assert!(actual.is_empty());
+    }
+    e.cancel();
+    for _ in 0..200_000 {
+        if e.cancel_done() {
+            break;
+        }
+        e.advance(1);
+    }
+    assert!(e.cancel_done());
+    collect(&mut e);
+    let memory = e.memory();
+    assert_eq!(
+        memory.conditions
+            + memory.graph_nodes
+            + memory.occurrences
+            + memory.pending_nodes
+            + memory.obligation_descriptors
+            + memory.inspections
+            + memory.snapshots,
+        0
+    );
+}

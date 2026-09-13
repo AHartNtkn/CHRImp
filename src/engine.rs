@@ -42,6 +42,7 @@ pub use diagnostics::Diagnostics;
 mod discovery;
 mod dispatch;
 mod normalization;
+mod producer;
 pub use normalization::NormalizationStats;
 use normalization::Normalizer;
 mod inspection;
@@ -130,6 +131,9 @@ enum BodyPhase {
     Merge,
     Fail,
     Choice,
+    Guard,
+    GuardLeft,
+    GuardRight,
     Left,
     Right,
 }
@@ -137,6 +141,8 @@ struct Body {
     normalizer: Option<Box<Normalizer>>,
     dispatch: Option<Box<dispatch::Dispatch>>,
     dispatch_checked: bool,
+    rejection: Option<Box<producer::Split>>,
+    split_scopes: [Condition; 2],
     source_complete: bool,
     event: u64,
     instruction: usize,
@@ -158,6 +164,8 @@ impl Body {
             normalizer: None,
             dispatch: None,
             dispatch_checked: false,
+            rejection: None,
+            split_scopes: [Condition::FALSE; 2],
             source_complete: false,
             event,
             instruction,
@@ -1144,6 +1152,22 @@ impl Engine {
                     self.body(b.event, instruction, b.variables.clone(), b.scope);
                     return true;
                 }
+                if let Some(plan) = self
+                    .normalization
+                    .as_ref()
+                    .and_then(|c| c.plan.choices.get(&b.instruction))
+                    .filter(|p| !p.rejection.is_empty())
+                {
+                    b.rejection = Some(Box::new(producer::Split::new(
+                        self.state.graph.clone(),
+                        self.code.clone(),
+                        plan.clone(),
+                        b,
+                        self.active,
+                    )));
+                    b.phase = BodyPhase::Guard;
+                    return false;
+                }
                 let (choice, decision) = self.arena.fresh_scoped_choice(b.scope);
                 #[cfg(feature = "diagnostics")]
                 {
@@ -1166,6 +1190,64 @@ impl Engine {
                 b.phase = BodyPhase::Left;
                 self.sync_obligation(id, b);
                 self.record(SnapshotKind::Choice, self.active);
+            }
+            BodyPhase::Guard => {
+                if let Some(result) = b
+                    .rejection
+                    .as_mut()
+                    .unwrap()
+                    .tick(&self.graph, &mut self.arena)
+                {
+                    b.rejection = None;
+                    self.semantic_regions |= self.active != result.active;
+                    self.active = result.active;
+                    b.scope = result.total;
+                    b.split_scopes = [result.left, result.right];
+                    b.phase = BodyPhase::GuardLeft;
+                    self.sync_obligation(id, b);
+                    if let Some((choice, decision, support)) = result.birth {
+                        let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
+                            unreachable!()
+                        };
+                        let end = b.end.unwrap_or(items.len());
+                        self.births.insert(
+                            choice,
+                            Birth {
+                                event: b.event,
+                                instruction: b.instruction,
+                                start: b.index,
+                                split: b.index + (end - b.index) / 2,
+                                end,
+                                support,
+                                decision,
+                            },
+                        );
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            self.diagnostics.choice_births += 1;
+                        }
+                        self.record(SnapshotKind::Choice, self.active);
+                    }
+                    if result.failed != Condition::FALSE {
+                        self.record(SnapshotKind::Failure, result.failed);
+                    }
+                }
+            }
+            BodyPhase::GuardLeft => {
+                let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
+                    unreachable!()
+                };
+                let end = b.end.unwrap_or(items.len());
+                self.body_range(b, b.index, b.index + (end - b.index) / 2, b.split_scopes[0]);
+                b.phase = BodyPhase::GuardRight;
+            }
+            BodyPhase::GuardRight => {
+                let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
+                    unreachable!()
+                };
+                let end = b.end.unwrap_or(items.len());
+                self.body_range(b, b.index + (end - b.index) / 2, end, b.split_scopes[1]);
+                return true;
             }
             BodyPhase::Left => {
                 if let Some(c) = poll(&mut b.job, &mut self.arena) {

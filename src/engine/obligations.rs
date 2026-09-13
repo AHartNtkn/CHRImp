@@ -540,7 +540,11 @@ impl Engine {
                         }
                     }
                 };
-                if matches!(body.phase, BodyPhase::Left | BodyPhase::Right) {
+                if matches!(body.phase, BodyPhase::GuardLeft | BodyPhase::GuardRight) {
+                    parts[0] = matches!(body.phase, BodyPhase::GuardLeft)
+                        .then(|| part(body.index, split, body.split_scopes[0]));
+                    parts[1] = Some(part(split, end, body.split_scopes[1]));
+                } else if matches!(body.phase, BodyPhase::Left | BodyPhase::Right) {
                     parts[0] = matches!(body.phase, BodyPhase::Left)
                         .then(|| part(body.index, split, body.decision));
                     parts[1] = Some(part(split, end, body.decision.not()));

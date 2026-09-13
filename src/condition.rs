@@ -104,7 +104,15 @@ pub struct Arena {
     // None is the ordinary path, restored incrementally on final release.
     unprotected: Option<BTreeSet<u64>>,
     archive_epoch: u64,
-    archive_branching: bool,
+    archive_branching: usize,
+    // External archive roots own their Boolean closure. Counts on nodes include
+    // these roots and one edge from each protected parent, irrespective of how
+    // many snapshots share that parent. Pending edge updates survive an aborted
+    // collector; working roots are still traced separately each collection.
+    archive_roots: BTreeMap<Condition, usize>,
+    archive_pending: Vec<(Condition, usize, bool)>,
+    archive_order_epoch: u64,
+    archive_rebuild: bool,
     next_node: u64,
     unique: HashMap<NodeKey, Condition>,
     cache: HashMap<Pair, Condition>,
@@ -130,7 +138,11 @@ impl Default for Arena {
             nodes: BTreeMap::new(),
             unprotected: None,
             archive_epoch: 1,
-            archive_branching: false,
+            archive_branching: 0,
+            archive_roots: BTreeMap::new(),
+            archive_pending: Vec::new(),
+            archive_order_epoch: 0,
+            archive_rebuild: false,
             next_node: 0,
             unique: HashMap::new(),
             cache: HashMap::new(),
@@ -377,33 +389,20 @@ impl Arena {
     pub fn collect<I: Iterator<Item = Condition>>(&mut self, roots: I) -> Collector<I> {
         self.collect_archived(roots, vec![], true)
     }
-    // Cached roots require a completed prior collector and an unchanged
-    // representation epoch. Engine owns collectors through completion (including
-    // cancellation), and supplies every archive root after any epoch change.
-    // Public collect always resets and can safely finish an interrupted sift.
+    // A reset supplies the complete archive root inventory; otherwise the
+    // roots are additions emitted by the persistent index collectors. Inventory
+    // reconciliation changes closure ownership without retracing unchanged DAGs.
     pub(crate) fn collect_archived<I: Iterator<Item = Condition>>(
         &mut self,
         roots: I,
         archived: Vec<Condition>,
-        mut reset: bool,
+        reset: bool,
     ) -> Collector<I> {
         assert!(
             reset || self.sift.is_none(),
             "cached archive collection requires completed reordering"
         );
         let lease = GcLease::acquire(&self.frozen);
-        let deactivate = reset && archived.is_empty() && self.unprotected.is_some();
-        if !archived.is_empty() && self.unprotected.is_none() {
-            self.unprotected = Some(BTreeSet::new());
-            reset = true;
-        }
-        if reset {
-            self.archive_epoch = self
-                .archive_epoch
-                .checked_add(1)
-                .expect("condition archive epoch exhausted");
-            self.archive_branching = false;
-        }
         self.epoch = self
             .epoch
             .checked_add(1)
@@ -413,22 +412,61 @@ impl Arena {
             epoch: self.epoch,
             _lease: lease,
             roots,
-            archiving: !archived.is_empty(),
             archived: archived.into_iter(),
-            deactivate,
-            reset: deactivate
-                || reset
-                    && self
-                        .unprotected
-                        .as_ref()
-                        .is_some_and(|ids| ids.len() != self.nodes.len()),
-            rebuild_unique: reset || self.unprotected.is_none(),
+            inventory: BTreeMap::new(),
+            archive_cursor: None,
+            reset,
+            deactivate: false,
+            rebuild_unique: false,
             pending: Vec::new(),
             phase: Phase::Reorder,
-            branching: self.archive_branching,
+            branching: false,
             sweep: None,
             unique: HashMap::new(),
         }
+    }
+
+    fn archive_tick(&mut self) -> bool {
+        let Some((root, count, retain)) = self.archive_pending.pop() else {
+            return true;
+        };
+        if root.is_terminal() {
+            return false;
+        }
+        let node = self
+            .nodes
+            .get_mut(&root.id)
+            .expect("owned archive condition");
+        if retain {
+            if node.archived != self.archive_epoch {
+                node.archived = self.archive_epoch;
+                node.archive_references = 0;
+                self.unprotected.as_mut().unwrap().remove(&root.id);
+                self.archive_branching +=
+                    usize::from(!node.key.low.is_terminal() && !node.key.high.is_terminal());
+                self.archive_pending
+                    .extend([(node.key.low, 1, true), (node.key.high, 1, true)]);
+            }
+            node.archive_references = node
+                .archive_references
+                .checked_add(count)
+                .expect("archive reference count exhausted");
+        } else {
+            assert_eq!(node.archived, self.archive_epoch, "owned archive edge");
+            node.archive_references = node
+                .archive_references
+                .checked_sub(count)
+                .expect("owned archive reference");
+            if node.archive_references == 0 {
+                node.archived = 0;
+                self.unprotected.as_mut().unwrap().insert(root.id);
+                self.archive_branching -=
+                    usize::from(!node.key.low.is_terminal() && !node.key.high.is_terminal());
+                self.archive_pending
+                    .extend([(node.key.low, 1, false), (node.key.high, 1, false)]);
+            }
+        }
+        false
     }
 }
 
@@ -990,12 +1028,19 @@ impl Job {
 }
 
 enum Phase {
+    ArchiveClear,
+    ArchiveRoots,
+    ArchiveAdd,
+    ArchiveRelease,
+    ArchiveFinish,
     Reset,
     Reorder,
     Sift,
     Cache,
     Mark,
     Sweep,
+    Unique,
+    Finish,
     Done,
 }
 
@@ -1005,7 +1050,8 @@ pub struct Collector<I> {
     _lease: GcLease,
     roots: I,
     archived: std::vec::IntoIter<Condition>,
-    archiving: bool,
+    inventory: BTreeMap<Condition, usize>,
+    archive_cursor: Option<Condition>,
     reset: bool,
     deactivate: bool,
     rebuild_unique: bool,
@@ -1029,7 +1075,130 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                     sift.stop = true;
                 }
                 if !arena.sift_tick() {
-                    self.phase = if self.reset {
+                    if arena.archive_order_epoch != arena.order_epoch {
+                        // Stable function identities now have different edges.
+                        // The caller supplies the complete inventory after a
+                        // representation change, including an interrupted swap.
+                        assert!(self.reset, "reordered archive requires all roots");
+                        assert!(arena.archive_pending.is_empty());
+                        arena.archive_order_epoch = arena.order_epoch;
+                        arena.archive_epoch = arena
+                            .archive_epoch
+                            .checked_add(1)
+                            .expect("condition archive epoch exhausted");
+                        arena.archive_branching = 0;
+                        arena.archive_rebuild = true;
+                        self.phase = Phase::ArchiveClear;
+                    } else if arena.archive_rebuild {
+                        assert!(self.reset, "interrupted archive rebuild requires all roots");
+                        self.phase = Phase::ArchiveClear;
+                    } else if !arena.archive_tick() {
+                        // Complete an interrupted ownership change before
+                        // reconciling this collector's inventory.
+                    } else if !self.archived.as_slice().is_empty() && arena.unprotected.is_none() {
+                        arena.unprotected = Some(BTreeSet::new());
+                        arena.archive_rebuild = true;
+                        self.phase = Phase::Reset;
+                    } else {
+                        self.phase = Phase::ArchiveRoots;
+                    }
+                }
+            }
+            Phase::ArchiveClear => {
+                if arena.archive_roots.pop_first().is_none() {
+                    if arena.unprotected.is_some() || !self.archived.as_slice().is_empty() {
+                        arena.unprotected.get_or_insert_with(BTreeSet::new);
+                        self.phase = Phase::Reset;
+                    } else {
+                        self.phase = Phase::ArchiveRoots;
+                    }
+                }
+            }
+            Phase::ArchiveRoots => {
+                if let Some(root) = self.archived.next() {
+                    assert!(arena.contains(root), "stale or foreign archive root");
+                    if !root.is_terminal() {
+                        let root = Condition {
+                            negative: false,
+                            ..root
+                        };
+                        let count = self.inventory.entry(root).or_default();
+                        *count = count.checked_add(1).expect("archive root count exhausted");
+                    }
+                } else {
+                    self.phase = Phase::ArchiveAdd;
+                }
+            }
+            Phase::ArchiveAdd => {
+                if !arena.archive_tick() {
+                    return false;
+                }
+                let next = match self.archive_cursor {
+                    Some(root) => self.inventory.range((Excluded(root), Unbounded)).next(),
+                    None => self.inventory.first_key_value(),
+                }
+                .map(|(&root, &count)| (root, count));
+                if let Some((root, incoming)) = next {
+                    let previous = arena.archive_roots.get(&root).copied().unwrap_or(0);
+                    let desired = if self.reset {
+                        incoming
+                    } else {
+                        previous
+                            .checked_add(incoming)
+                            .expect("archive root count exhausted")
+                    };
+                    if desired > previous {
+                        arena.archive_roots.insert(root, desired);
+                        arena.archive_pending.push((root, desired - previous, true));
+                    }
+                    self.archive_cursor = Some(root);
+                } else {
+                    self.archive_cursor = None;
+                    self.phase = Phase::ArchiveRelease;
+                }
+            }
+            Phase::ArchiveRelease => {
+                if !arena.archive_tick() {
+                    return false;
+                }
+                let next = if self.reset {
+                    match self.archive_cursor {
+                        Some(root) => arena
+                            .archive_roots
+                            .range((Excluded(root), Unbounded))
+                            .next(),
+                        None => arena.archive_roots.first_key_value(),
+                    }
+                    .map(|(&root, &count)| (root, count))
+                } else {
+                    None
+                };
+                if let Some((root, previous)) = next {
+                    let desired = self.inventory.get(&root).copied().unwrap_or(0);
+                    if desired < previous {
+                        if desired == 0 {
+                            arena.archive_roots.remove(&root);
+                        } else {
+                            arena.archive_roots.insert(root, desired);
+                        }
+                        arena
+                            .archive_pending
+                            .push((root, previous - desired, false));
+                    }
+                    self.archive_cursor = Some(root);
+                } else {
+                    self.phase = Phase::ArchiveFinish;
+                }
+            }
+            Phase::ArchiveFinish => {
+                // Release temporary inventory storage incrementally as well.
+                if self.inventory.pop_first().is_none() {
+                    arena.archive_pending = Vec::new();
+                    self.deactivate = arena.archive_roots.is_empty() && arena.unprotected.is_some();
+                    self.rebuild_unique = arena.archive_roots.is_empty();
+                    arena.archive_rebuild = self.deactivate;
+                    self.branching = arena.archive_branching != 0;
+                    self.phase = if self.deactivate {
                         Phase::Reset
                     } else {
                         Phase::Cache
@@ -1045,6 +1214,7 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                 if self.deactivate {
                     if arena.unprotected.as_mut().unwrap().pop_first().is_none() {
                         arena.unprotected = None;
+                        arena.archive_rebuild = false;
                         self.phase = Phase::Cache;
                     }
                     return false;
@@ -1059,7 +1229,8 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                     self.sweep = Some(id);
                 } else {
                     self.sweep = None;
-                    self.phase = Phase::Cache;
+                    arena.archive_rebuild = false;
+                    self.phase = Phase::ArchiveRoots;
                 }
             }
             Phase::Cache => {
@@ -1070,64 +1241,30 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                 }
             }
             Phase::Mark => {
-                if let Some(root) = self.pending.pop().or_else(|| {
-                    if self.archiving {
-                        self.archived.next()
-                    } else {
-                        self.roots.next()
-                    }
-                }) {
+                if let Some(root) = self.pending.pop().or_else(|| self.roots.next()) {
                     assert!(arena.contains(root), "stale or foreign collection root");
                     if !root.is_terminal() {
                         let node = arena.nodes.get_mut(&root.id).expect("live root");
-                        if self.archiving {
-                            if node.archived != arena.archive_epoch {
-                                node.archived = arena.archive_epoch;
-                                node.archive_references = 0;
-                                arena.unprotected.as_mut().unwrap().remove(&root.id);
-                                let branching =
+                        if node.marked != self.epoch {
+                            node.marked = self.epoch;
+                            node.references_epoch = self.epoch;
+                            let protected = node.archived == arena.archive_epoch;
+                            node.references = if protected {
+                                node.archive_references
+                            } else {
+                                0
+                            };
+                            if !protected {
+                                self.branching |=
                                     !node.key.low.is_terminal() && !node.key.high.is_terminal();
-                                arena.archive_branching |= branching;
-                                self.branching |= branching;
                                 self.pending.extend([node.key.low, node.key.high]);
-                                if self.rebuild_unique {
-                                    self.unique.insert(
-                                        node.key,
-                                        Condition {
-                                            negative: false,
-                                            ..root
-                                        },
-                                    );
-                                }
                             }
-                            node.archive_references = node
-                                .archive_references
-                                .checked_add(1)
-                                .expect("archive reference count exhausted");
-                        } else {
-                            if node.marked != self.epoch {
-                                node.marked = self.epoch;
-                                node.references_epoch = self.epoch;
-                                let protected = node.archived == arena.archive_epoch;
-                                node.references = if protected {
-                                    node.archive_references
-                                } else {
-                                    0
-                                };
-                                if !protected {
-                                    self.branching |=
-                                        !node.key.low.is_terminal() && !node.key.high.is_terminal();
-                                    self.pending.extend([node.key.low, node.key.high]);
-                                }
-                            }
-                            node.references = node
-                                .references
-                                .checked_add(1)
-                                .expect("condition reference count exhausted");
                         }
+                        node.references = node
+                            .references
+                            .checked_add(1)
+                            .expect("condition reference count exhausted");
                     }
-                } else if self.archiving {
-                    self.archiving = false;
                 } else {
                     self.phase = Phase::Sweep;
                 }
@@ -1173,27 +1310,56 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                     }
                     self.sweep = Some(id);
                 } else {
-                    // Rebuilding incrementally releases peak hash-table storage.
-                    // The old table remains valid if a collector is dropped early.
                     if self.rebuild_unique {
                         arena.unique = std::mem::take(&mut self.unique);
-                    }
-                    // Many retained path prefixes can be dense without a
-                    // branching representation problem. Avoid paying for a
-                    // whole sift merely because observation accumulated paths.
-                    // This is a conservative trigger, not a claim that chains
-                    // can never share better under another order.
-                    if self.branching
-                        && arena.next_node >= arena.reorder_after
-                        && arena.order_readers.load(Ordering::Relaxed) == 0
-                        && arena.node_count() >= 128
-                        && arena.node_count() > 4 * arena.order.len()
-                    {
-                        arena.sift = Some(Sift::new(arena));
-                        self.phase = Phase::Sift;
+                        self.phase = Phase::Finish;
+                    } else if arena.unique.capacity() > arena.node_count().saturating_mul(2) {
+                        // Retain the canonical table across small owner changes.
+                        // A large contraction pays one bounded pass to return
+                        // excess table storage, amortized against reclaimed nodes.
+                        self.sweep = None;
+                        self.phase = Phase::Unique;
                     } else {
-                        self.phase = Phase::Done;
+                        self.phase = Phase::Finish;
                     }
+                }
+            }
+            Phase::Unique => {
+                let next = match self.sweep {
+                    Some(id) => arena.nodes.range((Excluded(id), Unbounded)).next(),
+                    None => arena.nodes.first_key_value(),
+                };
+                if let Some((&id, node)) = next {
+                    self.unique.insert(
+                        node.key,
+                        Condition {
+                            owner: arena.owner,
+                            id,
+                            negative: false,
+                        },
+                    );
+                    self.sweep = Some(id);
+                } else {
+                    arena.unique = std::mem::take(&mut self.unique);
+                    self.phase = Phase::Finish;
+                }
+            }
+            Phase::Finish => {
+                // Many retained path prefixes can be dense without a
+                // branching representation problem. Avoid paying for a
+                // whole sift merely because observation accumulated paths.
+                // This is a conservative trigger, not a claim that chains
+                // can never share better under another order.
+                if self.branching
+                    && arena.next_node >= arena.reorder_after
+                    && arena.order_readers.load(Ordering::Relaxed) == 0
+                    && arena.node_count() >= 128
+                    && arena.node_count() > 4 * arena.order.len()
+                {
+                    arena.sift = Some(Sift::new(arena));
+                    self.phase = Phase::Sift;
+                } else {
+                    self.phase = Phase::Done;
                 }
             }
             Phase::Done => return true,
@@ -2208,6 +2374,189 @@ mod reorder_tests {
                 f.a.order_epoch > epoch,
                 "released lease permits growth-triggered adaptation"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod archive_ownership_tests {
+    use super::*;
+
+    fn finish(a: &mut Arena, operation: Operation) -> Condition {
+        let mut job = a.start(operation);
+        loop {
+            if let Progress::Complete(result) = job.tick(a) {
+                return result;
+            }
+        }
+    }
+
+    fn collect(a: &mut Arena, working: Vec<Condition>, archived: Vec<Condition>) -> usize {
+        let mut collector = a.collect_archived(working.into_iter(), archived, true);
+        for ticks in 1..1_000_000 {
+            if collector.tick(a) {
+                return ticks;
+            }
+        }
+        panic!("finite ownership update must complete");
+    }
+
+    #[test]
+    fn rotating_owner_work_is_independent_of_unchanged_boolean_closure() {
+        let rotation = |size| {
+            let mut a = Arena::default();
+            let variables: Vec<_> = (0..size).map(|_| a.fresh_choice().1).collect();
+            let mut shared = Condition::TRUE;
+            for &variable in variables.iter().rev() {
+                shared = finish(&mut a, Operation::And(variable, shared));
+            }
+            let old = a.fresh_choice().1;
+            let new = a.fresh_choice().1;
+            collect(&mut a, vec![new], vec![shared, old]);
+            let work = collect(&mut a, vec![], vec![shared, new]);
+            assert!(a.evaluate(shared, |_| true));
+            assert!(!a.evaluate(shared, |choice| choice != 0));
+            assert!(a.contains(new));
+            assert!(!a.contains(old));
+            collect(&mut a, vec![], vec![]);
+            assert_eq!(a.node_count(), 0);
+            work
+        };
+        let small = rotation(64);
+        let large = rotation(512);
+        assert!(
+            large <= small + 64,
+            "changing one owner must not revisit its unchanged closure: {small} vs {large}"
+        );
+    }
+
+    #[test]
+    fn releasing_a_large_archive_reclaims_its_canonical_table_storage() {
+        let mut a = Arena::default();
+        let variables: Vec<_> = (0..512).map(|_| a.fresh_choice().1).collect();
+        let mut large = Condition::TRUE;
+        for &variable in variables.iter().rev() {
+            large = finish(&mut a, Operation::And(variable, large));
+        }
+        let small = a.fresh_choice().1;
+        collect(&mut a, vec![], vec![large, small]);
+        collect(&mut a, vec![], vec![small]);
+        assert_eq!(a.node_count(), 1);
+        assert!(
+            a.unique_capacity() < 16,
+            "released archive must not retain its table allocation"
+        );
+        assert!(a.evaluate(small, |_| true));
+        assert!(!a.evaluate(small, |_| false));
+    }
+
+    #[test]
+    fn interrupted_owner_changes_resume_without_retaining_unowned_nodes() {
+        for already_registered in [false, true] {
+            for cutoff in 0..160 {
+                let mut a = Arena::default();
+                let variables: Vec<_> = (0..16).map(|_| a.fresh_choice().1).collect();
+                let mut shared = Condition::TRUE;
+                for &variable in variables.iter().rev() {
+                    shared = finish(&mut a, Operation::And(variable, shared));
+                }
+                let old = a.fresh_choice().1;
+                let new = a.fresh_choice().1;
+                if already_registered {
+                    collect(&mut a, vec![new], vec![shared, old]);
+                }
+                let mut collector = a.collect_archived([new].into_iter(), vec![shared, old], true);
+                for _ in 0..cutoff {
+                    if collector.tick(&mut a) {
+                        break;
+                    }
+                }
+                drop(collector);
+                collect(&mut a, vec![], vec![shared, new]);
+                assert!(a.evaluate(shared, |_| true));
+                assert!(!a.evaluate(shared, |id| id != 8));
+                assert_eq!(
+                    a.node_count(),
+                    17,
+                    "only the 16-node conjunction and new atom survive: registered={already_registered}, cutoff={cutoff}"
+                );
+                // Interrupt final-owner release, then reinstall another owner.
+                let mut collector = a.collect_archived([shared, new].into_iter(), vec![], true);
+                for _ in 0..cutoff {
+                    if collector.tick(&mut a) {
+                        break;
+                    }
+                }
+                drop(collector);
+                collect(&mut a, vec![], vec![shared, new]);
+                assert_eq!(a.node_count(), 17);
+                assert!(a.evaluate(shared, |_| true));
+                collect(&mut a, vec![], vec![]);
+                assert_eq!(a.node_count(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn overlapping_complemented_owners_release_in_any_order_with_a_suspended_reader() {
+        for order in [
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ] {
+            let mut a = Arena::default();
+            let x = a.fresh_choice().1;
+            let y = a.fresh_choice().1;
+            let z = a.fresh_choice().1;
+            let xy = finish(&mut a, Operation::And(x, y));
+            let yz = finish(&mut a, Operation::And(y, z));
+            let mut owners = [Some(xy), Some(xy.not()), Some(yz)];
+            let mut job = a.start(Operation::Or(xy, yz));
+            job.tick(&mut a);
+            assert!(job.result().is_none(), "the working reader is suspended");
+            for released in order {
+                collect(
+                    &mut a,
+                    job.roots().collect(),
+                    owners.iter().flatten().copied().collect(),
+                );
+                owners[released] = None;
+                collect(
+                    &mut a,
+                    job.roots().collect(),
+                    owners.iter().flatten().copied().collect(),
+                );
+                for bits in 0..8 {
+                    let assignment = |id| bits & (1 << id) != 0;
+                    for (index, root) in owners.iter().enumerate() {
+                        if let Some(root) = root {
+                            let expected = match index {
+                                0 => bits & 3 == 3,
+                                1 => bits & 3 != 3,
+                                _ => bits & 6 == 6,
+                            };
+                            assert_eq!(a.evaluate(*root, assignment), expected);
+                        }
+                    }
+                }
+            }
+            let result = loop {
+                if let Progress::Complete(result) = job.tick(&mut a) {
+                    break result;
+                }
+            };
+            for bits in 0..8 {
+                assert_eq!(
+                    a.evaluate(result, |id| bits & (1 << id) != 0),
+                    bits & 3 == 3 || bits & 6 == 6
+                );
+            }
+            drop(job);
+            collect(&mut a, vec![], vec![]);
+            assert_eq!(a.node_count(), 0);
         }
     }
 }

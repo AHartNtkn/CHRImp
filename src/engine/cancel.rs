@@ -167,6 +167,12 @@ impl Task {
             Task::Activate { .. } => true,
             Task::Wake(wake) => wake.discard_tick(),
             Task::Body(body) => {
+                if let Some(rejection) = &mut body.rejection {
+                    if rejection.discard_tick() {
+                        body.rejection = None;
+                    }
+                    return false;
+                }
                 if let Some(dispatch) = &mut body.dispatch {
                     if dispatch.discard_tick() {
                         body.dispatch = None;
