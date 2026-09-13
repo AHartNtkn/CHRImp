@@ -205,6 +205,23 @@ fn settled(e: &Engine, a: &Answer) {
     }
 }
 #[test]
+fn behavior_program_accepts_cyclic_relational_structures() {
+    let doc = document("behavior");
+    let p: Program = serde_json::from_value(doc["program"].clone()).unwrap();
+    let q = chr::syntax::parse_query("app(A,A,K),k(K),cons(L,K,L),constant(C,C)").unwrap();
+    let mut e = Engine::new(Arc::new(prepare(&p, &q).unwrap()));
+    let a = first(&mut e, 100_000).expect("cyclic structures are permitted");
+    assert_eq!(a.rows.len(), 4);
+    for (name, variable, port) in [("app", "A", 1), ("cons", "L", 2), ("constant", "C", 1)] {
+        let node = root(&e, &a, variable);
+        assert!(a.rows.iter().any(|r| {
+            e.program().signatures()[r.relation].name == name
+                && r.ports[0] == node
+                && r.ports[port] == node
+        }));
+    }
+}
+#[test]
 fn all_type_and_behavior_targets_accept_independently_checked_combinators() {
     let ws = witnesses();
     let expectations = expectations();

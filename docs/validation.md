@@ -44,9 +44,23 @@ Boolean decomposition order adapts independently of semantic choice identities. 
 
 Output, explicit history and genuine search frontiers can grow. Unrestricted synthesis may exceed its budget; an incomplete search is not evidence that no answer exists. A faster probe is meaningful only with correct answers, preserved fairness, and complete reclamation after ownership is released.
 
-Current notebook probes reach a first validated type-driven identity in 10,344,621 ticks and a behavioral identity in 1,851,550. Composition, swapping and duplication do not reach a first answer within the tested 50-million-tick/15-second limits. Two nested lambda identity applications reach their first validated answer in 126,600,717 ticks (about 29.8 seconds in that run); cleanup fully reclaims unowned payloads. This remains expensive. A phase profile of its first 50 million ticks attributes 26.69 million to search/matching/commit and 13.79 million to completion scanning. Actual collector work, including subsequent cleanup, totals about 8.02 million ticks. The collection-status counter must not be used to attribute that run to GC.
+The type-driven identity probe reaches its first validated answer in 10,344,621 ticks. Behavior-synthesis timings are recorded below. Two nested lambda identity applications reach their first validated answer in 126,600,717 ticks (about 29.8 seconds in that run); cleanup fully reclaims unowned payloads. This remains expensive. A phase profile of its first 50 million ticks attributes 26.69 million to search/matching/commit and 13.79 million to completion scanning. Actual collector work, including subsequent cleanup, totals about 8.02 million ticks. The collection-status counter must not be used to attribute that run to GC.
 
 Final targeted checks of unchanged-condition proof reuse, older-prefix projection and unchanged-input completion reuse did not demonstrate another major end-to-end improvement. Remaining Boolean-processing hotspots are documented as performance limits, not proven unavoidable costs. The optimization pass stops at this evidence boundary rather than treating every possible improvement as unfinished delivery.
+
+## Behavior synthesis comparison (2026-09-12)
+
+The behavior notebook permits cyclic relational structures. Its 19 saved queries use the same evaluator and synthesis rules. Three sequential native release runs per target measured the first complete answer, excluding parsing, preparation, validation and subsequent cleanup. The command was `target/release/examples/measure notebook-behavior-TARGET 1 50000000 15` for `i`, `k`, `b`, `c`, and `w`. Successful answers passed independent SK reduction; all runs completed cleanup.
+
+| Behavior target | CHR median first answer | Existing rwLog median first answer | CHR / rwLog |
+|---|---:|---:|---:|
+| Identity (I) | 134.208 ms | 0.522035 ms | 257× |
+| Constant (K) | 20.346 ms | 0.165143 ms | 123× |
+| Composition (B) | No answer within budget | 936.279 ms | — |
+| Swap (C) | No answer within budget | No answer within 15 s | — |
+| Duplicator (W) | No answer within budget | 20.209 ms | — |
+
+CHR limits are 50 million ticks or 15 seconds, whichever comes first; a budget result is not search exhaustion. The rwLog values reuse the existing three-run measurements at commit `6e45ef1d62672fda8fd63bc1cb896c99f9224e3f`; rwLog was not rerun. These compare the same behavioral targets, not identical internal operations or search order. The current CHR checks do not impose finite structure globally, so agreement on these returned witnesses does not establish identical accepted domains.
 
 ## Running checks
 
