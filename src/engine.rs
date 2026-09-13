@@ -1253,7 +1253,11 @@ impl Engine {
         match ready.phase {
             ReadyPhase::Scan => {
                 if ready.job.is_some() {
-                    if let Some(c) = poll(&mut ready.job, &mut self.arena) {
+                    if let Some(c) = measured_poll!(
+                        &mut ready.job,
+                        &mut self.arena,
+                        self.diagnostics.shared.completion_boolean
+                    ) {
                         // Once the captured scope is fully blocked, no later
                         // row can produce a completion from this certificate.
                         // Release its frozen ownership root and recapture next
@@ -1278,7 +1282,11 @@ impl Engine {
                 }
             }
             ReadyPhase::Difference => {
-                if let Some(c) = poll(&mut ready.job, &mut self.arena) {
+                if let Some(c) = measured_poll!(
+                    &mut ready.job,
+                    &mut self.arena,
+                    self.diagnostics.shared.completion_boolean
+                ) {
                     if c == Condition::FALSE {
                         return;
                     }
@@ -1304,7 +1312,11 @@ impl Engine {
                 }
             }
             ReadyPhase::Filter => {
-                if let Some(c) = poll(&mut ready.job, &mut self.arena) {
+                if let Some(c) = measured_poll!(
+                    &mut ready.job,
+                    &mut self.arena,
+                    self.diagnostics.shared.completion_boolean
+                ) {
                     if c == Condition::FALSE {
                         self.release_lane();
                         return;
@@ -1315,7 +1327,11 @@ impl Engine {
                 }
             }
             ReadyPhase::Publish => {
-                if let Some(c) = poll(&mut ready.job, &mut self.arena) {
+                if let Some(c) = measured_poll!(
+                    &mut ready.job,
+                    &mut self.arena,
+                    self.diagnostics.shared.completion_boolean
+                ) {
                     self.record(SnapshotKind::NormalForm, ready.scope);
                     self.semantic_regions |= self.active != c;
                     self.active = c;

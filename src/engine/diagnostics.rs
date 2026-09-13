@@ -126,6 +126,8 @@ pub struct ConditionalWork {
 /// substitution and arena adaptation is unmeasured and explicitly null, not zero.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct SharedDiagnostics {
+    /// Completion-owned Boolean evaluation actions and continuation calls.
+    pub completion_boolean: ConditionalWork,
     pub collection: CollectionDiagnostics,
     pub compaction: CompactionDiagnostics,
     pub coordinates: CoordinateDiagnostics,
