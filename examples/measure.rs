@@ -17,6 +17,8 @@ use std::{
 mod allocation;
 #[path = "measure/families.rs"]
 mod families;
+#[path = "measure/fresh.rs"]
+mod fresh;
 #[path = "measure/generated.rs"]
 mod generated;
 #[path = "measure/lifecycle.rs"]
@@ -706,6 +708,9 @@ fn main() -> ExitCode {
         let is_preparation = preparation::CASES
             .split_whitespace()
             .any(|case| case == args[0]);
+        let is_fresh = fresh::CASES.split_whitespace().any(|case| case == args[0]);
+        let (mut fresh_depth, mut order) = (4usize, "grouped".to_string());
+        let (mut depth_option, mut order_option) = (false, false);
         let mut prep = preparation::Options::default();
         let mut preparation_options = false;
         let mut generated_options = false;
@@ -721,7 +726,23 @@ fn main() -> ExitCode {
                     preparation_options = true;
                     prep.empty = true;
                 }
-                "--heads" | "--arity" | "--repeats" | "--width" | "--depth" | "--uses" => {
+                "--depth" => {
+                    depth_option = true;
+                    i += 1;
+                    let value = args
+                        .get(i)
+                        .ok_or("missing depth")?
+                        .parse::<usize>()
+                        .map_err(|_| "invalid depth")?;
+                    prep.depth = value;
+                    fresh_depth = value;
+                }
+                "--order" => {
+                    order_option = true;
+                    i += 1;
+                    order = args.get(i).ok_or("missing fresh order")?.clone();
+                }
+                "--heads" | "--arity" | "--repeats" | "--width" | "--uses" => {
                     preparation_options = true;
                     let flag = &args[i];
                     i += 1;
@@ -735,7 +756,6 @@ fn main() -> ExitCode {
                         "--arity" => prep.arity = value,
                         "--repeats" => prep.repeats = value,
                         "--width" => prep.width = value,
-                        "--depth" => prep.depth = value,
                         "--uses" => prep.uses = value,
                         _ => unreachable!(),
                     }
@@ -818,6 +838,16 @@ fn main() -> ExitCode {
         if interaction_options && !interaction {
             return Err("--work/--cadence require lifecycle interaction cases".into());
         }
+        if (depth_option && !is_preparation && !is_fresh) || (order_option && !is_fresh) {
+            return Err(
+                "depth requires preparation/fresh cases; order requires fresh cases".into(),
+            );
+        }
+        if is_fresh && (generated_options || interaction_options || prefix.is_some()) {
+            return Err(
+                "fresh cases require complete exhaustion and use depth/order/rows options".into(),
+            );
+        }
         if preparation_options && !is_preparation {
             return Err("preparation options require prepare-reuse or prepare-independent".into());
         }
@@ -829,13 +859,25 @@ fn main() -> ExitCode {
         observation::configure(detailed);
         report::emit(
             "configuration",
-            serde_json::json!({"case": args[0], "size": n, "rows": rows, "prefix": prefix, "seed": seed, "shape": shape, "detailed": detailed, "diagnostics_feature": cfg!(feature = "diagnostics"), "max_ticks": max_ticks, "timeout_seconds": seconds, "continued_work": interaction.then_some(work), "rotation_cadence": interaction.then_some(cadence), "preparation": is_preparation.then_some(prep)}),
+            serde_json::json!({"case": args[0], "size": n, "rows": rows, "prefix": prefix, "seed": seed, "shape": shape, "detailed": detailed, "diagnostics_feature": cfg!(feature = "diagnostics"), "max_ticks": max_ticks, "timeout_seconds": seconds, "continued_work": interaction.then_some(work), "rotation_cadence": interaction.then_some(cadence), "preparation": is_preparation.then_some(prep), "fresh_depth": is_fresh.then_some(fresh_depth), "fresh_order": is_fresh.then_some(&order)}),
         );
         println!(
             "measurement_mode={} diagnostics_feature={}",
             if detailed { "detailed" } else { "baseline" },
             cfg!(feature = "diagnostics")
         );
+        if is_fresh {
+            let workload = fresh::make(&args[0], n, rows, fresh_depth, &order)?;
+            return run_workload(
+                workload,
+                &args[0],
+                n,
+                rows,
+                prefix,
+                max_ticks,
+                Duration::from_secs(seconds),
+            );
+        }
         if is_preparation {
             let measurement =
                 preparation::run(&args[0], n, prep, max_ticks, Duration::from_secs(seconds))?;

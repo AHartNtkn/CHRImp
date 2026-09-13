@@ -151,7 +151,7 @@ def capture(command):
     return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=True, timeout=60).stdout.strip()
 
 
-def main():
+def main(argv=None, absolute_deadline=None, progress=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--repeat', type=int, default=5)
@@ -162,7 +162,7 @@ def main():
     parser.add_argument('--diagnostics', action='store_true')
     parser.add_argument('--binary', type=Path, help='use a specified prebuilt measure binary; build flags then unavailable')
     parser.add_argument('workload', nargs=argparse.REMAINDER)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     workload = args.workload[1:] if args.workload[:1] == ['--'] else args.workload
     if len(workload) < 2 or args.repeat <= 0 or args.warmup < 0 or args.memory_mib <= 0 or any(not math.isfinite(v) or v <= 0 for v in [args.seconds,args.total_seconds]):
         parser.error('CASE SIZE and positive finite budgets/repeats required')
@@ -185,6 +185,9 @@ def main():
                 'build_environment': {key:os.environ.get(key) for key in ('RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS','CARGO_TARGET_DIR','RUSTUP_TOOLCHAIN')} if build else None,
                 'limits':{'per_sample_seconds':args.seconds,'total_sample_seconds':args.total_seconds,'repeats':args.repeat,'warmups':args.warmup,'memory_mib':args.memory_mib},
                 'status':'running'}
+    if absolute_deadline is not None:
+        args.total_seconds=max(0.,min(args.total_seconds,absolute_deadline-time.monotonic()))
+        metadata['limits']['total_sample_seconds']=args.total_seconds
     path=out/'campaign.json'; path.write_text(json.dumps(metadata,indent=2)+'\n')
     samples=[]; inflight=None; started=time.monotonic()
     aggregate_deadline=False
@@ -231,10 +234,16 @@ def main():
     finally:
         signal.setitimer(signal.ITIMER_REAL,0)
         signal.signal(signal.SIGALRM,previous_handler)
+        if absolute_deadline is not None:
+            # The suite owns the remaining reporting budget after this campaign.
+            signal.setitimer(signal.ITIMER_REAL,max(0.000001,absolute_deadline-time.monotonic()))
     elapsed=time.monotonic()-started
     metadata.update(status='finished',samples_executed=len(samples),requested_samples=args.warmup+args.repeat,
                     aggregate_censored=aggregate_deadline or elapsed >= args.total_seconds or len(samples)<args.warmup+args.repeat,
                     elapsed_seconds=elapsed,summary=statistics_report)
+    if progress is not None:
+        progress.update(outcomes=statistics_report['counts'],metrics=statistics_report['metrics'],
+                        status='failed' if any(s['status'] not in ('completed','censored') for s in samples) else ('censored' if metadata['aggregate_censored'] or any(s['status']=='censored' for s in samples) else 'completed'))
     path.write_text(json.dumps(metadata,indent=2)+'\n')
     print(json.dumps({'campaign':str(path),'counts':metadata['summary']['counts'],'aggregate_censored':metadata['aggregate_censored'],'source_delivery_ms':metadata['summary']['metrics'].get('workload.times_ms.source_delivery'),'regression_assessment':'not_performed'}))
     if any(s['status'] not in ('completed','censored') for s in samples): return 1

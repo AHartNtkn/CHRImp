@@ -14,6 +14,7 @@ pub enum Goal {
 }
 
 pub enum Oracle {
+    Fresh(super::fresh::Spec),
     Generated(super::generated::Spec),
     Legacy(String, usize),
     Bits { n: usize, star: bool },
@@ -241,6 +242,7 @@ impl Oracle {
         let mut key = None;
         match self {
             Self::Generated(spec) => return spec.check(b, actual),
+            Self::Fresh(spec) => return spec.check(b, actual),
             Self::Legacy(case, n) => {
                 let counts: Counts = actual.iter().map(|(k, v)| (k.clone(), v.len())).collect();
                 let i = expected_counts

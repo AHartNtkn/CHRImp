@@ -157,3 +157,34 @@ python3 examples/perf_compare.py /tmp/prep-before /tmp/prep-after --out /tmp/pre
 Both cases generate/parse once. Reuse prepares once and uses the same prepared object for fresh engines; independent prepares from the same AST before every fresh engine. Typed records separate source generation, program/query parsing, preparation, engine initialization, execution/delivery/validation, direct engine destruction, final prepared-object destruction and syntax/source destruction. Sequential uses stay ordered within a process and are not independent timing repetitions. Every completed run checks all uses and prepared ownership release; the aggregate tick and wall budgets cover all uses and destruction. External supervision bounds calls that cannot be interrupted internally.
 
 Select the relevant `workload.*` phase metric for comparisons; the core source-delivery default is unavailable for these cases. Three measured runs of each 64-rule shape above completed with all eight results validated. This supplies runnable preparation/reuse evidence; calibrated shape/size growth detection remains part of routine/deep campaign work.
+
+## Bounded routine and deeper sweeps
+
+```sh
+python3 examples/perf_suite.py routine --out /tmp/chr-routine
+python3 examples/perf_suite.py deep --out /tmp/chr-deep
+python3 examples/perf_suite.py deep --list
+python3 examples/perf_suite.py deep --only archive-cadence --only fresh-copies-interleaved --out /tmp/chr-interactions
+python3 -m unittest discover -s tests -p perf_suite_test.py
+```
+
+The routine selection sweeps rewriting, partial-hit/miss matching, occurrence multiplicity, fresh identity contraction, reconvergent proofs, competing growth, archive turnover and preparation shape, plus end-to-end query points. Deep selection adds graph topologies/seeds, independently varied concurrent ownership/turnover/reuse, fresh-copy input orders and further notebook queries. `--only` selects families; `--list` displays every point and its risk question before execution. Seeds also shuffle point order to avoid always running larger inputs later. This does not make measurements independent or eliminate machine drift.
+
+Defaults are five measured repeats plus one warmup per point, a five-second external sample limit, and a 120-second routine or 600-second deep execution/analysis budget. Each workload also has a declared three-second native phase limit. Flags can set these external budgets and repeats before execution. Builds occur once with a separate five-minute limit; `--binary` uses an existing executable, and `--diagnostics` builds the instrumented variant. Each point delegates to the same `perf.py` measurement/supervision path. Nested reporting remains subject to the suite deadline, and known outcomes are published before report I/O. The final small suite record is written after the execution/analysis alarm is disarmed.
+
+`suite.json` contains the selected points, commands, risk questions, outcomes, raw campaign paths and adjacent-size scaling. Ratios retain both median operands; log-log exponents are descriptive, not complexity proofs. Censored or missing points do not connect a scaling slope. Necessary derivation/output growth remains visible alongside cost. A point interrupted during processing is distinct from a point never admitted. Completed failures remain failures even when later reporting is interrupted. Exit 0 means all requested observations completed; it is **not a regression acceptance gate**. Exit 1 records failed evidence, exit 2 bounded incomplete execution. Calibrated material-change and growth decisions remain unfinished work.
+
+The initial 21-point routine selection finished in 36.8 seconds: 20 points completed five measured samples each; behavior-W synthesis had five censored samples at its declared limit. A subsequent 19-point deep selection covering fresh production/copy order, ring correlations, archive cadence and prepared reuse completed three samples per point in 1.71 seconds. These are coverage and bounded-execution checks, not evidence that all prospective risks are covered.
+
+To extend coverage after a system change, identify the new independently growing input or ownership dimension, add it to an existing generator where possible, and supply a semantic/progress/resource oracle independent of the implementation being measured. Add a discriminating control and size/lifetime sweep to `plan()`. Then verify that the maintained comparison/detection path catches a material adverse variation and preserves a benign control; adding a case alone does not close the risk.
+
+## Fresh production and equality propagation
+
+```sh
+target/release/examples/measure fresh-contract 4 5000000 5 --rows 4 --depth 4 --order interleaved
+target/release/examples/measure fresh-unmerged 4 5000000 5 --rows 4 --depth 4 --order interleaved
+```
+
+SIZE is groups, rows is copies per group, and depth is production-chain length (default four, zero allowed). Each production consumes a step and creates a fresh level variable. Contracting equal-key cells equates their fresh values, consumes a duplicate occurrence, and enables matching at the next level. The unmerged case retains independent copy chains. Grouped, interleaved and reversed queries vary admission order; one copy and zero depth are equivalent controls.
+
+The independent oracle checks all input identities, fresh-level separation, intended equalities, endpoints and exact residual multisets without prescribing numeric variable IDs or surviving occurrences. Application counts follow analytic production/contraction counts; internal ticks are measured, not fixed. Markers preserve one witness per producer, so output and validation necessarily grow with groups × copies × depth. Compare the contraction work with that required evidence volume rather than treating all cost growth as overhead.

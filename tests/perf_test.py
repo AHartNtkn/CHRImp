@@ -5,6 +5,9 @@ from pathlib import Path
 import sys
 import subprocess
 import tempfile
+import time
+import signal
+from unittest.mock import patch
 import unittest
 sys.path.insert(0,str(Path(__file__).parents[1]/'examples'))
 spec=importlib.util.spec_from_file_location('chr_perf',Path(__file__).parents[1]/'examples/perf.py')
@@ -96,6 +99,38 @@ class NativeRecordTests(unittest.TestCase):
                 sample=json.loads((out/f'{index}.json').read_text())
                 self.assertEqual(sample['status'],'completed')
                 self.assertTrue((out/f'{index}.stdout').is_file())
+
+    def test_fresh_cases_require_full_work_oracle(self):
+        binary=Path(__file__).parents[1]/'target/release/examples/measure'
+        for case,applications in [('fresh-contract',26),('fresh-unmerged',18)]:
+            args=[str(binary),case,'2','5000000','5','--rows','3','--depth','2','--order','reverse']
+            run=subprocess.run(args,capture_output=True,text=True,timeout=10)
+            self.assertEqual(run.returncode,0,run.stderr)
+            events=perf.records(run.stdout)
+            self.assertEqual(perf.classify(process(),events,case),'completed')
+            result=next(e['data'] for e in events if e['kind']=='result')
+            self.assertEqual(result['work']['applications'],applications)
+            self.assertEqual(result['expected']['applications'],applications)
+            bad=subprocess.run(args+['--prefix','1'],capture_output=True,text=True,timeout=10)
+            self.assertEqual(bad.returncode,1)
+            self.assertIn('complete exhaustion',bad.stderr)
+
+    def test_parent_deadline_covers_final_reporting(self):
+        binary=Path(__file__).parents[1]/'target/release/examples/measure'
+        with tempfile.TemporaryDirectory() as tmp:
+            out=Path(tmp)/'run';reporting=[]
+            def slow_print(*args):
+                reporting.append(True)
+                time.sleep(5)
+            previous=signal.signal(signal.SIGALRM,perf.deadline_signal)
+            try:
+                with patch.object(perf,'print',slow_print,create=True),self.assertRaises(perf.CampaignDeadline):
+                    perf.main(['--binary',str(binary),'--out',str(out),'--repeat','1','--warmup','0','--','rewrite','8'],absolute_deadline=time.monotonic()+2)
+            finally:
+                signal.setitimer(signal.ITIMER_REAL,0)
+                signal.signal(signal.SIGALRM,previous)
+            self.assertTrue(reporting)
+            self.assertEqual(json.loads((out/'campaign.json').read_text())['status'],'finished')
 
     def test_preparation_modes_have_validated_uses_and_censored_outcomes(self):
         binary=Path(__file__).parents[1]/'target/release/examples/measure'
