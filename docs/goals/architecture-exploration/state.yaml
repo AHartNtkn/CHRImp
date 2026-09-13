@@ -10,7 +10,7 @@ goal:
     cadence: After decision-changing experiments and at completion.
     final_proof: Measured compiler combination and separate static-join capability, exact
       semantic controls, adverse censored outcomes, memory tradeoff and scoped recommendation
-      in decision.md.
+      in notes/decision.md.
   intake:
     original_request: Define the best exploration strategy, create a goal and follow it; avoid
       microoptimization and expanding obligations.
@@ -347,7 +347,7 @@ tasks:
         measured; static feasibility has a separate domain. Memory tradeoff and hard-search/lifetime
         uncertainty explicit. No unperformed comparison prevents this scoped recommendation;
         no universal foundation claim.
-      note: decision.md
+      note: notes/decision.md
       harness: codex
       review_agent_id: 01a09936-4b61-7e60-a0a5-4b13b949cdc9
 investigations:

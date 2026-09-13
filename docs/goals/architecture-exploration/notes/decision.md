@@ -34,4 +34,4 @@ The strategy was to use independent priorities to produce competing hypotheses, 
 
 The comparison now supports an implementation direction, its applicability boundaries, a measured speed/memory tradeoff and the major unresolved foundation question. A targeted independent completion review agreed that these establish a defensible frontier. Further prototypes might improve it, but no specific unperformed comparison prevents the scoped recommendation above. There is no global-optimality claim.
 
-Detailed evidence: [whole-head comparison](notes/T003-comparison.md), [normalization comparison](notes/T005-comparison.md), [conditional-dispatch comparison](notes/T007-comparison.md). Experimental commits: `c95cc9f6` (whole-head), `f2cf1ce` (normalization), `e5dcb37` (combined dispatch). Production execution is unchanged.
+Detailed evidence: [whole-head comparison](T003-comparison.md), [normalization comparison](T005-comparison.md), [conditional-dispatch comparison](T007-comparison.md). Experimental commits: `c95cc9f6` (whole-head), `f2cf1ce` (normalization), `e5dcb37` (combined dispatch). Production execution is unchanged.
