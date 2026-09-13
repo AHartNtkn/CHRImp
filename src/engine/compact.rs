@@ -362,7 +362,11 @@ impl Compact {
                         scheduled.scope = c;
                         if let Task::Body(body) = &mut scheduled.task {
                             debug_assert!(
-                                body.job.is_none() && body.merge.is_none() && body.update.is_none()
+                                body.job.is_none()
+                                    && body.merge.is_none()
+                                    && body.update.is_none()
+                                    && body.normalizer.is_none()
+                                    && body.dispatch.is_none()
                             );
                             // Pending bodies have not acquired the mutation lane,
                             // so their scope still equals the scheduling support.

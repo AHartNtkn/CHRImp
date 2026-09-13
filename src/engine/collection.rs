@@ -334,6 +334,16 @@ impl Engine {
                 };
                 if let Some(task) = task {
                     if !c.task_roots {
+                        if let Task::Body(b) = &task.task
+                            && let Some(n) = &b.normalizer
+                            && let Some(roots) = n.root_group(c.slot)
+                        {
+                            c.graph_roots.extend(roots);
+                            c.slot += 1;
+                            self.collector = Some(c);
+                            return true;
+                        }
+                        c.slot = 0;
                         match &task.task {
                             Task::Body(b) => {
                                 if c.owns_lane {
@@ -350,6 +360,9 @@ impl Engine {
                                             ));
                                         }
                                     }
+                                }
+                                if let Some(dispatch) = &b.dispatch {
+                                    c.graph_roots.push(dispatch.root());
                                 }
                                 if let Some(u) = &b.update {
                                     c.graph_roots.extend(u.roots());
@@ -721,6 +734,8 @@ impl Trace for Body {
             0 => c.fields(&[self.scope, self.decision]),
             1 => c.optional(self.job.as_ref()),
             2 => c.optional(self.merge.as_ref()),
+            3 => c.optional(self.normalizer.as_deref()),
+            4 => c.optional(self.dispatch.as_deref()),
             _ => Step::Done,
         }
     }

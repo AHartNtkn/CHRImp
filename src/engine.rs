@@ -40,6 +40,10 @@ pub mod diagnostics;
 #[cfg(feature = "diagnostics")]
 pub use diagnostics::Diagnostics;
 mod discovery;
+mod dispatch;
+mod normalization;
+pub use normalization::NormalizationStats;
+use normalization::Normalizer;
 mod inspection;
 mod obligations;
 mod step;
@@ -130,6 +134,10 @@ enum BodyPhase {
     Right,
 }
 struct Body {
+    normalizer: Option<Box<Normalizer>>,
+    dispatch: Option<Box<dispatch::Dispatch>>,
+    dispatch_checked: bool,
+    source_complete: bool,
     event: u64,
     instruction: usize,
     variables: Arc<Vec<u64>>,
@@ -147,6 +155,10 @@ struct Body {
 impl Body {
     fn new(event: u64, instruction: usize, variables: Arc<Vec<u64>>, scope: Condition) -> Self {
         Self {
+            normalizer: None,
+            dispatch: None,
+            dispatch_checked: false,
+            source_complete: false,
             event,
             instruction,
             variables,
@@ -182,6 +194,8 @@ struct Ready {
 }
 
 pub struct Engine {
+    normalization: Option<normalization::Configuration>,
+    normalization_stats: NormalizationStats,
     #[cfg(feature = "diagnostics")]
     diagnostics: Diagnostics,
     coordinates: Coordinates,
@@ -230,6 +244,13 @@ impl Engine {
         Self::with_history(code, false)
     }
     pub fn with_history(code: Arc<Prepared>, record_history: bool) -> Self {
+        let normalization = code
+            .constructors
+            .clone()
+            .map(|plan| normalization::Configuration {
+                plan,
+                source: code.clone(),
+            });
         let graph = Graph::with_tuple_indexes(&code.signatures, &code.tuple_indexes);
         let history = History::default();
         let state = StateRoot {
@@ -239,6 +260,8 @@ impl Engine {
         let obligations = obligations::Obligations::default();
         let pending_root = obligations.empty();
         let mut e = Self {
+            normalization,
+            normalization_stats: NormalizationStats::default(),
             #[cfg(feature = "diagnostics")]
             diagnostics: Diagnostics {
                 rules: vec![diagnostics::RuleDiagnostics::default(); code.rules.len()],
@@ -766,9 +789,30 @@ impl Engine {
                             {
                                 self.diagnostics.rules[search.rule].applied += 1;
                             }
-                            self.state = c.state;
                             self.applications += 1;
                             let app = c.application;
+                            if self
+                                .normalization
+                                .as_ref()
+                                .is_some_and(|c| c.plan.terminal.contains(&search.rule))
+                            {
+                                let mut body =
+                                    Body::new(app.id, app.body, app.variables, app.support);
+                                body.phase = BodyPhase::Apply;
+                                self.state = c.state;
+                                self.step_application(app.id, search.rule, app.support);
+                                self.sync_obligation(s.id, &body);
+                                self.record(
+                                    SnapshotKind::Application {
+                                        rule: search.rule,
+                                        event: app.id,
+                                    },
+                                    self.active,
+                                );
+                                s.task = Task::Body(Box::new(body));
+                                return false;
+                            }
+                            self.state = c.state;
                             self.step_application(app.id, search.rule, app.support);
                             self.body(app.id, app.body, app.variables, app.support);
                             self.record(
@@ -882,6 +926,12 @@ impl Engine {
         }
     }
     fn body_tick(&mut self, id: u64, b: &mut Body) -> bool {
+        if b.normalizer.is_some() {
+            return self.normalization_tick(id, b);
+        }
+        if b.dispatch.is_some() {
+            return self.dispatch_tick(id, b);
+        }
         if b.scope == Condition::FALSE {
             return true;
         }
@@ -956,6 +1006,9 @@ impl Engine {
                         b.variables[*y],
                         b.scope,
                     ));
+                    if self.normalization.is_some() {
+                        b.merge = b.merge.take().map(Merge::with_links);
+                    }
                     b.phase = BodyPhase::Merge;
                 }
                 Instruction::Fail => {
@@ -966,6 +1019,21 @@ impl Engine {
                     b.phase = BodyPhase::Fail;
                 }
                 Instruction::Or(_) => {
+                    if !b.dispatch_checked
+                        && b.end.is_none()
+                        && let Some(config) = &self.normalization
+                        && let Some(plan) = config.plan.choices.get(&b.instruction)
+                    {
+                        b.dispatch = Some(Box::new(dispatch::Dispatch::new(
+                            &self.graph,
+                            self.state.graph.clone(),
+                            b.variables[plan.key],
+                            b.scope,
+                            plan.clone(),
+                        )));
+                        self.normalization_stats.conditional_dispatches += 1;
+                        return false;
+                    }
                     b.phase = BodyPhase::Choice;
                 }
                 _ => unreachable!(),
@@ -977,8 +1045,29 @@ impl Engine {
                     {
                         self.diagnostics.body_posts += 1;
                     }
-                    self.state.graph = root.clone();
                     let occurrence = update.occurrence();
+                    if let Some(config) = &self.normalization
+                        && config
+                            .plan
+                            .relations
+                            .contains(&self.graph.fact(root.clone(), occurrence).unwrap().relation)
+                    {
+                        b.normalizer = Some(Box::new(Normalizer::post(
+                            config.clone(),
+                            &self.graph,
+                            root.clone(),
+                            self.active,
+                            occurrence,
+                            b.scope,
+                        )));
+                        self.state.graph = root;
+                        b.source_complete = true;
+                        self.finish_body_record(id);
+                        self.record(SnapshotKind::Post { occurrence }, self.active);
+                        b.update = None;
+                        return false;
+                    }
+                    self.state.graph = root.clone();
                     self.finish_body_record(id);
                     self.record(SnapshotKind::Post { occurrence }, self.active);
                     self.spawn(b.scope, self.activation(root, occurrence, b.scope, false));
@@ -988,6 +1077,28 @@ impl Engine {
             BodyPhase::Merge => {
                 let merge = b.merge.as_mut().unwrap();
                 if let Some(root) = merge.tick(&mut self.graph, &mut self.arena) {
+                    if let Some(config) = &self.normalization {
+                        #[cfg(feature = "diagnostics")]
+                        let changed = merge.changed_support() != Condition::FALSE;
+                        b.normalizer = Some(Box::new(Normalizer::merged(
+                            config.clone(),
+                            &self.graph,
+                            root.clone(),
+                            self.active,
+                            merge,
+                        )));
+                        self.state.graph = root;
+                        b.source_complete = true;
+                        self.finish_body_record(id);
+                        self.record(SnapshotKind::Merge, self.active);
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            self.diagnostics.body_merges += 1;
+                            self.diagnostics.merge_support_changes += u64::from(changed);
+                        }
+                        b.merge = None;
+                        return false;
+                    }
                     self.state.graph = root.clone();
                     let scope = merge.changed_support();
                     #[cfg(feature = "diagnostics")]

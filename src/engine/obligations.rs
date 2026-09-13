@@ -446,6 +446,24 @@ impl Engine {
                     .insert(std::mem::take(&mut self.pending_root), key, pending);
         }
     }
+    /// A new source application can retain a lane owner but has a new binding
+    /// environment. Give its syntax a new descriptor; captured roots keep the
+    /// preceding application's descriptor immutable.
+    pub(super) fn replace_body_record(&mut self, id: u64, body: &Body) {
+        let key = [id, 0, 0, 0];
+        let mut pending = self
+            .obligations
+            .index
+            .get(&self.pending_root, &key)
+            .expect("scheduled owner");
+        pending.body =
+            self.obligations
+                .update_descriptor(None, self.obligation_parts(body), &body.variables);
+        self.pending_root =
+            self.obligations
+                .index
+                .insert(std::mem::take(&mut self.pending_root), key, pending);
+    }
     pub(super) fn sync_obligation(&mut self, id: u64, body: &Body) {
         let key = [id, 0, 0, 0];
         let mut pending = self
@@ -478,7 +496,11 @@ impl Engine {
         Pending { scope, body }
     }
     pub(super) fn obligation_parts(&self, body: &Body) -> [Option<Obligation>; 2] {
-        if body.scope == Condition::FALSE {
+        let scope = body
+            .dispatch
+            .as_ref()
+            .map_or(body.scope, |d| d.pending_scope());
+        if scope == Condition::FALSE || body.source_complete {
             return [None; 2];
         }
         let base = Obligation {
@@ -486,7 +508,7 @@ impl Engine {
             instruction: body.instruction,
             start: 0,
             end: body.end,
-            scope: body.scope,
+            scope,
             guard: Condition::TRUE,
         };
         let mut parts = [Some(base), None];

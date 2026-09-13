@@ -1370,3 +1370,74 @@ fn flat_choice_metadata_labels_the_actual_contiguous_partitions() {
         assert_eq!(labels.iter().filter(|s| s.ends_with(suffix)).count(), 1);
     }
 }
+
+#[test]
+fn specialized_source_step_keeps_named_rule_and_pending_equality_in_notebook() {
+    for history in [false, true] {
+        let runtime = Client::default();
+        let run = start(
+            &runtime,
+            "fields @ app(T,A,B) \\ app(T,C,D) <=> A=C,B=D.",
+            "app(T,A,B),app(T,C,D)",
+            history,
+        )["run"]
+            .clone();
+        retry(&runtime, "/api/step", json!({"run":run}));
+        let mut ack = None;
+        let mut done = false;
+        for _ in 0..1000 {
+            let batch = next(
+                &runtime,
+                "/api/output",
+                json!({"run":run,"budget":32}),
+                &mut ack,
+            );
+            if batch["step"]["done"] == true {
+                assert_eq!(batch["step"]["rule"], 0);
+                assert_eq!(batch["applications"], 1);
+                done = true;
+                break;
+            }
+        }
+        assert!(done);
+        if history {
+            let views = retry(&runtime, "/api/views", json!({"run":run}));
+            assert!(
+                views["snapshots"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|s| s["rule"] == 0
+                        && s["name"] == "fields"
+                        && s["label"].as_str().unwrap().contains("fields"))
+            );
+        }
+        let inspection = retry(&runtime, "/api/inspect", json!({"run":run}))["inspection"].clone();
+        let mut ack = None;
+        let mut events = vec![];
+        for _ in 0..1000 {
+            let batch = next(
+                &runtime,
+                "/api/inspect_advance",
+                json!({"run":run,"inspection":inspection,"budget":32}),
+                &mut ack,
+            );
+            events.extend(batch["events"].as_array().unwrap().clone());
+            if batch["done"] == true {
+                break;
+            }
+        }
+        assert!(events.iter().any(|e| e["kind"] == "pending_begin"));
+        assert!(
+            events
+                .iter()
+                .any(|e| e["kind"] == "expression" && e["operator"] == "equal")
+        );
+        retry(
+            &runtime,
+            "/api/inspect_release",
+            json!({"run":run,"inspection":inspection}),
+        );
+        ok(&runtime, "/api/close", json!({"run":run}));
+    }
+}

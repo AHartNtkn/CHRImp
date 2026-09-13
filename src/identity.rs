@@ -610,6 +610,13 @@ impl Trace for MergeDelta {
     }
 }
 
+/// Supported representative change for direct constructor attachment transfer.
+pub(crate) struct UnionLink {
+    pub winner: u64,
+    pub loser: u64,
+    pub support: Condition,
+}
+
 /// Staged union: only the returned complete root may replace the query root.
 /// Parent/rank writes and reverse incidence publish together. `changed_support`
 /// identifies the region requiring equality-sensitive match activation.
@@ -627,6 +634,8 @@ pub struct Merge {
     rank: u64,
     changed: Condition,
     delta: VecDeque<(u64, Condition)>,
+    links: VecDeque<UnionLink>,
+    track_links: bool,
     edits: VecDeque<Edit>,
     boolean: Option<Job>,
     phase: MergePhase,
@@ -649,6 +658,8 @@ impl Merge {
             rank: 0,
             changed: Condition::FALSE,
             delta: VecDeque::new(),
+            links: VecDeque::new(),
+            track_links: false,
             edits: VecDeque::new(),
             boolean: None,
             phase: if x == y || scope == Condition::FALSE {
@@ -675,6 +686,18 @@ impl Merge {
             discarding: false,
         })
     }
+    pub(crate) fn with_links(mut self) -> Self {
+        self.track_links = true;
+        self
+    }
+    pub(crate) fn take_links(&mut self) -> VecDeque<UnionLink> {
+        assert_eq!(
+            self.discard, 0,
+            "discarded merge cannot transfer union links"
+        );
+        assert!(matches!(self.phase, MergePhase::Done));
+        std::mem::take(&mut self.links)
+    }
     pub fn changed_support(&self) -> Condition {
         self.changed
     }
@@ -688,6 +711,7 @@ impl Merge {
             .chain(self.boolean.iter().flat_map(|j| j.roots()))
             .chain(self.edits.iter().map(|e| e.context))
             .chain(self.delta.iter().map(|(_, c)| *c))
+            .chain(self.links.iter().map(|l| l.support))
     }
     fn next_pair(&mut self) -> Option<(u64, Condition, u64, Condition)> {
         if self.l.is_none() {
@@ -723,6 +747,13 @@ impl Merge {
             (r, l)
         };
         self.delta.push_back((loser, context));
+        if self.track_links {
+            self.links.push_back(UnionLink {
+                winner,
+                loser,
+                support: context,
+            });
+        }
         self.edits.push_back(Edit {
             key: Some([PARENT, loser, winner, 0]),
             remove: false,
@@ -814,6 +845,11 @@ impl Merge {
                 if self.delta.pop_front().is_none() {
                     self.delta = VecDeque::new();
                     self.discard = 8;
+                }
+            }
+            8 => {
+                if self.links.pop_front().is_none() {
+                    self.discard = 9;
                 }
             }
             _ => return true,
@@ -986,6 +1022,13 @@ impl Trace for Merge {
             7 => cursor.vector(self.delta.len(), |i, child| {
                 if child.phase == 0 {
                     child.fields(&[self.delta[i].1])
+                } else {
+                    Step::Done
+                }
+            }),
+            8 => cursor.vector(self.links.len(), |i, child| {
+                if child.phase == 0 {
+                    child.fields(&[self.links[i].support])
                 } else {
                     Step::Done
                 }
