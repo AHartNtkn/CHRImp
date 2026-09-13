@@ -63,12 +63,12 @@ visual_board:
     url: null
   reason: Use concise file state; a visual process surface does not advance this architectural
     decision.
-active_task: T001
+active_task: T002
 tasks:
   - id: T001
     type: pm
     assignee: PM
-    status: active
+    status: done
     objective: Synthesize independent priority investigations into distinct hypotheses
       and select the first decision-changing experiment.
     inputs:
@@ -80,6 +80,34 @@ tasks:
       - Do not turn all candidates into implementation tasks.
     expected_output:
       - Leading configurations, comparative rationale and one bounded experiment specification.
+    receipt:
+      result: done
+      summary: Four distinct hypotheses identified; simple exclusive-control fusion
+        has no eligible behavior-synthesis predicates; abstract failure requires finite
+        operational coverage. Selected a bounded baseline discriminator before commissioning
+        whole-head runtime work.
+      note: notes/T001-hypotheses.md
+      harness: codex
+  - id: T002
+    type: worker
+    assignee: PM
+    status: active
+    objective: Measure whether whole-head reasoning can avoid substantial candidate
+      scaling on the proposed witness; choose whether it merits a prototype.
+    inputs:
+      - notes/T001-hypotheses.md
+      - examples/measure.rs
+      - examples/measure/families.rs
+      - examples/perf.py
+    allowed_files:
+      - examples/measure/architecture.rs
+      - examples/measure.rs
+    verify:
+      - Focused oracle tests for any added measurement case
+      - Bounded baseline campaign and existing unchanged control
+    stop_if:
+      - Declared budget expires; record result and reassess instead of automatic extension.
+      - The witness fails to establish the predicted avoidable scaling.
     receipt: null
   - id: T999
     type: pm
