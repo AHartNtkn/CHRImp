@@ -80,6 +80,21 @@ class CampaignTests(unittest.TestCase):
         sample['records'].append(allocation)
         with self.assertRaises(ValueError):perf.sample_values(sample)
 
+    def test_censored_resources_preserve_completed_cleanup_without_inventing_latency(self):
+        row=event('INCOMPLETE');row['data'].update(source_goal_reached=False,native_peak_rss_estimate_kib=4096)
+        row['data']['times_ms']['cleanup']=12.
+        sample=dict(status='censored',process=process(2,'failed'),records=[config(),row])
+        values=perf.sample_measurements(sample)
+        self.assertEqual(values['workload.native_peak_rss_estimate_kib'],dict(value=4096,complete=True))
+        self.assertEqual(values['workload.times_ms.cleanup'],dict(value=12.,complete=True))
+        self.assertFalse(values['workload.times_ms.source_delivery']['complete'])
+        row['data']['first_answer']={'ms':25.}
+        self.assertEqual(perf.sample_measurements(sample)['workload.first_answer.ms'],dict(value=25.,complete=True))
+        row['data']['cleanup_done']=False
+        self.assertFalse(perf.sample_measurements(sample)['workload.times_ms.cleanup']['complete'])
+        sample['process']['group_cleanup_complete']=False
+        self.assertEqual(perf.sample_measurements(sample),{})
+
     def test_censored_and_warmup_samples_never_become_success_timings(self):
         samples=[dict(warmup=False,status='completed',process=process(),records=[event()]),
                  dict(warmup=False,status='censored',records=[]),dict(warmup=True,status='completed',process=process(),records=[event()])]
@@ -88,7 +103,7 @@ class CampaignTests(unittest.TestCase):
         self.assertEqual(report['metrics']['workload.times_ms.source_delivery']['n'],1)
         self.assertEqual(report['metrics']['workload.times_ms.validator']['n'],0)
         self.assertIsNone(report['metrics']['workload.times_ms.validator']['median'])
-        self.assertEqual(report['metrics']['workload.times_ms.validator']['missing_completed'],1)
+        self.assertEqual(report['metrics']['workload.times_ms.validator']['incomplete_or_missing'],2)
         self.assertEqual(report['regression_assessment'],'not_performed')
 
 

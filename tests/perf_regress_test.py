@@ -6,6 +6,7 @@ import tempfile
 import math
 from unittest.mock import patch
 from perf_test import process, config, event
+from perf_compare_test import raw_campaign
 sys.path.insert(0,str(Path(__file__).parents[1]/'examples'))
 import perf_regress as regress
 
@@ -20,16 +21,59 @@ class RegressionTests(unittest.TestCase):
         self.assertTrue(all(f['status']=='uncertain' for f in findings[1:]))
         self.assertAlmostEqual(findings[0]['noise_span'],.08)
 
-    def test_deep_family_has_enough_resolution_for_a_large_regression(self):
+    def test_large_family_reports_resolution_limit_without_growing_resampling(self):
         control=[10+i*.01 for i in range(12)]
-        draws=regress.permutation_draws(100,5)
-        signal=regress.evaluate(control,[v*3 for v in control],control,control,draws=draws)
-        findings=[signal]+[dict(status='uncertain',p_value=1.,noise_resolution=1.,absolute_change=0.,method='monte_carlo',assignments=draws) for _ in range(999)]
+        signal=regress.evaluate(control,[v*3 for v in control],control,control)
+        findings=[signal]+[dict(status='uncertain',p_value=1.,noise_resolution=1.,
+            absolute_change=0.,method='monte_carlo',assignments=9999) for _ in range(999)]
         regress.correct(findings)
-        self.assertEqual(signal['status'],'regression')
-        weak=regress.evaluate(control,[v*3 for v in control],control,control)
-        regress.correct([weak]+findings[1:])
-        self.assertEqual(weak['status'],'resolution_limited')
+        self.assertEqual(signal['assignments'],9999)
+        self.assertEqual(signal['status'],'resolution_limited')
+
+    def test_censored_raw_rss_growth_and_missing_cleanup_use_the_default_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            roots=[]
+            for name,rss in [('ca',4096),('cb',4096),('before',4096),('after',65536)]:
+                root=Path(tmp)/name;roots.append(root)
+                raw_campaign(root/'rewrite-8',rss=rss,missing_cleanup=name=='after')
+                (root/'suite.json').write_text(json.dumps(dict(status='censored',points=[dict(
+                    id='rewrite-8',status='censored',family='rewrite',axis='size',value=8,
+                    workload=['rewrite','8'])])))
+            for metrics in (None,['workload.native_peak_rss_estimate_kib','workload.times_ms.cleanup',
+                                  'workload.times_ms.source_delivery']):
+                report=regress.compare(*roots,metrics)
+                self.assertEqual(report['status'],'regression')
+                self.assertTrue(report['incomplete_evidence'])
+                self.assertEqual(report['permutation_draws'],9999)
+                findings={f['metric']:f for f in report['findings']}
+                self.assertEqual(findings['workload.native_peak_rss_estimate_kib']['status'],'regression')
+                for key in ('workload.times_ms.cleanup','workload.times_ms.source_delivery'):
+                    self.assertEqual(findings[key]['status'],'unavailable')
+                self.assertEqual(report['sample_paths']['rewrite-8'][3][-1],str(roots[3]/'rewrite-8/8.json'))
+            control=regress.compare(roots[0],roots[1],roots[2],roots[2])
+            self.assertEqual(control['status'],'incomplete_evidence')
+            self.assertEqual(control['regression_count'],0)
+            metadata=json.loads((roots[3]/'rewrite-8/campaign.json').read_text())
+            metadata['limits']['per_sample_seconds']=10
+            (roots[3]/'rewrite-8/campaign.json').write_text(json.dumps(metadata))
+            with self.assertRaisesRegex(ValueError,'limits'):
+                regress.compare(*roots)
+
+    def test_completed_campaign_accepts_varied_external_limits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);campaign=root/'rewrite-8';raw_campaign(campaign)
+            for i in range(9):
+                path=campaign/f'{i}.json';sample=json.loads(path.read_text())
+                sample['status']='completed';sample['process'].update(status='completed',returncode=0)
+                sample['process']['limits']['wall_seconds']=5+i
+                sample['records'][1]=event()
+                path.write_text(json.dumps(sample))
+            (root/'suite.json').write_text(json.dumps(dict(status='completed',points=[dict(
+                id='rewrite-8',status='completed',family='rewrite',axis='size',value=8,
+                workload=['rewrite','8'])])))
+            _,points=regress.read_suite(root)
+            self.assertEqual(points['rewrite-8']['status'],'completed')
+            self.assertEqual(len(points['rewrite-8']['values']),9)
 
     def test_exact_two_sided_resolution_requires_both_complements(self):
         a=[1,2,3,4,5];b=[101,102,103,104,105]
@@ -78,7 +122,7 @@ class RegressionTests(unittest.TestCase):
         finding=regress.evaluate(base,after,[9.8]*9,[10.2]*9)
         regress.correct([finding])
         self.assertEqual(finding['status'],'within_control_spread')
-        self.assertEqual(regress.evaluate(base,after,[],[])['status'],'uncalibrated')
+        self.assertEqual(regress.evaluate(base,after,[],[])['status'],'unavailable')
 
     def test_independent_scaling_is_invariant_to_all_input_orders(self):
         low=[2,3,5,7,11,13,17]; high=[3,5,7,11,13,17,19,23,29]
@@ -105,7 +149,7 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(zero_high['status'],'improvement')
         def p(a,status='completed'): return dict(status=status,values=[{'x':v} for v in a])
         self.assertEqual(regress.values(p([2,None]),'x'),[])
-        self.assertEqual(regress.values(p([2,4],'censored'),'x'),[])
+        self.assertEqual(regress.values(p([2,4],'censored'),'x'),[2,4])
 
     def test_proportional_cost_change_preserves_scaling(self):
         baseline=([19,20,20,21,22,23]*2,[80,80,83,87,90]*3)
@@ -227,7 +271,7 @@ class RegressionTests(unittest.TestCase):
             report=regress.compare('a','b','old','new',['cost'])
         self.assertEqual(report['status'],'distribution_change')
         self.assertEqual(report['regression_count'],0)
-        censored=self.suite(rows([4]*12),rows([8]*12),'censored')
+        censored=self.suite(rows([None]*12),rows([None]*12),'censored')
         with patch.object(regress,'read_suite',side_effect=[before,before,before,censored]):
             report=regress.compare('a','b','old','new',['cost'])
         self.assertEqual(report['status'],'incomplete_evidence')

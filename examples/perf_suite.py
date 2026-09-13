@@ -81,6 +81,95 @@ def plan(mode, seed):
     return points
 
 
+def scaling_metric(key):
+    """Only cost/resource observations, never configuration, IDs or oracle payloads."""
+    if key in {'process.wall_seconds', 'process.user_cpu_seconds', 'process.system_cpu_seconds',
+               'process.max_rss_kib', 'workload.native_peak_rss_estimate_kib',
+               'workload.source_ms', 'workload.tiny_answer_ms', 'workload.runtime_drop_ms',
+               'workload.elapsed_ms', 'workload.generation_ms', 'workload.parse_program_ms',
+               'workload.parse_query_ms', 'workload.syntax_source_drop_ms',
+               'workload.program_bytes', 'workload.query_bytes'}:
+        return True
+    if key.startswith(('workload.times_ms.', 'workload.work.', 'workload.memory_counts.',
+                       'allocations.')):
+        return True
+    parts=key.split('.')
+    if len(parts)==3 and parts[0]=='workload' and parts[1] in {'prepare_ms','prepared_drop_ms'} and parts[2].isdigit():
+        return True
+    if len(parts)==4 and parts[:2]==['workload','uses'] and parts[2].isdigit():
+        return parts[3] in {'engine_init_ms','use_ms','engine_drop_ms','ticks','applications'}
+    return (key.startswith(('phase.', 'workload.cleanup.')) and
+            (parts[-1] in {'elapsed_ms', 'request_ms', 'ticks', 'applications'} or
+             'memory' in parts))
+
+
+def run_points(points, args, binary, out, deadline):
+    """One measured sample per point per pass; suspended campaigns share the deadline."""
+    active=[]
+    admitted=[]
+    expired=False
+    errors=(ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError)
+    try:
+        for point in points:
+            active.append((point, None))
+        while active:
+            next_pass=[]
+            for point, generator in active:
+                remaining=deadline-time.monotonic()
+                if remaining<=3:
+                    expired=True
+                    break
+                signal.setitimer(signal.ITIMER_REAL,remaining)
+                try:
+                    if generator is None:
+                        location=out/point['id']
+                        point.update(status='running',campaign=str(location/'campaign.json'))
+                        generator=perf.campaign(
+                            ['--binary',str(binary),'--out',str(location),
+                             '--repeat',str(args.repeat),'--warmup','0',
+                             '--seconds',str(args.sample_seconds),'--total-seconds',str(remaining),
+                             '--memory-mib',str(args.memory_mib),'--',*point['workload']],
+                            absolute_deadline=deadline,progress=point)
+                        admitted.append((point,generator))
+                    next(generator)
+                    next_pass.append((point,generator))
+                except StopIteration as done:
+                    point['status']='completed' if done.value==0 else ('censored' if done.value==2 else 'failed')
+                except errors as error:
+                    point.update(status='failed',error=str(error))
+            if expired: break
+            active=next_pass
+    except perf.CampaignDeadline:
+        expired=True
+        if point.get('status')!='failed': point['status']='censored'
+        point['censor_scope']='suite_processing'
+    finally:
+        # Closing finalizes raw reports even when the sampling deadline expired.
+        signal.setitimer(signal.ITIMER_REAL,0)
+        for point,generator in admitted:
+            failed=point.get('status')=='failed'
+            try:
+                generator.close()
+                raw=read_json(Path(point['campaign']))
+                counts=raw['summary']['counts']
+                point.update(outcomes=counts,metrics=raw['summary']['metrics'],
+                             requested_samples=args.repeat,samples_executed=sum(counts.values()))
+                failed=failed or any(v for k,v in counts.items() if k not in ('completed','censored'))
+                partial=(raw.get('status')!='finished' or raw.get('aggregate_censored',False)
+                         or counts.get('completed',0)!=args.repeat)
+                point['status']='failed' if failed else ('censored' if partial else 'completed')
+            except perf.CampaignDeadline:
+                point['status']='failed' if failed else 'censored'
+                point['censor_scope']='suite_reporting'
+                expired=True
+            except errors as error:
+                point.update(status='failed',error=str(error))
+            finally:
+                signal.setitimer(signal.ITIMER_REAL,0)
+        for point in points: point.setdefault('status','not_run_budget')
+    return expired
+
+
 def scaling(points):
     """Adjacent ratios retain both operands; censored points never bridge a slope."""
     groups={}
@@ -93,9 +182,13 @@ def scaling(points):
             if any(p.get('status')!='completed' or 'metrics' not in p for p in (small,large)):
                 pair['status']='incomplete_scaling';result.append(pair);continue
             pair['status']='observed'
-            for key in sorted(set(small['metrics']) | set(large['metrics'])):
-                a=small['metrics'].get(key,{}).get('median');b=large['metrics'].get(key,{}).get('median')
-                ratio=b/a if a is not None and b is not None and a>0 else None
+            for key in sorted(k for k in set(small['metrics']) | set(large['metrics']) if scaling_metric(k)):
+                left=small['metrics'].get(key,{});right=large['metrics'].get(key,{})
+                a=left.get('median');b=right.get('median')
+                complete=not left.get('incomplete_or_missing',0) and not right.get('incomplete_or_missing',0)
+                finite=all(type(v) in (int,float) and math.isfinite(v) for v in (a,b))
+                ratio=b/a if complete and finite and a>0 else None
+                if ratio is not None and not math.isfinite(ratio): ratio=None
                 exponent=math.log(ratio)/math.log(large['value']/small['value']) if ratio is not None and ratio>0 and small['value']>0 and large['value']>small['value'] else None
                 pair['metrics'][key]=dict(small=a,large=b,ratio=ratio,exponent=exponent)
             result.append(pair)
@@ -142,38 +235,15 @@ def main():
         if not target.is_absolute(): target=perf.ROOT/target
         binary=target/'release/examples/measure'
     report=dict(mode=args.mode,seed=args.seed,seconds=budget,sample_seconds=args.sample_seconds,repeat=args.repeat,
-                build=build,binary=str(binary),status='running',points=points,regression_assessment='not_performed')
+                warmup=0,scheduling='round_robin_samples',build=build,binary=str(binary),status='running',points=points,regression_assessment='not_performed')
     (out/'suite.json').write_text(json.dumps(report,indent=2)+'\n')
     started=time.monotonic()
     handler=signal.signal(signal.SIGALRM,perf.deadline_signal)
     try:
-        for point in points:
-            remaining=budget-(time.monotonic()-started)
-            if remaining<=3:
-                point['status']='not_run_budget';continue
-            signal.setitimer(signal.ITIMER_REAL,remaining)
-            per_point=min(remaining-1,(args.repeat+1)*(args.sample_seconds+2)+1)
-            location=out/point['id']
-            point.update(status='running',campaign=str(location/'campaign.json'))
-            code=perf.main(['--binary',str(binary),'--out',str(location),'--repeat',str(args.repeat),
-                            '--seconds',str(args.sample_seconds),'--total-seconds',str(per_point),
-                            '--memory-mib',str(args.memory_mib),'--',*point['workload']],absolute_deadline=started+budget,progress=point)
-            point['status']='completed' if code==0 else ('censored' if code==2 else 'failed')
-            remaining=budget-(time.monotonic()-started)
-            if remaining<=0: raise perf.CampaignDeadline()
-            signal.setitimer(signal.ITIMER_REAL,remaining)
-            raw=read_json(location/'campaign.json')
-            point.update(status='completed' if code==0 else ('censored' if code==2 else 'failed'),
-                         outcomes=raw['summary']['counts'],metrics=raw['summary']['metrics'])
-    except perf.CampaignDeadline:
-        report['execution_censored']=True
-        if point.get('status')=='running': point['status']='censored'
-        point['censor_scope']='suite_processing'
-    except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError) as error:
-        point.update(status='failed',error=str(error))
+        if run_points(points,args,binary,out,started+budget):
+            report['execution_censored']=True
     finally:
         signal.setitimer(signal.ITIMER_REAL,0);signal.signal(signal.SIGALRM,handler)
-        for point in points: point.setdefault('status','not_run_budget')
     # Summarization also has a deadline. Preserve raw point observations on expiry.
     handler=signal.signal(signal.SIGALRM,perf.deadline_signal)
     try:

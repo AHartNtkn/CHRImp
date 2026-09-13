@@ -117,7 +117,7 @@ def numbers(value, prefix=''):
 
 def distribution(values, completed):
     median = statistics.median(values) if values else None
-    return {'n':len(values),'missing_completed':completed-len(values),'median':median,
+    return {'n':len(values),'incomplete_or_missing':completed-len(values),'median':median,
             'min':min(values) if values else None,'max':max(values) if values else None,
             'mad':statistics.median(abs(value-median) for value in values) if values else None}
 
@@ -163,16 +163,50 @@ def sample_values(sample):
     return dict(numbers(values))
 
 
+def sample_measurements(sample):
+    """One observation model: a value and whether its measurement interval finished.
+
+    A terminated process has measured resource usage even when the language query
+    did not finish. Source latency and unfinished cleanup remain incomplete.
+    """
+    process=sample.get('process',{})
+    if sample.get('status') not in ('completed','censored') or not process.get('group_cleanup_complete') or sample.get('report_error'):
+        return {}
+    events=sample.get('records',[])
+    results=[e['data'] for e in events if e['kind']=='result']
+    if len(results)>1: raise ValueError('multiple final result records')
+    if any(e['kind']=='error' for e in events) or any(r.get('error') is not None for r in results):
+        return {}
+    if not results:
+        return {k:dict(value=v,complete=v is not None) for k,v in
+                numbers({'process':{k:v for k,v in process.items() if k not in ('limits','returncode','descendant_pids')}})}
+    result=results[0]
+    observed=sample_values(sample)
+    complete=sample['status']=='completed'
+    measurements={k:dict(value=v,complete=complete and v is not None) for k,v in observed.items()}
+    for key,item in measurements.items():
+        if key.startswith(('process.','allocations.','diagnostics.','workload.memory_counts.','workload.work.','workload.first_answer.','workload.first_event.')) or key=='workload.native_peak_rss_estimate_kib':
+            item['complete']=item['value'] is not None
+    intervals={'workload.times_ms.source_delivery':result.get('source_goal_reached') is True,
+               'workload.times_ms.cleanup':result.get('cleanup_done') is True and result.get('cleanup_in_time') is True,
+               'workload.cleanup.elapsed_ms':result.get('cleanup_complete') is True}
+    occurrences=Counter()
+    for event in events:
+        if event['kind']!='phase': continue
+        data=event['data'];name=data.get('phase','unnamed');index=occurrences[name];occurrences[name]+=1
+        intervals[f'phase.{name}.{index}.elapsed_ms']=data.get('complete') is True
+    for key,finished in intervals.items():
+        if key in measurements: measurements[key]['complete']=finished and measurements[key]['value'] is not None
+    return measurements
+
+
 def summary(samples):
-    usable = [s for s in samples if not s['warmup'] and s['status'] == 'completed']
-    metrics = {}
-    for sample in usable:
-        for key, value in sample_values(sample).items():
-            metrics.setdefault(key, [])
-            if value is not None: metrics[key].append(value)
-    return {'counts':dict(Counter(s['status'] for s in samples if not s['warmup'])),
+    measured=[s for s in samples if not s['warmup']]
+    observations=[sample_measurements(s) for s in measured]
+    keys=set().union(*(s.keys() for s in observations))
+    return {'counts':dict(Counter(s['status'] for s in measured)),
             'warmup_count':sum(s['warmup'] for s in samples),
-            'metrics': {k:distribution(v,len(usable)) for k,v in metrics.items()},
+            'metrics':{k:distribution([s[k]['value'] for s in observations if s.get(k,{}).get('complete')],len(measured)) for k in sorted(keys)},
             'regression_assessment':'not_performed'}
 
 
@@ -180,7 +214,7 @@ def capture(command):
     return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=True, timeout=60).stdout.strip()
 
 
-def main(argv=None, absolute_deadline=None, progress=None):
+def campaign(argv=None, absolute_deadline=None, progress=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--repeat', type=int, default=5)
@@ -248,6 +282,16 @@ def main(argv=None, absolute_deadline=None, progress=None):
             temporary.replace(out/f'{index}.json')
             samples.append(sample)
             inflight=None
+            # Yield only between supervised processes. No timer remains armed while
+            # another campaign runs; the absolute suite deadline includes this wait.
+            signal.setitimer(signal.ITIMER_REAL,0)
+            signal.signal(signal.SIGALRM,previous_handler)
+            yield sample
+            signal.signal(signal.SIGALRM,deadline_signal)
+            signal.setitimer(signal.ITIMER_REAL,max(.000001,args.total_seconds-(time.monotonic()-started)))
+        statistics_report=summary(samples)
+    except GeneratorExit:
+        aggregate_deadline=len(samples)<args.warmup+args.repeat
         statistics_report=summary(samples)
     except CampaignDeadline:
         aggregate_deadline=True
@@ -263,9 +307,6 @@ def main(argv=None, absolute_deadline=None, progress=None):
     finally:
         signal.setitimer(signal.ITIMER_REAL,0)
         signal.signal(signal.SIGALRM,previous_handler)
-        if absolute_deadline is not None:
-            # The suite owns the remaining reporting budget after this campaign.
-            signal.setitimer(signal.ITIMER_REAL,max(0.000001,absolute_deadline-time.monotonic()))
     elapsed=time.monotonic()-started
     metadata.update(status='finished',samples_executed=len(samples),requested_samples=args.warmup+args.repeat,
                     aggregate_censored=aggregate_deadline or elapsed >= args.total_seconds or len(samples)<args.warmup+args.repeat,
@@ -274,9 +315,26 @@ def main(argv=None, absolute_deadline=None, progress=None):
         progress.update(outcomes=statistics_report['counts'],metrics=statistics_report['metrics'],
                         status='failed' if any(s['status'] not in ('completed','censored') for s in samples) else ('censored' if metadata['aggregate_censored'] or any(s['status']=='censored' for s in samples) else 'completed'))
     path.write_text(json.dumps(metadata,indent=2)+'\n')
-    print(json.dumps({'campaign':str(path),'counts':metadata['summary']['counts'],'aggregate_censored':metadata['aggregate_censored'],'source_delivery_ms':metadata['summary']['metrics'].get('workload.times_ms.source_delivery'),'regression_assessment':'not_performed'}))
+    try:
+        if absolute_deadline is not None:
+            remaining=absolute_deadline-time.monotonic()
+            if remaining<=0: return 2
+            signal.signal(signal.SIGALRM,deadline_signal)
+            signal.setitimer(signal.ITIMER_REAL,remaining)
+        print(json.dumps({'campaign':str(path),'counts':metadata['summary']['counts'],'aggregate_censored':metadata['aggregate_censored'],'source_delivery_ms':metadata['summary']['metrics'].get('workload.times_ms.source_delivery'),'regression_assessment':'not_performed'}))
+    finally:
+        signal.setitimer(signal.ITIMER_REAL,0)
+        signal.signal(signal.SIGALRM,previous_handler)
+
     if any(s['status'] not in ('completed','censored') for s in samples): return 1
     return 2 if metadata['aggregate_censored'] or any(s['status']=='censored' for s in samples) else 0
+
+
+def main(argv=None, absolute_deadline=None, progress=None):
+    execution=campaign(argv,absolute_deadline,progress)
+    while True:
+        try: next(execution)
+        except StopIteration as done: return done.value
 
 
 if __name__ == '__main__':

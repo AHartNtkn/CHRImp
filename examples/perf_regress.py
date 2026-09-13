@@ -16,7 +16,7 @@ import statistics
 from pathlib import Path
 import signal
 from perf import CampaignDeadline, deadline_signal
-from perf_compare import load, read_json, compare_metric
+from perf_compare import load, read_json, compare_metric, exposure, check_exposures, sample_paths, RESAMPLING_DRAWS
 
 def default_metrics(case):
     residency='workload.native_peak_rss_estimate_kib'
@@ -37,15 +37,16 @@ def read_suite(directory):
         point=dict(spec=spec,configuration=None,values=[],suite_status=spec.get('status','unknown'),status=spec.get('status','unknown'))
         path=directory/key
         if (path/'campaign.json').exists():
-            if read_json(path/'campaign.json')['status']!='finished':
+            if 'samples_executed' not in read_json(path/'campaign.json'):
                 if point['status']!='failed': point['status']='censored'
                 points[key]=point;continue
             campaign,config,samples,values=load(path)
             failure=any(s['status'] not in ('completed','censored') for s in samples)
-            incomplete=campaign['status']!='finished' or campaign['aggregate_censored'] or any(s['status']=='censored' for s in samples)
+            incomplete=campaign.get('status','finished')!='finished' or campaign['aggregate_censored'] or any(s['status']=='censored' for s in samples)
             campaign_status='failed' if failure else ('censored' if incomplete else 'completed')
             status='failed' if failure or point['suite_status']=='failed' else ('censored' if incomplete or point['suite_status']!='completed' else 'completed')
-            point.update(configuration=config,values=values,campaign_status=campaign_status,status=status)
+            point.update(configuration=config,values=values,exposure=exposure(campaign,samples),
+                         sample_paths=sample_paths(path,samples),campaign_status=campaign_status,status=status)
         elif point['status']=='completed':
             raise ValueError('completed point has no raw campaign: '+key)
         points[key]=point
@@ -54,15 +55,10 @@ def read_suite(directory):
 
 
 def values(point, metric):
-    if point is None or point['status']!='completed': return []
+    if point is None or point['status'] not in ('completed','censored'): return []
     result=[row.get(metric) for row in point['values']]
-    # Partial observations are not silently selected as a complete distribution.
+    # Every measured sample must supply the interval; never select successful cleanup only.
     return result if result and all(v is not None for v in result) else []
-
-
-def permutation_draws(points,metrics):
-    # At most three tests per point/metric: mean, distribution, adjacent scaling.
-    return max(9999,math.ceil(6*points*metrics/.05))
 
 
 def ordered(sample):
@@ -110,7 +106,7 @@ def distribution(a,b,ca,cb,draws):
     score,observed=setup(a,b)
     _,control=setup(ca,cb)
     total=len(a)+len(b); combinations=math.comb(total,len(a))
-    if combinations<=10000:
+    if combinations<=RESAMPLING_DRAWS:
         assignments=combinations;method='exact'
         hits=sum(score(indices)>=observed for indices in itertools.combinations(range(total),len(a)))
         probability=hits/combinations
@@ -123,11 +119,13 @@ def distribution(a,b,ca,cb,draws):
     return result
 
 
-def evaluate(before,after,control_a,control_b,draws=9999):
+def evaluate(before,after,control_a,control_b,draws=RESAMPLING_DRAWS):
     before,after,control_a,control_b=map(ordered,(before,after,control_a,control_b))
     result=compare_metric(before,after,draws=draws)
     result.update(control_a_n=len(control_a),control_b_n=len(control_b),
                   distribution=distribution(before,after,control_a,control_b,draws))
+    if not before or not after or not control_a or not control_b:
+        result['status']='unavailable';return result
     if min(len(control_a),len(control_b))<5:
         result['status']='uncalibrated';return result
     control=control_a+control_b
@@ -173,7 +171,7 @@ def correct(findings,alpha=.05):
                 f['status']='distribution_change'
 
 
-def scaling(before,after,control_a,control_b,draws=9999):
+def scaling(before,after,control_a,control_b,draws=RESAMPLING_DRAWS):
     """Difference of high/low means, independent basic bootstrap of four samples.
 
     The centered bootstrap approximates the sampling error of this smooth contrast;
@@ -237,11 +235,8 @@ def scaling(before,after,control_a,control_b,draws=9999):
 def compare(control_a,control_b,before,after,metrics=None):
     loaded=[read_suite(p) for p in (control_a,control_b,before,after)]
     suites=[p for _,p in loaded];keys=set().union(*(s.keys() for s in suites))
-    # Reserve at least two Monte Carlo resolution steps below the strictest
-    # possible Holm threshold for this requested family (means, distributions, slopes).
-    maximum_metrics=len(metrics) if metrics else 7
-    draws=permutation_draws(len(keys),maximum_metrics)
-    findings=[];outcomes={};specs={};outcome_layers={};selected_metrics={}
+    draws=RESAMPLING_DRAWS
+    findings=[];outcomes={};specs={};outcome_layers={};selected_metrics={};paths={}
     for key in sorted(keys):
         points=[s.get(key) for s in suites]
         outcomes[key]=[p['status'] if p else 'missing' for p in points]
@@ -253,6 +248,9 @@ def compare(control_a,control_b,before,after,metrics=None):
         spec=present[0]['spec'];specs[key]=spec
         if any(any(p['spec'].get(k)!=spec.get(k) for k in ('family','axis','value','workload')) for p in present):
             raise ValueError('point axes or workloads differ: '+key)
+        paths[key]=[p.get('sample_paths',[]) if p else [] for p in points]
+        if any(p['status']=='censored' for p in present):
+            check_exposures([p.get('exposure') for p in present])
         selected_metrics[key]=metrics or default_metrics(spec['workload'][0])
         if not metrics and configurations and configurations[0].get('diagnostics_feature'):
             selected_metrics[key] += ['allocations.total_allocated_bytes','allocations.process_peak_requested_bytes']
@@ -277,9 +275,11 @@ def compare(control_a,control_b,before,after,metrics=None):
     regressions=[f for f in findings if f['status']=='regression']
     changes=sum(f.get('distribution',{}).get('status')=='distribution_change' for f in findings)
     return dict(status='failed_evidence' if failed else ('regression' if regressions else ('incomplete_evidence' if incomplete else ('distribution_change' if changes else 'no_regression_detected'))),
+                measurement_scope='Completed measurement intervals only. With censored execution, resource costs and ratios describe observed prefixes; inspect raw work and elapsed observations before attributing adverse amplification. No unfinished source latency is compared.',
+                sample_paths=paths,
                 incomplete_evidence=incomplete,controls=[str(control_a),str(control_b)],before=str(before),after=str(after),
                 outcomes=outcomes,outcome_layers=outcome_layers,permutation_draws=draws,findings=findings,regression_count=len(regressions),distribution_change_count=changes,
-                interpretation='Mean costs use exchangeability-based permutation tests; independent ratio-of-means scaling uses approximate centered bootstrap inference. Means, distributions and scaling share one Holm family, whose error control is approximate where bootstrap p-values are used. Robust control resolution retains extremes without making one excursion a veto. Distribution changes do not establish adverse direction; maxima and exceedance counts do not establish tail rates. No signal establishes equivalence or rare-event safety. IID finite-variance sampling and well-separated-from-zero denominators are required for bootstrap accuracy; serial drift and small or heavy-tailed samples can invalidate inference.')
+                interpretation='At most 9,999 resampling draws per hypothesis; processing deadline bounds the comparison. Mean costs use exchangeability-based permutation tests; independent ratio-of-means scaling uses approximate centered bootstrap inference. Means, distributions and scaling share one Holm family, whose error control is approximate where bootstrap p-values are used. Robust control resolution retains extremes without making one excursion a veto. Distribution changes do not establish adverse direction; maxima and exceedance counts do not establish tail rates. No signal establishes equivalence or rare-event safety. IID finite-variance sampling and well-separated-from-zero denominators are required for bootstrap accuracy; serial drift and small or heavy-tailed samples can invalidate inference.')
 
 
 def main():

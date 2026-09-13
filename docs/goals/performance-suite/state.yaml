@@ -1,346 +1,49 @@
 version: 2
 goal:
   title: Complete the CHR performance suite
-  slug: performance-suite
-  kind: recovery
-  tranche: Implement the full prospective performance-risk coverage, maintained measurements, bounded regression
-    detection and independent adversarial validation.
   status: active
-  oracle:
-    signal: Maintained native commands expose plausible unobserved performance failures across the source-backed
-      risk model and correctly detect independently chosen time, memory, scaling, progress and lifecycle regressions.
-    cadence: After coherent implementation packages and independent challenges.
-    final_proof: 'All six completion-oracle clauses in goal.md have runnable reviewed evidence; no required suite
-      gaps remain; final reviewer records full_outcome_complete: true.'
-  intake:
-    original_request: Create a FULL /goal which would COMPLETE the perf suite. Use brainstorming.
-    interpreted_outcome: Anticipate future performance failures and build a validated practical suite that exposes
-      them and detects regressions as the language/runtime evolve.
-    input_shape: recovery
-    audience: CHR users and developers
-    authority: requested
-    proof_type: test
-    completion_proof: Independent challenges demonstrate prospective coverage, truthful measurement and actionable
-      detection through maintained bounded commands.
-    likely_misfire: Explaining the current slowdown, adding cases, or implementing audit counters stands in for
-      anticipating unobserved failures.
-    blind_spots_considered:
-      - Previously unobserved risks derived from semantics, algorithms, ownership and interactions
-      - Poor sensitivity and false alarms in regression detection
-      - Legal variations beyond named workloads and calibration cases
-      - Instrument distortion, censoring, external resource limits and reproducibility
-    existing_plan_facts:
-      - The user explicitly requires anticipating future failures, not organizing the goal around the current incident.
-      - Use brainstorming.
-      - Do not rerun rwLog.
-      - Avoid administrative scope growth and open-ended optimization loops.
-      - Broad mathematical uses must be considered without requiring user-supplied examples.
+  specification: goal.md
+  full_outcome_complete: false
   repository: /home/ahart/Documents/CHRImp
-rules:
-  pm_owns_state: true
-  one_active_task: true
-  max_write_workers: 1
-  no_implementation_without_worker_or_pm_task: true
-  no_completion_without_judge_or_pm_audit: true
-  planning_is_not_completion: true
-  queued_required_worker_blocks_completion: true
-  continuous_until_full_outcome: true
-  missing_input_or_credentials_do_not_stop_goal: true
-  exact_human_approval_can_terminal_wait: true
-  preserve_and_validate_existing_plan: true
-  intake_misfire_must_be_audited: true
-  goal_pressure_requires_oracle: true
-  no_completion_on_weak_proof: true
-  slice_policy:
-    max_consecutive_tiny_tasks: 2
-    prefer_vertical_slices: true
-    judge_picks_largest_safe_slice: true
-    worker_completes_whole_slice: true
-agents:
-  scout: bundled_not_installed
-  worker: bundled_not_installed
-  judge: bundled_not_installed
-visual_board:
-  selected: none
-  local:
-    status: not_requested
-    url: null
-    command: ''
-  reason: Use the native goal and compact files; a separate interface is outside the requested performance-suite
-    outcome.
-active_task: T002
-tasks:
-  - id: T001
-    type: scout
-    assignee: Scout
-    status: done
-    objective: Discover prospective performance risks from supported semantics, current implementation responsibilities
-      and interactions; establish detection questions and gap coverage beyond historical failures.
-    inputs:
-      - goal.md
-      - notes/brainstorm.md
-      - examples/measure.rs
-      - examples/measure/
-      - src/
-      - tests/
-    constraints:
-      - Follow the full goal.md outcome; no rwLog runs or unrelated engine optimization.
-      - Read-only; use independent brainstorming to challenge the risk model rather than treating existing cases
-        as the scope.
-    expected_output:
-      - Compact source-backed prospective risk-to-evidence map and independent challenge findings.
-      - Concrete bounded implementation package definitions, required verification and measurement-validity checks.
-    receipt:
-      result: done
-      summary: Independent semantics and lifecycle reviews plus lead measurement-path inspection identify prospective
-        risks and exact discriminating experiments. Implementation gaps remain open.
-      note: notes/T001-risks.md
-      evidence:
-        - src/program.rs:176 and 209; src/matching.rs; examples/measure/families.rs
-        - src/engine.rs:428; src/observe.rs:265; src/engine/inspection.rs:385; src/notebook.rs:158 and 910
-        - Independent read-only agents Godel and Popper completed source-backed risk analyses.
-  - id: T002
-    type: worker
-    assignee: Worker
-    status: active
-    objective: Implement the missing general workload strategy, semantic oracles and calibrated measurements that
-      expose prospective risks through maintained native paths.
-    inputs:
-      - goal.md
-      - T001 evidence
-      - examples/measure.rs
-      - examples/measure/
-      - src/
-      - tests/
-    constraints:
-      - Follow the full goal.md outcome; no rwLog runs or unrelated engine optimization.
-      - Lead narrows concrete write/verification scope before activation; required in-scope fixes do not require
-        new user approval.
-      - Concurrent measurement and generator work have the explicit disjoint write scopes recorded here; only the
-        lead integrates shared measure/families files after generator delivery.
-    expected_output:
-      - Runnable discriminating controls, generators, scale/interaction/lifecycle witnesses and truthful diagnostics.
-      - Independent measurement checks and observer-effect evidence.
-    receipt: null
-    allowed_files: &id001
-      - src/**
-      - examples/**
-      - tests/**
-      - Cargo.toml
-      - Cargo.lock
-      - docs/validation.md
-      - docs/performance.md
-      - .gitignore
-    verify:
-      - cargo test --offline --all-targets
-      - cargo clippy --offline --all-targets -- -D warnings
-      - cargo fmt --check
-      - Run the maintained bounded performance acceptance commands established by T001-T003; record exact commands
-        and results in the receipt.
-    stop_if:
-      - A genuine semantic/product decision cannot be established from user instructions or local evidence; continue
-        unaffected work.
-      - An external environment constraint prevents required evidence after safe alternatives are evaluated; record
-        the exact unblock.
-    write_scopes:
-      PM: examples/perf*.py, examples/profile.py, examples/measure/notebooks.rs, Python tests and docs
-      Newton: frozen; interactions integrated
-      Bohr: frozen; instrumentation integrated
-    progress: Typed core/notebook/lifecycle results and bounded repeated measurements now use commands, build settings,
-      limits and raw results. Four independently parameterized retention/concurrency workloads check held output,
-      fixed/rotating archives and concurrent unread inspections. Preparation shape/reuse/direct destruction now has bounded native cases and independent result/work/ownership
-      oracles. Fresh-production/equality/consumption cases and bounded routine/deep sweeps now run. Remaining work includes
-      representation/ownership adequacy, broader calibration/detection challenges, remaining
-      end-to-end query inventory/diagnoses and independent full-scope review. Runtime session churn/replay and
-      control-qualified cost/scaling comparisons now have maintained commands and specific sensitivity evidence.
-    evidence:
-      - 'cargo test --release --example measure: 23 passed, including generated end-to-end cases across shapes and
-        seeds.'
-      - 'cargo clippy --example measure -- -D warnings and cargo fmt --check: pass.'
-      - 'python3 -m unittest discover -s tests -p profile_test.py: 4 passed.'
-      - '/tmp/chrimp-profile-verified/profile.json: 66 samples, validated complete behavior identity profile.'
-      - '/tmp/chrimp-profile-cli/profile.json: 947 samples, validated externally censored CLI cyclic-proof profile.'
-      - Linux perf sampling works. Profiled Cargo build uses debug symbols/frame pointers; these are diagnostic
-        measurements, not baseline timing.
-      - 'cargo test --features diagnostics --test diagnostics: 9 passed; worker also ran 75 library tests with and
-        without feature.'
-      - 'cargo test --features diagnostics --example measure: 24 passed, including subprocess-isolated global allocator
-        calibration; default measure: 23 passed.'
-      - 'cargo clippy --example measure -- -D warnings and diagnostics-enabled measure clippy: pass.'
-      - Seven real workloads in /tmp/chrimp-diagnostics-calibration completed; dispatch sums and allocation/live
-        conservation hold at quiescent checkpoints.
-      - '/tmp/chrimp-diagnostics-overhead.json: alternating release runs, one warmup plus seven retained pairs for
-        rewrite128, partial-join32 and behavior I. Process-wall medians default/diagnostics 8.929/9.026, 4.087/4.586,
-        167.050/170.744 ms; substantial overlapping variation, not a precise overhead claim or minimal-observer
-        calibration.'
-      - Independent allocation/integration review found cancellation timer contamination and inadequate global-allocator
-        calibration; corrected and tested. Concurrent snapshot limitation documented explicitly.
-      - 'Baseline/--detail introduced with optional per-tick/validator clocks and collection-status observation.
-        cargo test --example measure: 23 passed; diagnostics measure: 24 passed; clippy and fmt pass.'
-      - 'python3 -m unittest discover -s tests -p measure_observation_test.py: 2 tests pass across eight real workload
-        pairs plus tick-censoring controls, preserving every repeated field and comparing complete diagnostic work
-        records.'
-      - '/tmp/chrimp-observer-counter-variation.json: four behavior-I runs differ only in collection dispatches;
-        total advance differences exactly equal collection differences. Shared-variable address ordering followed
-        by sequential Boolean pruning is a source-backed possible mechanism, not a proven cause. Material collector
-        growth detection remains outstanding.'
-      - '/tmp/chrimp-observation-overhead.json: default release binary, alternating baseline/detail, one warmup
-        and seven retained pairs. Source medians 5.896/8.222 ms rewrite128; 1.770/2.446 ms partial-join32; 132.700/146.688
-        ms behavior I. Raw ranges retained; this establishes workload-specific observer effects, not universal thresholds.'
-      - Independent review found cleanup final-time classification and cancellation report contamination plus repeated-field
-        parser loss. Fixed and mode/regression checks rerun. Adversarial wall-deadline perturbation checks remain
-        part of supervisor validation.
-      - Shared examples/supervise.py runs native commands with Linux pidfd deadlines, per-process address-space/CPU
-        and per-file limits, wait4 resource counters, original-group cleanup before leader reaping, terminal outcomes
-        and raw logs. CPU profiling uses the same implementation.
-      - 'python3 -m unittest discover -s tests -p supervise_test.py: 11 live-process tests passed: CPU/sleep/touched-memory
-        attribution, wait-propagated CPU, wall/CPU/file limits, interrupt escalation, actual original-group child
-        termination, unrelated-child preservation, CLI exit mapping and terminal launch-error reports.'
-      - 'python3 -m unittest discover -s tests -p profile_test.py: 4 passed. /tmp/chrimp-profile-supervision-final/profile.json:
-        complete, 67 samples, validated folding and process resource metadata.'
-      - Independent supervisor review identified post-reap PGID reuse risk, missing termination verification and
-        error/outcome issues; corrected. Scope explicitly limited to original process group, with launcher RSS floor,
-        per-process rather than aggregate quotas, detached processes and kernel-uninterruptible/launch caveats visible.
-        T003 must establish applicability and bounds for actual maintained campaigns, not claim arbitrary process
-        containment.
-      - 'cargo test --example measure: 25 passed; diagnostics feature: 26 passed; default clippy and fmt passed.'
-      - 'python3 -m unittest discover -s tests -p perf_test.py: 7 passed, including actual typed-count oracles,
-        repeat result preservation, aggregate censoring, contradictory success/cleanup and nonfinite-report rejection.'
-      - Four new lifecycle interaction cases completed two-run campaigns with SIZE=2, rows=3, work=24, cadence=4.
-        Typed admission/held/resumed/cleanup measurements are retained in /tmp/chrimp-campaign-life-*/campaign.json;
-        /tmp/chrimp-campaign-final-inspections validates current repeat integrity checks.
-      - Independent repeat-runner review led to stronger outcome/configuration consistency, explicit null/nonfinite
-        handling, cleanup-failure classification, aggregate processing deadline and notebook goal/censor separation.
-      - Performance tools execute the selected binary directly. Records focus on command/build/environment/limits
-        and measured outcomes, with raw stdout/stderr and typed per-sample records.
-      - 'python3 -m unittest discover -s tests -p profile_test.py: 4 passed; supervise_test.py: 11 passed.'
-      - Raw-sample median-difference comparisons use exact/seeded permutation evidence with family correction,
-        explicit failed/censored/invalid outcomes and a processing deadline. Seven comparator and seven runner
-        tests pass; review corrected statistical quantity mismatch, outcome classification and nonfinite decoding.
-      - Native VmHWM estimate has a touched-32MiB subprocess calibration; scope is native address space at result
-        emission with approximate kernel accounting. Two unchanged seven-sample rewrite512 campaigns showed no
-        qualified default-metric changes; native peak medians 6936/6932KiB. This is a benign control, not full
-        materiality/scaling or false-positive calibration. Records at /tmp/chrimp-native-rss-{a,b}.
-      - prepare-reuse/prepare-independent separate inactive rule count, head width/arity/repetition, body width/depth,
-        and sequential uses. Zero-rule/empty controls, exact residual/application and Prepared ownership checks;
-        generation/parse/prepare/use/direct destruction phases are separately measured. Three-run campaigns at
-        64 rules, 4 heads, arity4, repeats4, width16, depth8 and8uses completed; /tmp/chrimp-preparation-{reuse,independent}.
-      - Independent review corrected zero-rule generation cost, missing application oracle and phase admission
-        after deadline. Six focused preparation tests pass in release and diagnostics modes; eight runner tests,
-        seven comparator tests, clippy and fmt pass. Full default harness previously passed29 tests before three
-        focused review tests were added. Full suite calibration and prospective coverage remain incomplete.
-      - fresh-contract/fresh-unmerged independently vary groups, copies, levels and explicit query orders. Five
-        semantic/application/identity tests pass in release and diagnostics modes; native CLI test enforces complete
-        exhaustion. Exact applications follow production/contraction counts, not internal ticks or survivor identities.
-      - perf_suite.py runs bounded routine/deep selections through the existing runner, preserving raw points and
-        descriptive adjacent-axis scaling. Four suite tests plus ten runner tests pass, covering actual native sweeps,
-        zero denominators/censored gaps, admitted expiry, known failed outcomes during final reporting, malformed
-        reports and parent deadline restoration. Independent review defects were corrected; clippy/fmt pass.
-      - /tmp/chrimp-routine-first completed the initial21-point selection in36.85sec:20points each completed5samples,
-        behavior-W each of5samples censored. /tmp/chrimp-deep-interactions completed19selected interaction points
-        with3samples each in1.71sec. No calibrated regression gate is claimed; status reports execution outcomes.
-      - perf_regress.py compares suite mean costs and adjacent-size ratios against two unchanged control campaigns,
-        with robust median-drift/MAD resolution and one Holm family. Scaling uses independent bootstrap ratios; exact
-        two-sided complements and mathematically insufficient resolution are explicit. Seven regression tests pass,
-        including a1000-hypothesis signal, false-positive control and preserved suite/report failure precedence.
-      - Six native points with9repeats supplied unchanged controls and a held-out benign campaign (zero signals).
-        A real80ms startup-delay variant raised6process-wall signals, observed mean increases80-82ms. Evidence:
-        /tmp/chrimp-gate-benign-final.json and /tmp/chrimp-gate-delayed-comparison.json. These are builder calibration,
-        not the required independent unseen challenge set. Full noisy-control sensitivity remains unfinished.
-      - runtime-sessions covers retired-history and retained-completed owners independently, tiny queries, scalar
-        batch size, replay frequency and background progress. Exact answers/applications, frozen replay invariance,
-        public owner invalidation and scoped spool descriptor/file release are checked.13points with3samples each
-        completed in1.82sec at /tmp/chrimp-runtime-session-sweeps.
-      - Independent session review corrected initial-deadline failure classification and loss of already validated
-        tiny-answer progress. Four runtime session tests pass in release and diagnostics modes, including stopping
-        at the measured tiny-answer work boundary. Eleven runner tests, four suite tests, clippy/fmt pass.
-      - Heaptrack provides native allocation and peak-live-byte stacks plus a sampled heap timeline under supervised
-        recording and analysis. Known C allocation-count/byte/timeline/status controls pass; behavior-I native profile
-        validates at /tmp/chrimp-heap-final. Hardware perf counters preserve PMU exposure and unavailable values;
-        native rewrite128 completes at /tmp/chrimp-counters-native. Normal execution has no tracing.
-      - Independent detector challenges cover reordered samples, isolated control extremes, mean-preserving spikes,
-        coupled faster-time/higher-memory behavior and censoring. Eighteen detector and seven comparator tests pass.
-        Held-out native benign data remains no_regression_detected at /tmp/chrimp-gate-benign-challenged.json.
-        Approximate bootstrap inference and broader native independent challenges remain explicit open work.
-      - Independent source review identifies three material gaps: allocation records reaching comparisons,
-        scoped shared-service attribution, and conditional-reader turnover coupling. Allocation extraction/default
-        diagnostics metrics and CLI source/cancellation reports now pass focused checks. Shared-service calibration
-        and observer equivalence pass. Conditional-reader projection boundaries are repaired and all45default/46diagnostics
-        harness tests pass; largest-duration cost remains subject to declared censoring.
-      - Native independent runtime-spool interventions detect latency, touched-memory residency and their combination,
-        with no signal on the unchanged control.79observations complete in6.26seconds; evidence is
-        /tmp/chr-native-challenge/report.md. Native scaling/lifecycle challenge remains queued.
-      - Saved-query inventory exposes85queries and17unrestricted synthesis cases. All17 run through the native bounded
-        deep selection in67.58seconds:7validated prefixes and10censored. Evidence /tmp/chrimp-all-synthesis-queries.
-        No supplied witnesses replace generation. Additional independent SK/type oracle test passes.
-      - Optimized allocation calibration uses observable storage to prevent allocator-call elision and passes exact
-        live/peak/traffic checks. Raw allocation records reach explicit/default regression detection; negative,
-        boolean, missing and inconsistent byte observations are rejected. CLI cleanup and answer-preservation checks,
-        twelve native runner tests, nineteen detector tests and eight comparator tests pass.
-  - id: T003
-    type: worker
-    assignee: Worker
-    status: queued
-    objective: Implement and validate bounded routine/deep runs, actionable regression detection, reproducible comparisons
-      and the practical coverage extension path.
-    inputs:
-      - goal.md
-      - T001 evidence
-      - T002 implementation
-    constraints:
-      - Follow the full goal.md outcome; no rwLog runs or unrelated engine optimization.
-      - Lead narrows concrete write/verification scope before activation; required in-scope fixes do not require
-        new user approval.
-    expected_output:
-      - Bounded native commands, machine-readable results, meaningful failure/censoring/noise classification.
-      - Demonstrated detection sensitivity and control-case stability with compact usage/evidence.
-    receipt: null
-    allowed_files:
-      - src/**
-      - examples/**
-      - tests/**
-      - Cargo.toml
-      - Cargo.lock
-      - docs/validation.md
-      - docs/performance.md
-    verify:
-      - cargo test --offline --all-targets
-      - cargo clippy --offline --all-targets -- -D warnings
-      - cargo fmt --check
-      - Run the maintained bounded performance acceptance commands established by T001-T003; record exact commands
-        and results in the receipt.
-    stop_if:
-      - A genuine semantic/product decision cannot be established from user instructions or local evidence; continue
-        unaffected work.
-      - An external environment constraint prevents required evidence after safe alternatives are evaluated; record
-        the exact unblock.
-  - id: T004
-    type: judge
-    assignee: Judge
-    status: queued
-    objective: Independently challenge prospective coverage with unobserved hazards and review the full outcome
-      against executable evidence.
-    inputs:
-      - goal.md
-      - T001-T003 evidence
-      - Current maintained suite and changed code
-    constraints:
-      - Follow the full goal.md outcome; no rwLog runs or unrelated engine optimization.
-      - Read-only review; may run bounded checks in temporary output directories; do not implement fixes or optimize
-        the engine.
-    expected_output:
-      - Independent adversarial cases and measured regression-detection outcomes across the required risk categories.
-      - 'complete | not_complete; full_outcome_complete: true | false; exact remaining gaps.'
-      - If gaps remain, lead reactivates the relevant implementation package, repairs it and obtains fresh review.
-    receipt: null
-checks:
-  work_status: T002 implementation active; T001 evidence in notes/T001-risks.md.
-  last_verification:
-    result: pass
-    task: T002
-    commands:
-      - python3 -m unittest discover -s tests -p perf_test.py
-      - python3 -m unittest discover -s tests -p profile_test.py
-      - python3 -m unittest discover -s tests -p supervise_test.py
-      - cargo fmt --check
-      - git diff --check
+
+capabilities:
+  - Source-backed risk model spans matching, conditional graphs, preparation, output and resource lifetimes.
+  - Generated size/shape/seed controls use independent semantic, progress and resource oracles.
+  - Routine/deep native runs cover points before repetitions, with declared budgets and honest censoring.
+  - Measurements carry interval completion; censored runs retain valid resources and completed cleanup.
+  - Control-qualified timing, distribution, scaling and allocation comparisons use maintained commands.
+  - CPU/heap profiles and scoped shared-service counters localize work, allocation and retained resources.
+  - Conditional-reader cases vary ownership and duration, check projection without source progress and release.
+  - Standalone CLI diagnostics and all 17 unrestricted saved synthesis queries have native execution paths.
+
+validation:
+  package: Current coherent implementation package validated; full goal remains active.
+  diagnostics: 11 integration tests and independent conditional-work/coordinate calibration pass.
+  observer_equivalence: Graph-pruning/arena and cleanup-probe deltas explain permitted iteration variation.
+  allocation: Optimized observable allocator calibration and allocation extraction/default detection pass.
+  conditional_readers: Projection boundaries and default/diagnostics harness tests pass.
+  synthesis: 7 validated first-answer prefixes and 10 censored results; no supplied witnesses.
+  challenges: Native latency, residency and coupled interventions detected; unchanged control has no signal.
+
+remaining:
+  targeted_diagnoses:
+    status: open
+    gap: Useful maintained diagnoses of censored synthesis and expensive conditional-reader runs.
+  observer_calibration:
+    owner: Mendel
+    status: results_available
+    result: 72 samples completed across rewrite, behavior synthesis and runtime sessions.
+    limits: Sequential mode order can confound drift; seven observations per campaign limit precision.
+    evidence: /tmp/chrimp-observer-calibration/report.md
+
+evidence:
+  risk_model: notes/T001-risks.md
+  tools_and_metrics: ../../performance.md
+  native_challenges: /tmp/chr-native-challenge/report.md
+  fairness_scaling: /tmp/chr-fairness-scaling-challenge/report.md
+  fairness_scaling_scope: Relocation preserved outcomes but induced no material scaling regression.
+  censored_comparison: /tmp/chr-censored-unified-comparison.json
+  synthesis: /tmp/chrimp-all-synthesis-queries
+  observer_checks: /tmp/chrimp-observer-calibration/endpoint-work-checks.json
+  cpu_profile: /tmp/chrimp-profile-supervision-final/profile.json
+  heap_profile: /tmp/chrimp-heap-final
