@@ -63,7 +63,7 @@ visual_board:
     url: null
   reason: Use concise file state; a visual process surface does not advance this architectural
     decision.
-active_task: T004
+active_task: T005
 tasks:
   - id: T001
     type: pm
@@ -163,7 +163,7 @@ tasks:
   - id: T004
     type: pm
     assignee: PM
-    status: active
+    status: done
     objective: Select and scope a representation-lowering experiment that includes
       conditional structural normalization and actual evaluator interaction.
     inputs:
@@ -173,6 +173,49 @@ tasks:
     constraints:
       - Read-only source study; control-file updates only until prototype scope selected.
       - Do not expand the static join prototype by default.
+    agent_id: 01a09935-dd83-7411-9e01-d83f1cbd9efa
+    receipt:
+      result: done
+      summary: Scoped direct conditional normalization integrated with shared graph
+        roots, using baseline/priority/direct attribution controls. Recognized subsystem
+        becomes direct operations while other evaluator rules remain general.
+      note: notes/T004-structural-experiment.md
+      harness: codex
+  - id: T005
+    type: worker
+    assignee: Worker
+    status: active
+    objective: Implement and validate the bounded direct structural-normalization
+      experiment in an isolated worktree.
+    inputs:
+      - notes/T004-structural-experiment.md
+      - /tmp/chr-arch-structural
+    allowed_files:
+      - /tmp/chr-arch-structural/src/program.rs
+      - /tmp/chr-arch-structural/src/program/constructors.rs
+      - /tmp/chr-arch-structural/src/graph.rs
+      - /tmp/chr-arch-structural/src/graph/constructors.rs
+      - /tmp/chr-arch-structural/src/identity.rs
+      - /tmp/chr-arch-structural/src/engine.rs
+      - /tmp/chr-arch-structural/src/engine/normalization.rs
+      - /tmp/chr-arch-structural/src/wake.rs
+      - /tmp/chr-arch-structural/src/graph/prune.rs
+      - /tmp/chr-arch-structural/src/engine/collection.rs
+      - /tmp/chr-arch-structural/src/engine/cancel.rs
+      - /tmp/chr-arch-structural/src/engine/compact.rs
+      - /tmp/chr-arch-structural/src/engine/obligations.rs
+      - /tmp/chr-arch-structural/src/engine/diagnostics.rs
+      - /tmp/chr-arch-structural/examples/constructor_probe.rs
+      - /tmp/chr-arch-structural/tests/constructor_lowering.rs
+    verify:
+      - Focused recognition/normalization source-semantics tests
+      - Existing affected identity, semantics, progress, lifecycle and observation
+        tests
+      - Release build of experimental command
+    stop_if:
+      - 90-minute initial budget expires; report evidence and remaining uncertainty.
+      - A different identity or evaluator foundation is necessary; report the architectural
+        finding instead of silently expanding this package.
     agent_id: 01a09935-dd83-7411-9e01-d83f1cbd9efa
     receipt: null
   - id: T999
