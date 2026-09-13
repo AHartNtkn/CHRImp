@@ -28,6 +28,14 @@ impl Discovery {
             Self::Anchor { .. } => None,
         }
     }
+    /// Indexed visits only; direct anchors do not enumerate index candidates.
+    #[cfg(feature = "diagnostics")]
+    pub(super) fn candidate_visits(&self) -> Option<u64> {
+        match self {
+            Self::Indexed(m) => Some(m.candidate_visits()),
+            Self::Anchor { .. } => None,
+        }
+    }
     pub(super) fn tick(&mut self, graph: &Graph, arena: &mut Arena) -> MatchStatus {
         match self {
             Self::Indexed(m) => m.tick(graph, arena),

@@ -13,6 +13,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "measure/allocation.rs"]
+mod allocation;
 #[path = "measure/families.rs"]
 mod families;
 #[path = "measure/generated.rs"]
@@ -21,6 +23,7 @@ mod generated;
 mod lifecycle;
 #[path = "measure/notebooks.rs"]
 mod notebooks;
+use allocation::{Phase, during};
 use families::{Goal, Workload};
 
 type Counts = BTreeMap<String, usize>;
@@ -367,7 +370,7 @@ fn run_options(
     timeout: Duration,
 ) -> Result<bool, String> {
     // Input generation is outside timings; parsing and preparation remain charged.
-    let w = families::make(case, n, rows)?;
+    let w = during(Phase::Setup, || families::make(case, n, rows))?;
     run_workload(w, case, n, rows, prefix, max_ticks, timeout)
 }
 fn run_workload(
@@ -388,17 +391,21 @@ fn run_workload(
         w.goal = Goal::Answers(count);
     }
     let start = Instant::now();
-    let parsed_program = parse_program(&w.program).map_err(|e| format!("parse program: {e:?}"))?;
+    let parsed_program = during(Phase::Setup, || parse_program(&w.program))
+        .map_err(|e| format!("parse program: {e:?}"))?;
     let parse_program_time = start.elapsed();
     let start = Instant::now();
-    let parsed_query = parse_query(&w.query).map_err(|e| format!("parse query: {e:?}"))?;
+    let parsed_query = during(Phase::Setup, || parse_query(&w.query))
+        .map_err(|e| format!("parse query: {e:?}"))?;
     let parse_query_time = start.elapsed();
     let start = Instant::now();
-    let code =
-        Arc::new(prepare(&parsed_program, &parsed_query).map_err(|e| format!("prepare: {e:?}"))?);
+    let code = during(Phase::Setup, || {
+        prepare(&parsed_program, &parsed_query).map(Arc::new)
+    })
+    .map_err(|e| format!("prepare: {e:?}"))?;
     let prepare_time = start.elapsed();
     let start = Instant::now();
-    let mut e = Engine::new(code.clone());
+    let mut e = during(Phase::Setup, || Engine::new(code.clone()));
     let init_time = start.elapsed();
     let mut reader = Reader::default();
     let start = Instant::now();
@@ -417,16 +424,16 @@ fn run_workload(
     while ticks < max_ticks && !e.delivery_done() {
         let collecting = e.collecting();
         let tick_start = Instant::now();
-        e.advance(1);
+        during(Phase::Engine, || e.advance(1));
         max_tick = max_tick.max(tick_start.elapsed());
         ticks += 1;
         collection_ticks += u64::from(collecting || e.collecting());
-        if let Some(output) = e.take_output() {
+        if let Some(output) = during(Phase::Delivery, || e.take_output()) {
             let event_time = start.elapsed();
             first_event.get_or_insert((ticks, event_time));
             let end = matches!(output, Output::End);
             let check = Instant::now();
-            let result = reader.push(output, &e, &mut w);
+            let result = during(Phase::Validator, || reader.push(output, &e, &mut w));
             validator += check.elapsed();
             if let Err(problem) = result {
                 error = Some(problem);
@@ -492,12 +499,15 @@ fn run_workload(
     for (p, m) in peak.iter_mut().zip(before) {
         *p = (*p).max(m);
     }
+    report_diagnostics("source", &e);
     let cleanup_start = Instant::now();
-    e.cancel();
+    during(Phase::Cleanup, || e.cancel());
     let mut cleanup_ticks = 0;
     while !e.cancel_done() && cleanup_ticks < max_ticks {
-        e.advance(1);
-        e.take_output();
+        during(Phase::Cleanup, || {
+            e.advance(1);
+            e.take_output();
+        });
         cleanup_ticks += 1;
         if cleanup_ticks % 2048 == 0 && cleanup_start.elapsed() >= timeout {
             break;
@@ -534,11 +544,12 @@ fn run_workload(
         ));
     }
     let reclaimed = std::array::from_fn::<_, 13, _>(|i| before[i].saturating_sub(after[i]));
+    report_diagnostics("after_cancel", &e);
     let drop_start = Instant::now();
-    drop(e);
+    during(Phase::Cleanup, || drop(e));
     let engine_drop = drop_start.elapsed();
     let drop_start = Instant::now();
-    drop(code);
+    during(Phase::Cleanup, || drop(code));
     let prepared_drop = drop_start.elapsed();
     let success = reached && !timed_out && cleanup_done && error.is_none();
     let status = if error.is_some() {
@@ -604,6 +615,18 @@ fn run_workload(
         return Err(error);
     }
     Ok(success)
+}
+fn report_diagnostics(phase: &str, e: &Engine) {
+    #[cfg(feature = "diagnostics")]
+    {
+        let allocation = allocation::snapshot();
+        println!(
+            "diagnostics={}",
+            serde_json::json!({"phase": phase, "work": e.diagnostics(), "allocation": allocation, "memory_counts": memory(e)})
+        );
+    }
+    #[cfg(not(feature = "diagnostics"))]
+    let _ = (phase, e);
 }
 fn main() -> ExitCode {
     let args = env::args().skip(1).collect::<Vec<_>>();
@@ -736,6 +759,11 @@ fn main() -> ExitCode {
             )
         }
     })();
+    #[cfg(feature = "diagnostics")]
+    {
+        let sample = allocation::snapshot();
+        println!("allocations={}", serde_json::to_string(&sample).unwrap());
+    }
     match result {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(2),

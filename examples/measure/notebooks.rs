@@ -1,4 +1,5 @@
 //! Actual notebook workloads; only one scalar-delivered answer is retained.
+use crate::allocation::{Phase, during};
 use chr::{
     engine::Engine,
     observe::Output,
@@ -626,10 +627,11 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
     };
     let parse_time = start.elapsed();
     let start = Instant::now();
-    let code = Arc::new(prepare(&program, &query).map_err(|e| format!("prepare: {e:?}"))?);
+    let code = during(Phase::Setup, || prepare(&program, &query).map(Arc::new))
+        .map_err(|e| format!("prepare: {e:?}"))?;
     let prepare_time = start.elapsed();
     let start = Instant::now();
-    let mut e = Engine::new(code);
+    let mut e = during(Phase::Setup, || Engine::new(code));
     let init_time = start.elapsed();
     let mut reader = Reader::default();
     let mut triples = BTreeSet::new();
@@ -648,56 +650,58 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
             break;
         }
         let collecting = e.collecting();
-        e.advance(1);
+        during(Phase::Engine, || e.advance(1));
         ticks += 1;
         collection_ticks += u64::from(collecting || e.collecting());
-        while let Some(output) = e.take_output() {
+        while let Some(output) = during(Phase::Delivery, || e.take_output()) {
             let arrival = start.elapsed().saturating_sub(validator);
             first_event.get_or_insert((ticks, arrival));
             let v = Instant::now();
-            let result = reader.push(output, &e).and_then(|a| {
-                if let Some(a) = a {
-                    first_answer.get_or_insert((ticks, arrival));
-                    if kind == "lambda" {
-                        validate_lambda(&e, &a, n)?;
-                        first_answer_value.get_or_insert_with(|| {
-                            format!("Output=Original({})", root(&e, &a, "Original").unwrap())
-                        });
-                    } else if kind == "arithmetic" {
-                        for (r, _) in &a.rows {
-                            if !matches!(
-                                e.program().signatures()[*r].name.as_str(),
-                                "zero" | "succ" | "predecessor"
-                            ) {
-                                return Err("unresolved arithmetic obligation".into());
+            let result = during(Phase::Validator, || {
+                reader.push(output, &e).and_then(|a| {
+                    if let Some(a) = a {
+                        first_answer.get_or_insert((ticks, arrival));
+                        if kind == "lambda" {
+                            validate_lambda(&e, &a, n)?;
+                            first_answer_value.get_or_insert_with(|| {
+                                format!("Output=Original({})", root(&e, &a, "Original").unwrap())
+                            });
+                        } else if kind == "arithmetic" {
+                            for (r, _) in &a.rows {
+                                if !matches!(
+                                    e.program().signatures()[*r].name.as_str(),
+                                    "zero" | "succ" | "predecessor"
+                                ) {
+                                    return Err("unresolved arithmetic obligation".into());
+                                }
+                            }
+                            let xyz = [
+                                unary(&e, &a, root(&e, &a, "X")?)?,
+                                unary(&e, &a, root(&e, &a, "Y")?)?,
+                                unary(&e, &a, root(&e, &a, "Z")?)?,
+                            ];
+                            let valid = if target == "decompose" {
+                                xyz[2] == n && xyz[0].checked_add(xyz[1]) == Some(n)
+                            } else {
+                                xyz == [n, n, n.checked_mul(2).ok_or("magnitude overflow")?]
+                            };
+                            first_answer_value.get_or_insert_with(|| format!("{xyz:?}"));
+                            if !valid || !triples.insert(xyz) {
+                                return Err(format!("incorrect triple/multiplicity: {xyz:?}"));
+                            }
+                        } else {
+                            validate_synthesis(&e, &a, kind, target)?;
+                            if first_answer_value.is_none() {
+                                first_answer_value = Some(format!(
+                                    "{:?}",
+                                    term(&e, &a, root(&e, &a, "Program")?, &mut vec![])?
+                                ));
                             }
                         }
-                        let xyz = [
-                            unary(&e, &a, root(&e, &a, "X")?)?,
-                            unary(&e, &a, root(&e, &a, "Y")?)?,
-                            unary(&e, &a, root(&e, &a, "Z")?)?,
-                        ];
-                        let valid = if target == "decompose" {
-                            xyz[2] == n && xyz[0].checked_add(xyz[1]) == Some(n)
-                        } else {
-                            xyz == [n, n, n.checked_mul(2).ok_or("magnitude overflow")?]
-                        };
-                        first_answer_value.get_or_insert_with(|| format!("{xyz:?}"));
-                        if !valid || !triples.insert(xyz) {
-                            return Err(format!("incorrect triple/multiplicity: {xyz:?}"));
-                        }
-                    } else {
-                        validate_synthesis(&e, &a, kind, target)?;
-                        if first_answer_value.is_none() {
-                            first_answer_value = Some(format!(
-                                "{:?}",
-                                term(&e, &a, root(&e, &a, "Program")?, &mut vec![])?
-                            ));
-                        }
+                        answers += 1;
                     }
-                    answers += 1;
-                }
-                Ok(())
+                    Ok(())
+                })
             });
             validator += v.elapsed();
             if let Err(problem) = result {
@@ -733,17 +737,19 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
     let achieved =
         error.is_none() && answers == expected && (!finite || delivery_done) && elapsed < timeout;
     // Cleanup has its own identical budget, so source limits do not skip reclamation.
-    e.cancel();
+    crate::report_diagnostics("source", &e);
+    during(Phase::Cleanup, || e.cancel());
     let cleanup_start = Instant::now();
     let mut cleanup_ticks = 0;
     while !e.cancel_done() && cleanup_ticks < max_ticks {
         if cleanup_ticks % 2048 == 0 && cleanup_start.elapsed() >= timeout {
             break;
         }
-        e.advance(1);
+        during(Phase::Cleanup, || e.advance(1));
         cleanup_ticks += 1;
     }
     let cleanup_time = cleanup_start.elapsed();
+    crate::report_diagnostics("after_cancel", &e);
     let cleanup_done = e.cancel_done();
     let after = memory(&e);
     if e.applications() != applications {

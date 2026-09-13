@@ -3,6 +3,10 @@ mod cancel;
 mod collection;
 mod compact;
 mod coordinates;
+#[cfg(feature = "diagnostics")]
+pub mod diagnostics;
+#[cfg(feature = "diagnostics")]
+pub use diagnostics::Diagnostics;
 mod discovery;
 mod inspection;
 mod obligations;
@@ -146,6 +150,8 @@ struct Ready {
 }
 
 pub struct Engine {
+    #[cfg(feature = "diagnostics")]
+    diagnostics: Diagnostics,
     coordinates: Coordinates,
     code: Arc<Prepared>,
     graph: Graph,
@@ -201,6 +207,11 @@ impl Engine {
         let obligations = obligations::Obligations::default();
         let pending_root = obligations.empty();
         let mut e = Self {
+            #[cfg(feature = "diagnostics")]
+            diagnostics: Diagnostics {
+                rules: vec![diagnostics::RuleDiagnostics::default(); code.rules.len()],
+                ..Diagnostics::default()
+            },
             coordinates: Coordinates::default(),
             code,
             graph,
@@ -338,6 +349,11 @@ impl Engine {
     pub fn choices(&self) -> impl DoubleEndedIterator<Item = (&u64, &Birth)> {
         self.births.iter()
     }
+    /// Lifetime aggregate work counts; available only with the diagnostics feature.
+    #[cfg(feature = "diagnostics")]
+    pub fn diagnostics(&self) -> &Diagnostics {
+        &self.diagnostics
+    }
     pub fn applications(&self) -> u64 {
         self.applications
     }
@@ -362,6 +378,13 @@ impl Engine {
     fn spawn_in_epoch(&mut self, scope: Condition, task: Task, epoch: Epoch) {
         if scope == Condition::FALSE {
             return;
+        }
+        #[cfg(feature = "diagnostics")]
+        {
+            self.diagnostics.tasks_created += 1;
+            if let Task::Search(search) = &task {
+                self.diagnostics.rules[search.rule].tasks_created += 1;
+            }
         }
         let id = self.next_task;
         self.next_task = id.checked_add(1).expect("task identity exhausted");
@@ -419,6 +442,10 @@ impl Engine {
         if let Some(owner) = self.lane {
             self.requested.remove(&owner);
             if let Owner::Task(id) = owner {
+                #[cfg(feature = "diagnostics")]
+                {
+                    self.diagnostics.task_wakes += 1;
+                }
                 self.queue
                     .push_back(self.parked.remove(&id).expect("waiting task is suspended"));
             }
@@ -427,35 +454,97 @@ impl Engine {
     /// A budget counts finite continuation steps, not source answers. Zero is a no-op.
     pub fn advance(&mut self, budget: usize) {
         for _ in 0..budget {
+            #[cfg(feature = "diagnostics")]
+            {
+                self.diagnostics.advance_iterations += 1;
+            }
             if self.release_store_tick() {
+                #[cfg(feature = "diagnostics")]
+                {
+                    self.diagnostics.dispatch.store_release += 1;
+                }
                 continue;
             }
             self.coordinates.cleanup_tick();
             let service_due =
                 self.collector.is_none() && std::mem::take(&mut self.collection_yield);
             if !service_due && self.collect_heap() {
+                #[cfg(feature = "diagnostics")]
+                {
+                    self.diagnostics.dispatch.collection += 1;
+                }
                 continue;
             }
             if !self.canceled() {
                 match self.step_gate() {
                     step::Gate::Run => {}
-                    step::Gate::Yield => continue,
-                    step::Gate::Stop => break,
+                    step::Gate::Yield => {
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            self.diagnostics.dispatch.step_gate += 1;
+                        }
+                        continue;
+                    }
+                    step::Gate::Stop => {
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            self.diagnostics.dispatch.step_gate += 1;
+                        }
+                        break;
+                    }
                 }
             }
             if self.cancellation.requested {
+                #[cfg(feature = "diagnostics")]
+                let tasks_before = self.queue.len() + self.parked.len();
                 self.cancel_tick();
+                #[cfg(feature = "diagnostics")]
+                {
+                    self.diagnostics.dispatch.cancellation += 1;
+                    self.diagnostics.tasks_canceled +=
+                        (tasks_before - self.queue.len() - self.parked.len()) as u64;
+                }
             } else if !self.inspections.is_empty() && self.ticks % 4 == 3 {
+                #[cfg(feature = "diagnostics")]
+                {
+                    self.diagnostics.dispatch.inspection += 1;
+                }
                 self.service_inspection();
             } else if self.ticks % 3 == 1 && self.can_complete() {
+                #[cfg(feature = "diagnostics")]
+                {
+                    self.diagnostics.dispatch.ready += 1;
+                }
                 self.completion();
             } else if self.ticks % 3 == 2 && self.observer.is_some() && self.output.is_none() {
+                #[cfg(feature = "diagnostics")]
+                {
+                    self.diagnostics.dispatch.observer += 1;
+                }
                 self.observation();
             } else {
                 // Keep each runnable class's reserved share. Fill other slots
                 // with source work first, then completion or observation.
                 if let Some(mut task) = self.queue.pop_front() {
                     debug_assert!(!self.requested.contains(&Owner::Task(task.id)));
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        let d = &mut self.diagnostics.dispatch;
+                        let count = if task.scope == Condition::FALSE
+                            && self.lane != Some(Owner::Task(task.id))
+                        {
+                            &mut d.discard
+                        } else {
+                            match &task.task {
+                                Task::Init(_) => &mut d.init,
+                                Task::Body(_) => &mut d.body,
+                                Task::Activate { .. } => &mut d.activation,
+                                Task::Search(_) => &mut d.search,
+                                Task::Wake(_) => &mut d.wake,
+                            }
+                        };
+                        *count += 1;
+                    }
                     let done = self.task(&mut task);
                     // A runnable task can only append its own request during this tick.
                     // Handoff removes the request before requeuing a parked task.
@@ -464,6 +553,10 @@ impl Engine {
                         self.waiting.back() == Some(&Owner::Task(task.id)),
                     );
                     if done {
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            self.diagnostics.tasks_completed += 1;
+                        }
                         self.pending_root = self
                             .obligations
                             .index
@@ -472,14 +565,35 @@ impl Engine {
                             self.release_lane();
                         }
                     } else if self.waiting.back() == Some(&Owner::Task(task.id)) {
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            self.diagnostics.task_parks += 1;
+                        }
                         self.parked.insert(task.id, task);
                     } else {
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            self.diagnostics.task_requeues += 1;
+                        }
                         self.queue.push_back(task);
                     }
                 } else if self.can_complete() {
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.diagnostics.dispatch.ready += 1;
+                    }
                     self.completion();
                 } else if self.observer.is_some() && self.output.is_none() {
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.diagnostics.dispatch.observer += 1;
+                    }
                     self.observation();
+                } else {
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.diagnostics.dispatch.idle += 1;
+                    }
                 }
             }
             self.ticks = self.ticks.wrapping_add(1);
@@ -605,6 +719,10 @@ impl Engine {
             }
             Task::Search(search) => {
                 if let Some(commit) = &mut search.commit {
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.diagnostics.rules[search.rule].commit_dispatches += 1;
+                    }
                     match commit.tick(
                         &mut self.graph,
                         &mut self.arena,
@@ -612,6 +730,10 @@ impl Engine {
                         &mut self.ids,
                     ) {
                         CommitStatus::Applied(c) => {
+                            #[cfg(feature = "diagnostics")]
+                            {
+                                self.diagnostics.rules[search.rule].applied += 1;
+                            }
                             self.state = c.state;
                             self.applications += 1;
                             let app = c.application;
@@ -628,6 +750,10 @@ impl Engine {
                             self.release_lane();
                         }
                         CommitStatus::Rejected => {
+                            #[cfg(feature = "diagnostics")]
+                            {
+                                self.diagnostics.rules[search.rule].rejected += 1;
+                            }
                             search.commit = None;
                             self.release_lane();
                         }
@@ -654,6 +780,10 @@ impl Engine {
                         };
                         search.candidate.as_mut().unwrap().support = support;
                         search.transport = None;
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            self.diagnostics.rules[search.rule].commits_started += 1;
+                        }
                         search.commit = Some(
                             Commit::new(
                                 &self.graph,
@@ -669,7 +799,25 @@ impl Engine {
                     }
                     false
                 } else {
-                    match search.matches.tick(&self.graph, &mut self.arena) {
+                    #[cfg(feature = "diagnostics")]
+                    let before = search.matches.candidate_visits();
+                    let status = search.matches.tick(&self.graph, &mut self.arena);
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        let d = &mut self.diagnostics.rules[search.rule];
+                        d.matching_dispatches += 1;
+                        if let Some(before) = before {
+                            d.indexed_candidate_visits +=
+                                search.matches.candidate_visits().unwrap() - before;
+                        }
+                        if matches!(&status, MatchStatus::Found(_)) {
+                            d.found += 1;
+                            if before.is_none() {
+                                d.direct_anchor_matches += 1;
+                            }
+                        }
+                    }
+                    match status {
                         MatchStatus::Done => true,
                         MatchStatus::Pending => false,
                         MatchStatus::Found(candidate) => {
@@ -796,6 +944,10 @@ impl Engine {
             BodyPhase::Post => {
                 let update = b.update.as_mut().unwrap();
                 if let UpdateStatus::Complete(root) = update.tick(&mut self.graph) {
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.diagnostics.body_posts += 1;
+                    }
                     self.state.graph = root.clone();
                     let occurrence = update.occurrence();
                     self.finish_body_record(id);
@@ -809,6 +961,12 @@ impl Engine {
                 if let Some(root) = merge.tick(&mut self.graph, &mut self.arena) {
                     self.state.graph = root.clone();
                     let scope = merge.changed_support();
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.diagnostics.body_merges += 1;
+                        self.diagnostics.merge_support_changes +=
+                            u64::from(scope != Condition::FALSE);
+                    }
                     let delta = merge.take_delta();
                     self.finish_body_record(id);
                     self.record(SnapshotKind::Merge, self.active);
@@ -824,6 +982,11 @@ impl Engine {
             }
             BodyPhase::Fail => {
                 if let Some(active) = poll(&mut b.job, &mut self.arena) {
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.diagnostics.fail_applications += 1;
+                        self.diagnostics.fail_support_changes += u64::from(self.active != active);
+                    }
                     self.semantic_regions |= self.active != active;
                     self.active = active;
                     self.finish_body_record(id);
@@ -842,6 +1005,10 @@ impl Engine {
                     return true;
                 }
                 let (choice, decision) = self.arena.fresh_scoped_choice(b.scope);
+                #[cfg(feature = "diagnostics")]
+                {
+                    self.diagnostics.choice_births += 1;
+                }
                 b.decision = decision;
                 self.births.insert(
                     choice,
@@ -893,7 +1060,15 @@ impl Engine {
         if let Some(observer) = &mut self.observer {
             match observer.tick(&self.graph, &mut self.arena, &self.births) {
                 ObserveStatus::Pending => {}
-                ObserveStatus::Event(event) => self.output = Some(event),
+                ObserveStatus::Event(event) => {
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.diagnostics.output_events += 1;
+                        self.diagnostics.complete_answers +=
+                            u64::from(matches!(&event, Output::End));
+                    }
+                    self.output = Some(event);
+                }
                 ObserveStatus::Done => self.observer = None,
             }
         }
@@ -918,6 +1093,10 @@ impl Engine {
     fn completion(&mut self) {
         if !self.can_complete() {
             return;
+        }
+        #[cfg(feature = "diagnostics")]
+        if self.ready.is_none() {
+            self.diagnostics.certificates_started += 1;
         }
         let mut ready = self.ready.take().unwrap_or_else(|| Ready {
             epoch: self.coordinates.current(),
@@ -945,6 +1124,10 @@ impl Engine {
                         ready.blocked = c;
                     }
                 } else if let Some((_, c)) = ready.cursor.next(&self.obligations.index) {
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.diagnostics.obligation_rows_scanned += 1;
+                    }
                     ready.job = Some(self.arena.start(Operation::Or(ready.blocked, c.scope)));
                 } else {
                     ready.job = Some(
@@ -999,6 +1182,10 @@ impl Engine {
                     self.record(SnapshotKind::NormalForm, ready.scope);
                     self.semantic_regions |= self.active != c;
                     self.active = c;
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.diagnostics.certificates_published += 1;
+                    }
                     self.observer = Some(Observe::new(
                         Completion {
                             id: self.ids.event(),

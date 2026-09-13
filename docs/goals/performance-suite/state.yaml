@@ -122,7 +122,7 @@ tasks:
       - Runnable discriminating controls, generators, scale/interaction/lifecycle witnesses and truthful diagnostics.
       - Independent measurement checks and observer-effect evidence.
     receipt: null
-    allowed_files:
+    allowed_files: &id001
       - src/**
       - examples/**
       - tests/**
@@ -143,19 +143,13 @@ tasks:
       - An external environment constraint prevents required evidence after safe alternatives are evaluated; record
         the exact unblock.
     write_scopes:
-      PM:
-        - src/**
-        - examples/**
-        - tests/**
-        - Cargo.toml
-        - Cargo.lock
-        - .gitignore
-        - docs/performance.md
-    progress: Six seeded generated families and independent multiset/Boolean/freshness oracles execute through the
-      shared measure runner. Native CPU flamegraphs work for measured workloads and CLI programs, preserving raw
-      samples and validating folding. Remaining T002 work includes expanded lifetime/preparation interactions, calibrated
-      counters/allocations and minimal-observer measurements; T003 detection/runner and T004 independent challenges
-      are not complete.
+      PM: *id001
+    progress: Six seeded generated families and native CPU flamegraphs are implemented. Feature-gated per-engine
+      work diagnostics and process allocation accounting now feed core/notebook and lifecycle measurements. Calibrated
+      counters, allocator registration, live/peak accounting and report conservation pass; independent review fixes
+      are applied. Remaining T002 work includes expanded lifetime/preparation interactions, representation and ownership
+      attribution, allocation stacks, minimally observed timing and stronger observer-effect evidence. T003 runner/detection
+      and T004 independent challenges remain required.
     evidence:
       - 'cargo test --release --example measure: 23 passed, including generated end-to-end cases across shapes and
         seeds.'
@@ -165,6 +159,19 @@ tasks:
       - '/tmp/chrimp-profile-cli/profile.json: 947 samples, validated externally censored CLI cyclic-proof profile.'
       - Linux perf sampling works. Profiled Cargo build uses debug symbols/frame pointers; these are diagnostic
         measurements, not baseline timing.
+      - 'cargo test --features diagnostics --test diagnostics: 9 passed; worker also ran 75 library tests with and
+        without feature.'
+      - 'cargo test --features diagnostics --example measure: 24 passed, including subprocess-isolated global allocator
+        calibration; default measure: 23 passed.'
+      - 'cargo clippy --example measure -- -D warnings and diagnostics-enabled measure clippy: pass.'
+      - Seven real workloads in /tmp/chrimp-diagnostics-calibration completed; dispatch sums and allocation/live
+        conservation hold at quiescent checkpoints.
+      - '/tmp/chrimp-diagnostics-overhead.json: alternating release runs, one warmup plus seven retained pairs for
+        rewrite128, partial-join32 and behavior I. Process-wall medians default/diagnostics 8.929/9.026, 4.087/4.586,
+        167.050/170.744 ms; substantial overlapping variation, not a precise overhead claim or minimal-observer
+        calibration.'
+      - Independent allocation/integration review found cancellation timer contamination and inadequate global-allocator
+        calibration; corrected and tested. Concurrent snapshot limitation documented explicitly.
   - id: T003
     type: worker
     assignee: Worker
@@ -227,10 +234,8 @@ checks:
     result: pass
     task: T002
     commands:
-      - cargo test --release --example measure
-      - cargo clippy --example measure -- -D warnings
+      - cargo test --offline --features diagnostics --example measure
+      - cargo test --offline --features diagnostics --test diagnostics
+      - cargo clippy --offline --features diagnostics --example measure -- -D warnings
+      - cargo clippy --offline --example measure -- -D warnings
       - cargo fmt --check
-      - python3 -m unittest discover -s tests -p profile_test.py
-      - python3 examples/profile.py --out /tmp/chrimp-profile-verified -- notebook-behavior-i 1 50000000 15
-      - python3 examples/profile.py --cli --seconds 2 --out /tmp/chrimp-profile-cli -- examples/proofs.chr --query
-        edge(A,B,AB),edge(B,A,BA) [expected censored exit 2]

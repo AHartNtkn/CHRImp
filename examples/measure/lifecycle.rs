@@ -1,4 +1,5 @@
 //! Lifecycle probes use application milestones; runtime probes use the real API and scheduler.
+use crate::allocation::{Phase, during};
 use chr::{
     engine::{Engine, InspectionError, Memory, ViewId},
     notebook::Runtime,
@@ -30,6 +31,7 @@ struct Budget {
     maximum: Duration,
     collection_ticks: u64,
     validator: Duration,
+    phase: Phase,
 }
 impl Budget {
     fn new(limit: u64, timeout: Duration) -> Self {
@@ -41,6 +43,7 @@ impl Budget {
             maximum: Duration::ZERO,
             collection_ticks: 0,
             validator: Duration::ZERO,
+            phase: Phase::Engine,
         }
     }
     fn available(&self) -> bool {
@@ -52,7 +55,7 @@ impl Budget {
         }
         self.collection_ticks += u64::from(e.collecting());
         let t = Instant::now();
-        e.advance(1);
+        during(self.phase, || e.advance(1));
         self.maximum = self.maximum.max(t.elapsed());
         self.ticks += 1;
         true
@@ -62,7 +65,7 @@ impl Budget {
             return false;
         }
         let t = Instant::now();
-        r.tick();
+        during(self.phase, || r.tick());
         self.maximum = self.maximum.max(t.elapsed());
         self.ticks += 1;
         true
@@ -193,9 +196,11 @@ fn zero(m: Memory) -> bool {
         && m.inspections == 0
 }
 fn cancel(e: &mut Engine, limit: u64, timeout: Duration) -> bool {
+    crate::report_diagnostics("source", e);
     let mut b = Budget::new(limit, timeout);
+    b.phase = Phase::Cleanup;
     let t = Instant::now();
-    e.cancel();
+    during(Phase::Cleanup, || e.cancel());
     let request = t.elapsed();
     let apps = e.applications();
     while !e.cancel_done() && b.step(e) {}
@@ -209,10 +214,12 @@ fn cancel(e: &mut Engine, limit: u64, timeout: Duration) -> bool {
         e.cancel_done(),
         e.memory()
     );
+    crate::report_diagnostics("after_cancel", e);
     e.cancel_done()
 }
 fn release(e: &mut Engine, limit: u64, timeout: Duration) -> Result<bool, String> {
     let mut b = Budget::new(limit, timeout);
+    b.phase = Phase::Cleanup;
     // Release all registered views before sweeping their shared roots.
     loop {
         let next = e.snapshots().next().map(|s| s.id);
@@ -261,6 +268,7 @@ fn inspect(
     timeout: Duration,
 ) -> Result<bool, String> {
     let mut b = Budget::new(limit, timeout);
+    b.phase = Phase::Inspection;
     let id = e
         .start_inspection(Some(snapshot), vec![])
         .map_err(|e| e.to_string())?;
@@ -270,7 +278,7 @@ fn inspect(
         if !b.available() {
             return Ok(false);
         }
-        e.advance_inspection(id, 1).map_err(|e| e.to_string())?;
+        during(Phase::Inspection, || e.advance_inspection(id, 1)).map_err(|e| e.to_string())?;
         b.ticks += 1;
         if let Some(o) = e.take_inspection_output(id).map_err(|e| e.to_string())? {
             // Only the committed graph is part of this oracle. The chosen view
