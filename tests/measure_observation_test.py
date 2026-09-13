@@ -55,6 +55,18 @@ class ObservationTests(unittest.TestCase):
                     for category in before['dispatch']:
                         if category != 'collection':
                             self.assertEqual(before['dispatch'][category], after['dispatch'][category], category)
+                    # Address-ordered collection can change graph-pruning and
+                    # arena traversal work. Require these measured services to
+                    # explain the same difference; all other shared work matches.
+                    shared_before=before['shared'];shared_after=after['shared']
+                    delta=before['advance_iterations']-after['advance_iterations']
+                    collection_delta=sum(shared_before['collection'][phase]-shared_after['collection'][phase]
+                                         for phase in ('prune_graph','arena'))
+                    self.assertEqual(collection_delta,delta)
+                    self.assertEqual(shared_before['coordinates']['cleanup_probes']-shared_after['coordinates']['cleanup_probes'],delta)
+                    for shared in (shared_before,shared_after):
+                        for phase in ('prune_graph','arena'):shared['collection'].pop(phase)
+                        shared['coordinates'].pop('cleanup_probes')
                     for key in before:
                         if key not in ['advance_iterations', 'dispatch']:
                             self.assertEqual(before[key], after[key], key)

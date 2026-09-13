@@ -96,10 +96,14 @@ def load(directory):
     return metadata,configs[0] if configs else None,samples,completed
 
 
-def comparison(before, after, metrics):
+def comparison(before, after, metrics, observer_overhead=False):
     old,oc,os,ov=load(before);new,nc,ns,nv=load(after)
-    if oc is not None and nc is not None and oc!=nc:
-        raise ValueError('workload/observation configurations differ')
+    observation_changes={}
+    if oc is not None and nc is not None:
+        changes={k:{'before':oc.get(k),'after':nc.get(k)} for k in set(oc)|set(nc) if oc.get(k)!=nc.get(k)}
+        if changes and (not observer_overhead or set(changes)-{'detailed','diagnostics_feature'}):
+            raise ValueError('workload/observation configurations differ')
+        observation_changes=changes
     findings=assess(ov,nv,metrics)
     failed=any(s['status'] not in ('completed','censored') for s in os+ns)
     censored=any(s['status']=='censored' for s in os+ns) or old['aggregate_censored'] or new['aggregate_censored']
@@ -109,7 +113,7 @@ def comparison(before, after, metrics):
             finding['completed_subset_status']=finding['status']
             finding['status']=status
     environment={key:{'before':old.get(key),'after':new.get(key)} for key in ('host','local_rustc','build_environment') if old.get(key)!=new.get(key)}
-    return {'status':status,'environment_differences':environment,'before':str(before),'after':str(after),'configuration':oc or nc,
+    return {'status':status,'observer_overhead':observer_overhead,'observation_changes':observation_changes,'environment_differences':environment,'before':str(before),'after':str(after),'configuration':oc or nc,
             'metrics':findings,
             'before_outcomes':dict(Counter(s['status'] for s in os if not s['warmup'])),
             'after_outcomes':dict(Counter(s['status'] for s in ns if not s['warmup'])),
@@ -121,6 +125,7 @@ def main():
     parser.add_argument('before',type=Path);parser.add_argument('after',type=Path)
     parser.add_argument('--out',type=Path,required=True)
     parser.add_argument('--metric',action='append')
+    parser.add_argument('--observer-overhead',action='store_true',help='explicitly compare detailed/diagnostics modes; workload must remain identical')
     parser.add_argument('--seconds',type=float,default=30,help='comparison processing budget')
     args=parser.parse_args()
     if not math.isfinite(args.seconds) or args.seconds<=0: parser.error('positive finite --seconds required')
@@ -128,7 +133,7 @@ def main():
     signal.signal(signal.SIGALRM,deadline_signal)
     try:
         signal.setitimer(signal.ITIMER_REAL,args.seconds)
-        report=comparison(args.before,args.after,metrics)
+        report=comparison(args.before,args.after,metrics,args.observer_overhead)
     except CampaignDeadline:
         report={'status':'comparison_timeout','metrics':{},'seconds':args.seconds}
     except (ValueError,KeyError,TypeError,OSError) as error:

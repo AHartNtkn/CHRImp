@@ -74,7 +74,10 @@ def capture(command, **kwargs):
     return subprocess.run(command, cwd=ROOT, check=True, text=True, capture_output=True, timeout=60, **kwargs).stdout
 
 
-def outcome(code, limited, cli):
+def outcome(resources, cli):
+    code=resources['returncode'];limited=resources['limit_reason'] is not None
+    if not resources['group_cleanup_complete'] or (not limited and resources['descendants_signaled_after_exit']):
+        return "failed"
     if limited or (code == 2 and not cli):
         return "censored"
     return "completed" if code == 0 else "failed"
@@ -134,9 +137,7 @@ def main():
         raise
     code = resources["returncode"]
     limited = resources["limit_reason"] is not None
-    status = outcome(code, limited, args.cli)
-    if not limited and resources["descendants_signaled_after_exit"]:
-        status = "failed"
+    status = outcome(resources, args.cli)
     metadata.update(returncode=code, external_limit=limited, elapsed_seconds=resources["wall_seconds"],
                     status=status, process_resources=resources)
     meta.write_text(json.dumps(metadata, indent=2) + "\n")

@@ -55,6 +55,8 @@ impl Coordinates {
     }
     pub(super) fn transport(&self, input: Condition, from: &Epoch) -> Transport {
         Transport {
+            #[cfg(feature = "diagnostics")]
+            measured_transform: Default::default(),
             _from: from.clone(),
             next: from.id,
             target: self.current(),
@@ -142,6 +144,8 @@ impl Trace for Coordinates {
 }
 
 pub(super) struct Transport {
+    #[cfg(feature = "diagnostics")]
+    measured_transform: diagnostics::ConditionalWork,
     _from: Epoch,
     next: u64,
     target: Epoch,
@@ -156,7 +160,7 @@ impl Transport {
             return Progress::Complete(self.value);
         }
         if let Some(job) = &mut self.job {
-            if let Progress::Complete(value) = job.tick(arena) {
+            if let Progress::Complete(value) = measured_tick!(job, arena, self.measured_transform) {
                 self.value = value;
                 self.job = None;
                 self.next += 1;
@@ -775,5 +779,47 @@ mod functional_image_tests {
         while !gc.tick(&mut arena) {}
         assert!(arena.contains(image));
         drop(reader);
+    }
+}
+
+impl Engine {
+    pub(super) fn cleanup_coordinates(&mut self) -> bool {
+        #[cfg(feature = "diagnostics")]
+        let before = (
+            self.coordinates.readers.len(),
+            self.coordinates.changes.len(),
+            !self.coordinates.draining.is_empty(),
+        );
+        let done = self.coordinates.cleanup_tick();
+        #[cfg(feature = "diagnostics")]
+        {
+            let d = &mut self.diagnostics.shared.coordinates;
+            d.cleanup_probes += 1;
+            d.epochs_retired += (before.0 - self.coordinates.readers.len()) as u64;
+            d.maps_retired += (before.1 - self.coordinates.changes.len()) as u64;
+            d.assignments_drained += u64::from(before.2);
+        }
+        done
+    }
+    pub(super) fn transport_tick(&mut self, transport: &mut Transport, search: bool) -> Progress {
+        #[cfg(not(feature = "diagnostics"))]
+        let _ = search;
+        #[cfg(feature = "diagnostics")]
+        let before = transport.next;
+        let result = transport.tick(&mut self.arena, &self.coordinates);
+        #[cfg(feature = "diagnostics")]
+        {
+            let d = if search {
+                &mut self.diagnostics.shared.coordinates.search
+            } else {
+                &mut self.diagnostics.shared.coordinates.completion
+            };
+            d.calls += 1;
+            d.epochs_crossed += transport.next - before;
+            let delta = std::mem::take(&mut transport.measured_transform);
+            d.transform.calls += delta.calls;
+            d.transform.work += delta.work;
+        }
+        result
     }
 }

@@ -140,6 +140,26 @@ def sample_values(sample):
             index=occurrences[name]; occurrences[name]+=1
             grouped[f'{name}.{index}']=event['data']
         if grouped: values[kind]=grouped
+    allocations=[e['data'] for e in sample['records'] if e['kind']=='allocations']
+    if len(allocations)>1: raise ValueError('multiple final allocation records')
+    if allocations:
+        allocation=dict(allocations[0]);phases={}
+        for key in ('process_live_requested_bytes','process_peak_requested_bytes'):
+            if type(allocation.get(key)) is not int or allocation[key]<0: raise ValueError('invalid allocation gauge '+key)
+        if allocation['process_live_requested_bytes']>allocation['process_peak_requested_bytes']:
+            raise ValueError('live allocation bytes exceed peak')
+        for phase in allocation.pop('phases'):
+            name=phase['phase']
+            if not isinstance(name,str) or not name: raise ValueError('invalid allocation phase')
+            for field in ('allocations','deallocations','allocated_bytes','freed_bytes'):
+                if type(phase.get(field)) is not int or phase[field]<0: raise ValueError('invalid allocation count '+field)
+            if name in phases: raise ValueError('duplicate allocation phase '+name)
+            phases[name]={k:v for k,v in phase.items() if k!='phase'}
+        if not phases: raise ValueError('allocation phase observations missing')
+        allocation['phases']=phases
+        for field in ('allocations','deallocations','allocated_bytes','freed_bytes'):
+            allocation['total_'+field]=sum(p[field] for p in phases.values())
+        values['allocations']=allocation
     return dict(numbers(values))
 
 

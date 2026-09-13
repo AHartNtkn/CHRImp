@@ -18,8 +18,21 @@ class SuiteTests(unittest.TestCase):
         self.assertEqual(deep,suite.plan('deep',7))
         self.assertEqual(len({p['id'] for p in deep}),len(deep))
         self.assertTrue({p['family'] for p in routine}<={p['family'] for p in deep})
-        self.assertTrue({'size','heads','uses','cadence'}<={p['axis'] for p in deep})
+        self.assertTrue({'size','heads','uses','cadence','work'}<={p['axis'] for p in deep})
+        for case in ('life-held-output-conditional','life-archive-fixed-conditional','life-archive-rotate-conditional','life-inspections-conditional'):
+            self.assertEqual({p['axis'] for p in deep if p['workload'][0]==case},{'size','work'})
         self.assertTrue(all(p['risk'] for p in deep))
+
+    def test_saved_synthesis_queries_have_unrestricted_deep_cases(self):
+        inventory=suite.notebook_inventory()
+        self.assertEqual(len(inventory),85)
+        generation=[q for q in inventory if q['kind']=='unrestricted_synthesis']
+        self.assertEqual(len(generation),17)
+        planned={p['workload'][0] for p in suite.plan('deep',0)}
+        self.assertTrue(all(q['case'] in planned for q in generation))
+        self.assertTrue(all(q['name'].startswith('Synthesize ') for q in generation))
+        self.assertTrue(all(q['case'] is None for q in inventory if q['kind']!='unrestricted_synthesis'))
+        self.assertEqual(len({(q['notebook'],q['id']) for q in inventory}),85)
 
     def test_scaling_preserves_operands_and_censored_gaps(self):
         def point(value,cost,status='completed'):

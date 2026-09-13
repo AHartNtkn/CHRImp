@@ -21,7 +21,7 @@ mod interactions;
 pub mod sessions;
 pub use interactions::Options as InteractionOptions;
 
-pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive life-held-output life-archive-fixed life-archive-rotate life-inspections runtime";
+pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive life-held-output life-archive-fixed life-archive-rotate life-inspections life-held-output-conditional life-archive-fixed-conditional life-archive-rotate-conditional life-inspections-conditional runtime";
 const REWRITE: &str = "p(X) <=> q(X). q(X) <=> done(X).";
 fn ms(d: Duration) -> f64 {
     d.as_secs_f64() * 1000.0
@@ -915,7 +915,7 @@ fn run_inner(
         "lifecycle_limits apply independently to source, checkpoint collection, cancellation, inspection and release; ticks are Engine::advance(1), runtime work is scheduler turns/API reads; collection_ticks counts ticks entered with collection requested/active; timings include checks; memory is object counts, not bytes; runtime excludes HTTP/browser"
     );
     if matches!(
-        case,
+        case.strip_suffix("-conditional").unwrap_or(case),
         "life-held-output" | "life-archive-fixed" | "life-archive-rotate" | "life-inspections"
     ) {
         interactions::run(case, n, options, max_ticks, timeout)

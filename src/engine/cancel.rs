@@ -48,7 +48,7 @@ impl Engine {
             if self.release_store_tick() {
                 continue;
             }
-            let coordinates_done = self.coordinates.cleanup_tick();
+            let coordinates_done = self.cleanup_coordinates();
             if !self.collect_heap_mode(false) && coordinates_done {
                 break;
             }
@@ -147,7 +147,7 @@ impl Engine {
                 // advance services every outstanding collection before reaching
                 // here, including its leases and final root walk.
                 debug_assert!(!self.collecting());
-                if !self.coordinates.cleanup_tick() {
+                if !self.cleanup_coordinates() {
                     return;
                 }
                 self.cancellation.finished = true;

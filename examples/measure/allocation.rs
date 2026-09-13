@@ -1,6 +1,7 @@
 //! Optional requested-allocation accounting. Categories identify the code doing
 //! an allocation/free, not the owner of the resulting object. Live/peak bytes
-//! cover the entire process (including the harness); they are not RSS or the
+//! cover Rust global-allocator requests across the process (including the harness);
+//! direct foreign allocations are outside this counter. These are not RSS or the
 //! allocator's internal arena size. Reallocation records logical old/new sizes.
 #[derive(Clone, Copy)]
 #[repr(usize)]
@@ -172,7 +173,11 @@ mod enabled {
             // Exercise the installed global allocator, including a failed realloc.
             let before_global = snapshot();
             let layout = Layout::from_size_align(4096, 8).unwrap();
-            let p = super::super::during(Phase::Setup, || unsafe { std::alloc::alloc(layout) });
+            // Force an observable allocation across checkpoints: allocator calls for
+            // unused storage may legally disappear in optimized Rust builds.
+            let p = std::hint::black_box(super::super::during(Phase::Setup, || unsafe {
+                std::alloc::alloc(std::hint::black_box(layout))
+            }));
             assert!(!p.is_null());
             let allocated_global = snapshot();
             assert_eq!(

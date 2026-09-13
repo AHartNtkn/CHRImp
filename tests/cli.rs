@@ -116,3 +116,56 @@ fn notebook_default_origin_is_stable_and_port_override_is_honored() {
         format!("Notebook: http://{address}\n")
     );
 }
+
+#[test]
+fn native_query_diagnostics_are_opt_in_and_preserve_answers() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/reachability.chr");
+    let invoke = |diagnostics: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_chr"));
+        command.arg(&path).args(["--query", "edge(A,B),edge(B,C)"]);
+        if diagnostics {
+            command.arg("--diagnostics");
+        }
+        command.output().unwrap()
+    };
+    let baseline = invoke(false);
+    assert!(baseline.status.success());
+    assert!(baseline.stderr.is_empty());
+    let observed = invoke(true);
+    if cfg!(feature = "diagnostics") {
+        assert!(
+            observed.status.success(),
+            "{}",
+            String::from_utf8_lossy(&observed.stderr)
+        );
+        assert_eq!(baseline.stdout, observed.stdout);
+        let report: serde_json::Value = serde_json::from_slice(&observed.stderr).unwrap();
+        assert_eq!(report["kind"], "cli_diagnostics");
+        assert_eq!(report["source"]["work"]["complete_answers"], 1);
+        let applications: u64 = report["source"]["work"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["applied"].as_u64().unwrap())
+            .sum();
+        assert_eq!(applications, 3);
+        assert_eq!(
+            report["after_cancel"]["work"]["rules"],
+            report["source"]["work"]["rules"]
+        );
+        assert_eq!(report["after_cancel"]["pending_tasks"], 0);
+        // A live Engine owns its current coordinate epoch even after source cancellation.
+        for (name, value) in report["after_cancel"]["memory_counts"].as_object().unwrap() {
+            assert_eq!(
+                value.as_u64().unwrap(),
+                u64::from(name == "coordinate_records"),
+                "{name}"
+            );
+        }
+        assert_eq!(report["source"]["exhausted"], true);
+    } else {
+        assert_eq!(observed.status.code(), Some(2));
+        assert!(observed.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&observed.stderr).contains("--features diagnostics"));
+    }
+}

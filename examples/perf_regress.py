@@ -239,9 +239,9 @@ def compare(control_a,control_b,before,after,metrics=None):
     suites=[p for _,p in loaded];keys=set().union(*(s.keys() for s in suites))
     # Reserve at least two Monte Carlo resolution steps below the strictest
     # possible Holm threshold for this requested family (means, distributions, slopes).
-    maximum_metrics=len(metrics) if metrics else 5
+    maximum_metrics=len(metrics) if metrics else 7
     draws=permutation_draws(len(keys),maximum_metrics)
-    findings=[];outcomes={};specs={};outcome_layers={}
+    findings=[];outcomes={};specs={};outcome_layers={};selected_metrics={}
     for key in sorted(keys):
         points=[s.get(key) for s in suites]
         outcomes[key]=[p['status'] if p else 'missing' for p in points]
@@ -253,7 +253,10 @@ def compare(control_a,control_b,before,after,metrics=None):
         spec=present[0]['spec'];specs[key]=spec
         if any(any(p['spec'].get(k)!=spec.get(k) for k in ('family','axis','value','workload')) for p in present):
             raise ValueError('point axes or workloads differ: '+key)
-        for metric in metrics or default_metrics(spec['workload'][0]):
+        selected_metrics[key]=metrics or default_metrics(spec['workload'][0])
+        if not metrics and configurations and configurations[0].get('diagnostics_feature'):
+            selected_metrics[key] += ['allocations.total_allocated_bytes','allocations.process_peak_requested_bytes']
+        for metric in selected_metrics[key]:
             ca,cb,old,new=[values(p,metric) for p in points]
             finding=evaluate(old,new,ca,cb,draws=draws)
             finding.update(kind='cost',point=key,metric=metric)
@@ -263,7 +266,7 @@ def compare(control_a,control_b,before,after,metrics=None):
     for family,group in groups.items():
         group.sort(key=lambda k:specs[k]['value'])
         for low,high in itertools.pairwise(group):
-            for metric in metrics or default_metrics(specs[low]['workload'][0]):
+            for metric in selected_metrics[low]:
                 ca,cb,old,new=[(values(s.get(low),metric),values(s.get(high),metric)) for s in suites]
                 finding=scaling(old,new,ca,cb,draws=draws)
                 finding.update(kind='scaling',family=family,low=low,high=high,metric=metric)

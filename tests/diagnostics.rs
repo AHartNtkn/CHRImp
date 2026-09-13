@@ -264,3 +264,76 @@ fn inspection_dispatch_does_not_inflate_source_output() {
     );
     e.release_inspection(id).unwrap();
 }
+
+#[test]
+fn physical_maintenance_counts_actual_collection_without_source_dispatch() {
+    let mut e = engine("", "true");
+    let untouched = engine("", "true");
+    e.request_collection();
+    assert_eq!(e.diagnostics().shared.collection.started, 0);
+    for _ in 0..100_000 {
+        e.maintain(1);
+        if !e.collecting() {
+            break;
+        }
+    }
+    assert!(!e.collecting());
+    assert_eq!(e.collections(), 1);
+    let d = &e.diagnostics().shared;
+    assert_eq!(d.collection.started, 1);
+    assert_eq!(d.collection.completed, 1);
+    assert!(d.collection.arena > 0 && d.collection.graph > 0);
+    assert_eq!(d.collection.compact, 0);
+    assert_eq!(d.compaction.transform.calls, 0);
+    assert_eq!(d.coordinates.publications, 0);
+    assert_eq!(e.diagnostics().advance_iterations, 0);
+    assert_eq!(untouched.diagnostics().shared.collection.started, 0);
+    let before = e.diagnostics().clone();
+    e.maintain(0);
+    assert_eq!(e.diagnostics(), &before);
+}
+
+#[test]
+fn continuing_choice_reduction_reports_substitution_and_reclaims_coordinates() {
+    let mut e = engine("loop() <=> loop(),(fail;true).", "loop()");
+    for _ in 0..1_000_000 {
+        e.advance(1);
+        assert!(e.take_output().is_none());
+        if e.applications() >= 32 {
+            break;
+        }
+    }
+    assert!(e.applications() >= 32);
+    e.request_collection();
+    for _ in 0..1_000_000 {
+        e.advance(1);
+        assert!(e.take_output().is_none());
+        if !e.collecting() {
+            break;
+        }
+    }
+    assert!(!e.collecting());
+    let d = &e.diagnostics().shared;
+    assert!(d.compaction.choices_examined > 0);
+    assert!(d.compaction.boolean.calls > 0);
+    assert!(d.compaction.transform.calls > 0);
+    assert!(d.compaction.graph_index_steps > 0);
+    assert!(d.compaction.history_index_steps > 0);
+    assert!(d.compaction.pending_index_steps > 0);
+    assert!(d.coordinates.publications > 0 && d.coordinates.assignments_published > 0);
+    let published = d.coordinates.assignments_published;
+    let apps = e.applications();
+    e.cancel();
+    for _ in 0..1_000_000 {
+        e.advance(1);
+        if e.cancel_done() {
+            break;
+        }
+    }
+    assert!(e.cancel_done());
+    assert_eq!(e.applications(), apps);
+    assert_eq!(e.memory().coordinate_records, 1);
+    assert!(e.diagnostics().shared.coordinates.epochs_retired > 0);
+    assert!(e.diagnostics().shared.coordinates.assignments_published >= published);
+    assert_eq!(e.diagnostics().shared.unclassified_conditional_work, None);
+}

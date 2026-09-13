@@ -689,7 +689,7 @@ fn main() -> ExitCode {
             preparation::CASES
         );
         println!(
-            "Lifecycle interactions: life-held-output, life-archive-fixed, life-archive-rotate, life-inspections; SIZE counts siblings/snapshots/inspections; --rows sets residual width, --work continued applications (default 32), --cadence applications between rotations (default 1). Generated cases: {}. Options: --seed N --shape chain|ring|star|diamond|dense|random. SIZE is vertex/copy/distractor count; --rows is edge multiplicity, constraints per edge, duplicate groups or probe count. graph-bits has an exhaustive oracle limited to 16 vertices; proof-dag rejects cyclic shapes. Seed 0 is canonical order, other seeds reproducibly vary inputs and order.",
+            "Lifecycle interactions: life-held-output, life-archive-fixed, life-archive-rotate, life-inspections (each also has a -conditional variant for explicit choice turnover); SIZE counts siblings/snapshots/inspections; --rows sets residual width, --work continued applications (default 32), --cadence applications between rotations (default 1). Generated cases: {}. Options: --seed N --shape chain|ring|star|diamond|dense|random. SIZE is vertex/copy/distractor count; --rows is edge multiplicity, constraints per edge, duplicate groups or probe count. graph-bits has an exhaustive oracle limited to 16 vertices; proof-dag rejects cyclic shapes. Seed 0 is canonical order, other seeds reproducibly vary inputs and order.",
             generated::CASES
         );
         println!(
@@ -862,7 +862,7 @@ fn main() -> ExitCode {
             );
         }
         let interaction = matches!(
-            args[0].as_str(),
+            args[0].strip_suffix("-conditional").unwrap_or(&args[0]),
             "life-held-output" | "life-archive-fixed" | "life-archive-rotate" | "life-inspections"
         );
         if interaction_options && !interaction {

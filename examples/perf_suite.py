@@ -17,6 +17,26 @@ import perf
 from perf_compare import read_json
 
 
+def notebook_inventory():
+    """Saved queries, with exact unrestricted synthesis cases distinguished from other coverage."""
+    targets={'identity':'i','constant':'k','second argument':'ki','substitution':'s',
+             'composition':'b','swap arguments':'c','duplicate argument':'w',
+             'apply to a function':'t','self-application':'m'}
+    result=[]
+    for path in sorted((perf.ROOT/'examples').glob('*.chrnb')):
+        document=read_json(path)
+        for query in document['queries']:
+            name=query['name'];case=None
+            kind='saved_query'
+            if path.stem in ('type-synthesis','behavior-synthesis') and name.startswith('Synthesize '):
+                target=targets[name.removeprefix('Synthesize ')]
+                case=f"notebook-{path.stem.split('-')[0]}-{target}"
+                kind='unrestricted_synthesis'
+            result.append(dict(notebook=str(path.relative_to(perf.ROOT)),id=query['id'],name=name,
+                               kind=kind,case=case))
+    return result
+
+
 def plan(mode, seed):
     points=[]
     def sweep(name, case, axis, values, size=None, options=(), risk=''):
@@ -48,12 +68,15 @@ def plan(mode, seed):
         sweep('sessions-replay','runtime-sessions','replay-every',[0,1,4],size=4,options=('--rows',4,'--work',32,'--retained',4),risk='replay amplification with continuing work and retained owners')
         for case in ('life-held-output','life-archive-fixed','life-inspections'):
             sweep(case,case,'size',[1,4,8],options=('--rows',4,'--work',64),risk='continuing source with independent concurrent owners')
+        for case in ('life-held-output-conditional','life-archive-fixed-conditional','life-archive-rotate-conditional','life-inspections-conditional'):
+            sweep(case+'-owners',case,'size',[1,4],options=('--rows',4,'--work',64),risk='retained readers during continued explicit choice turnover')
+            sweep(case+'-duration',case,'work',[16,64,256],size=4,options=('--rows',4),risk='conditional turnover duration independent of retained owner count; pins survive and release')
         sweep('archive-cadence','life-archive-rotate','cadence',[1,4,16],size=4,options=('--rows',4,'--work',64),risk='fixed retained population versus turnover frequency')
         for order in ('grouped','interleaved','reverse'):
             sweep('fresh-copies-'+order,'fresh-contract','rows',[1,2,4,8],size=4,options=('--depth',4,'--order',order),risk='copy contraction under alternate query admission orders')
         for case in ('prepare-reuse','prepare-independent'):
             sweep(case+'-uses',case,'uses',[1,4,16],size=32,options=('--heads',4,'--arity',4,'--depth',8,'--width',8),risk='preparation reuse and session-local destruction')
-        for case in ('type-k','type-b','type-c','type-w','behavior-k','behavior-b','behavior-c','arithmetic-forward','arithmetic-reverse'):
+        for case in ('type-k','type-ki','type-s','type-b','type-c','type-w','type-t','behavior-k','behavior-ki','behavior-s','behavior-b','behavior-c','behavior-t','behavior-m','arithmetic-forward','arithmetic-reverse'):
             sweep('notebook-'+case,'notebook-'+case,'size',[1],risk='end-to-end synthesis/evaluation query coverage')
     return points
 
@@ -92,9 +115,12 @@ def main():
     parser.add_argument('--seed',type=int,default=0)
     parser.add_argument('--only',action='append',help='run selected family, repeat flag for several')
     parser.add_argument('--list',action='store_true')
+    parser.add_argument('--notebook-inventory',action='store_true',help='list saved queries and exact unrestricted synthesis cases')
     args=parser.parse_args(); budget=args.seconds if args.seconds is not None else (120 if args.mode=='routine' else 600)
     if any(not math.isfinite(v) or v<=0 for v in (budget,args.sample_seconds)) or args.repeat<=0 or args.memory_mib<=0:
         parser.error('positive finite budgets/repeats required')
+    if args.notebook_inventory:
+        print(json.dumps(notebook_inventory(),indent=2));return 0
     points=plan(args.mode,args.seed)
     if args.only:
         unknown=set(args.only)-{p['family'] for p in points}

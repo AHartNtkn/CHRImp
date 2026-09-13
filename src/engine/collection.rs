@@ -213,6 +213,10 @@ impl Engine {
             if let Some(root) = self.rule_step.as_ref().and_then(|s| s.pending_root()) {
                 pending_roots.push(root);
             }
+            #[cfg(feature = "diagnostics")]
+            {
+                self.diagnostics.shared.collection.started += 1;
+            }
             self.collector = Some(Box::new(Collection {
                 phase: if owns_lane {
                     Phase::Compact
@@ -261,6 +265,30 @@ impl Engine {
             return true;
         }
         let mut c = self.collector.take().unwrap();
+        #[cfg(feature = "diagnostics")]
+        {
+            let d = &mut self.diagnostics.shared.collection;
+            match c.phase {
+                Phase::Compact => d.compact += 1,
+                Phase::Prune => d.prune += 1,
+                Phase::Tasks => d.tasks += 1,
+                Phase::Parked => d.parked += 1,
+                Phase::Births => d.births += 1,
+                Phase::Coordinates => d.coordinates += 1,
+                Phase::Ready => d.ready += 1,
+                Phase::Observe => d.observe += 1,
+                Phase::Snapshots => d.snapshots += 1,
+                Phase::Inspections => d.inspections += 1,
+                Phase::RuleStep => d.rule_step += 1,
+                Phase::TrimBirths => d.trim_births += 1,
+                Phase::SeedVariables => d.seed_variables += 1,
+                Phase::PruneGraph => d.prune_graph += 1,
+                Phase::Graph => d.graph += 1,
+                Phase::History => d.history += 1,
+                Phase::Pending => d.pending += 1,
+                Phase::Arena => d.arena += 1,
+            }
+        }
         match c.phase {
             Phase::Compact => {
                 if c.compact.as_mut().unwrap().tick(self) {
@@ -343,7 +371,11 @@ impl Engine {
                         }
                         c.task_roots = true;
                     } else if let Some((key, job)) = &mut c.seed_job {
-                        if let Progress::Complete(support) = job.tick(&mut self.arena) {
+                        if let Progress::Complete(support) = measured_tick!(
+                            job,
+                            &mut self.arena,
+                            self.diagnostics.shared.collection.seed_boolean
+                        ) {
                             c.variable_groups.get_mut(key).expect("variable group").1 = support;
                             c.seed_job = None;
                         }
@@ -641,6 +673,10 @@ impl Engine {
     }
     fn finish_collection(&mut self, c: &Collection) {
         self.collections += 1;
+        #[cfg(feature = "diagnostics")]
+        {
+            self.diagnostics.shared.collection.completed += 1;
+        }
         self.archive.reset = false;
         if c.owns_lane {
             self.release_lane();

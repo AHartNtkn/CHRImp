@@ -13,7 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub const CASES: &str = "notebook-lambda notebook-arithmetic-forward notebook-arithmetic-reverse notebook-arithmetic-decompose notebook-type-i notebook-type-k notebook-type-b notebook-type-c notebook-type-w notebook-behavior-i notebook-behavior-k notebook-behavior-b notebook-behavior-c notebook-behavior-w";
+pub const CASES: &str = "notebook-lambda notebook-arithmetic-forward notebook-arithmetic-reverse notebook-arithmetic-decompose notebook-type-i notebook-type-k notebook-type-ki notebook-type-s notebook-type-t notebook-type-b notebook-type-c notebook-type-w notebook-behavior-i notebook-behavior-k notebook-behavior-ki notebook-behavior-s notebook-behavior-t notebook-behavior-m notebook-behavior-b notebook-behavior-c notebook-behavior-w";
 
 #[derive(Default)]
 struct Answer {
@@ -231,6 +231,13 @@ fn expectation(target: &str) -> (Vec<Term>, Term) {
     match target {
         "i" => (vec![x.clone()], x),
         "k" => (vec![x.clone(), y], x),
+        "ki" => (vec![x, y.clone()], y),
+        "s" => (
+            vec![x.clone(), y.clone(), z.clone()],
+            apps(x, [z.clone(), app(y, z)]),
+        ),
+        "t" => (vec![x.clone(), y.clone()], app(y, x)),
+        "m" => (vec![x.clone()], app(x.clone(), x)),
         "b" => (vec![x.clone(), y.clone(), z.clone()], app(x, app(y, z))),
         "c" => (vec![x.clone(), y.clone(), z.clone()], apps(x, [z, y])),
         "w" => (vec![x.clone(), y.clone()], apps(x, [y.clone(), y])),
@@ -331,6 +338,12 @@ fn target_type(target: &str) -> Ty {
     match target {
         "i" => arrow(a.clone(), a),
         "k" => arrow(a.clone(), arrow(b, a)),
+        "ki" => arrow(a, arrow(b.clone(), b)),
+        "s" => arrow(
+            arrow(a.clone(), arrow(b.clone(), c.clone())),
+            arrow(arrow(a.clone(), b), arrow(a, c)),
+        ),
+        "t" => arrow(a.clone(), arrow(arrow(a, b.clone()), b)),
         "b" => arrow(
             arrow(b.clone(), c.clone()),
             arrow(arrow(a.clone(), b), arrow(a, c)),
@@ -618,6 +631,10 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
         let index = match target {
             "i" => 0,
             "k" => 1,
+            "ki" => 2,
+            "s" => 3,
+            "t" => 7,
+            "m" if kind == "behavior" => 8,
             "b" => 4,
             "c" => 5,
             "w" => 6,
@@ -1030,6 +1047,31 @@ mod tests {
         let v = ts.fresh();
         assert!(ts.unify(v.clone(), arrow(v, Ty::Atom(0))).is_err());
     }
+    #[test]
+    fn additional_synthesis_targets_have_independent_behavior_and_type_oracles() {
+        let identity = apps(S, [K, K]);
+        let composition = apps(S, [app(K, S), K]);
+        let swap = apps(S, [apps(composition.clone(), [composition, S]), app(K, K)]);
+        for (target, witness) in [
+            ("ki", app(K, identity.clone())),
+            ("s", S),
+            ("t", app(swap, identity.clone())),
+            ("m", apps(S, [identity.clone(), identity])),
+        ] {
+            let (args, expected) = expectation(target);
+            assert_eq!(
+                reduce(apps(witness.clone(), args.clone()), &mut 100_000, 0).unwrap(),
+                expected
+            );
+            assert_ne!(reduce(apps(K, args), &mut 100_000, 0).unwrap(), expected);
+            if target != "m" {
+                let mut types = Types::default();
+                let inferred = types.infer(&witness).unwrap();
+                types.unify(inferred, target_type(target)).unwrap();
+            }
+        }
+    }
+
     #[test]
     fn lambda_measures_a_validated_first_answer_prefix() {
         assert!(run("notebook-lambda", 1, 20_000_000, Duration::from_secs(30)).unwrap());

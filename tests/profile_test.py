@@ -28,10 +28,19 @@ class ProfileTests(unittest.TestCase):
             profile.validate_samples(raw, "root;leaf 2\n")
 
     def test_cli_errors_are_not_benchmark_limit_results(self):
-        self.assertEqual(profile.outcome(2, False, True), "failed")
-        self.assertEqual(profile.outcome(2, False, False), "censored")
-        self.assertEqual(profile.outcome(130, True, True), "censored")
-        self.assertEqual(profile.outcome(0, False, True), "completed")
+        self.assertEqual(profile.outcome(dict(returncode=2,limit_reason=None,group_cleanup_complete=True,descendants_signaled_after_exit=False), True), "failed")
+        self.assertEqual(profile.outcome(dict(returncode=2,limit_reason=None,group_cleanup_complete=True,descendants_signaled_after_exit=False), False), "censored")
+        self.assertEqual(profile.outcome(dict(returncode=130,limit_reason='wall',group_cleanup_complete=True,descendants_signaled_after_exit=False), True), "censored")
+        self.assertEqual(profile.outcome(dict(returncode=0,limit_reason=None,group_cleanup_complete=True,descendants_signaled_after_exit=False), True), "completed")
+
+    def test_failed_cleanup_takes_precedence_over_a_profile_deadline(self):
+        resources=dict(returncode=130,limit_reason='wall',group_cleanup_complete=False,
+                       descendants_signaled_after_exit=True)
+        self.assertEqual(profile.outcome(resources,True),'failed')
+        resources['group_cleanup_complete']=True
+        self.assertEqual(profile.outcome(resources,True),'censored')
+        resources.update(returncode=0,limit_reason=None)
+        self.assertEqual(profile.outcome(resources,True),'failed')
 
     def test_hardware_domains_missing_counts_and_exposure_remain_distinct(self):
         def row(event,value,running):return json.dumps({'event':event,'counter-value':value,'event-runtime':123,'pcnt-running':running,'unit':''})

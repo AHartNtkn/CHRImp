@@ -1,4 +1,36 @@
 //! Cooperative execution of supported bodies, indexed discovery and CHR commits.
+// Measurement expressions disappear without diagnostics. Sample work before
+// releasing a completed job, including its final nonzero work step.
+macro_rules! measured_tick {
+    ($job:expr, $arena:expr, $counter:expr) => {{
+        let job = $job;
+        #[cfg(feature = "diagnostics")]
+        let before = job.work();
+        let result = job.tick($arena);
+        #[cfg(feature = "diagnostics")]
+        {
+            $counter.calls += 1;
+            $counter.work += job.work() - before;
+        }
+        result
+    }};
+}
+macro_rules! measured_poll {
+    ($slot:expr, $arena:expr, $counter:expr) => {{
+        let slot = $slot;
+        match measured_tick!(
+            slot.as_mut().expect("pending conditional operation"),
+            $arena,
+            $counter
+        ) {
+            Progress::Pending => None,
+            Progress::Complete(value) => {
+                *slot = None;
+                Some(value)
+            }
+        }
+    }};
+}
 mod cancel;
 mod collection;
 mod compact;
@@ -465,7 +497,7 @@ impl Engine {
                 }
                 continue;
             }
-            self.coordinates.cleanup_tick();
+            self.cleanup_coordinates();
             let service_due =
                 self.collector.is_none() && std::mem::take(&mut self.collection_yield);
             if !service_due && self.collect_heap() {
@@ -770,11 +802,8 @@ impl Engine {
                             ));
                             return false;
                         }
-                        let Progress::Complete(support) = search
-                            .transport
-                            .as_mut()
-                            .unwrap()
-                            .tick(&mut self.arena, &self.coordinates)
+                        let Progress::Complete(support) =
+                            self.transport_tick(search.transport.as_mut().unwrap(), true)
                         else {
                             return false;
                         };
@@ -1153,11 +1182,8 @@ impl Engine {
                 }
             }
             ReadyPhase::Transport => {
-                if let Progress::Complete(scope) = ready
-                    .transport
-                    .as_mut()
-                    .unwrap()
-                    .tick(&mut self.arena, &self.coordinates)
+                if let Progress::Complete(scope) =
+                    self.transport_tick(ready.transport.as_mut().unwrap(), false)
                 {
                     ready.scope = scope;
                     ready.epoch = self.coordinates.current();

@@ -52,6 +52,21 @@ class ComparisonTests(unittest.TestCase):
                 (root/'0.json').write_text(invalid)
                 with self.assertRaises(ValueError): compare.load(root)
 
+    def test_observer_comparison_allows_only_explicit_measurement_mode_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            roots=[Path(directory)/name for name in ('baseline','observed')]
+            for index,root in enumerate(roots):
+                root.mkdir();cfg=config();cfg['data']['diagnostics_feature']=bool(index)
+                (root/'campaign.json').write_text(json.dumps(dict(samples_executed=1,aggregate_censored=False)))
+                (root/'0.json').write_text(json.dumps(dict(warmup=False,status='completed',process=process(),records=[cfg,event()])))
+            with self.assertRaises(ValueError):compare.comparison(*roots,['workload.times_ms.source_delivery'])
+            report=compare.comparison(*roots,['workload.times_ms.source_delivery'],True)
+            self.assertEqual(report['observation_changes'],{'diagnostics_feature':{'before':False,'after':True}})
+            sample=json.loads((roots[1]/'0.json').read_text())
+            sample['records'][0]['data']['size']=9;sample['records'][1]['data']['size']=9
+            (roots[1]/'0.json').write_text(json.dumps(sample))
+            with self.assertRaises(ValueError):compare.comparison(*roots,['workload.times_ms.source_delivery'],True)
+
     def test_processing_deadline_is_an_explicit_outcome(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); out=root/'result.json'

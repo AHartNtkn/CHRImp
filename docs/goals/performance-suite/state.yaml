@@ -143,7 +143,9 @@ tasks:
       - An external environment constraint prevents required evidence after safe alternatives are evaluated; record
         the exact unblock.
     write_scopes:
-      PM: All allowed files; independent detector repair is integrated.
+      PM: examples/perf*.py, examples/profile.py, examples/measure/notebooks.rs, Python tests and docs
+      Newton: frozen; interactions integrated
+      Bohr: frozen; instrumentation integrated
     progress: Typed core/notebook/lifecycle results and bounded repeated measurements now use commands, build settings,
       limits and raw results. Four independently parameterized retention/concurrency workloads check held output,
       fixed/rotating archives and concurrent unread inspections. Preparation shape/reuse/direct destruction now has bounded native cases and independent result/work/ownership
@@ -260,6 +262,21 @@ tasks:
         coupled faster-time/higher-memory behavior and censoring. Eighteen detector and seven comparator tests pass.
         Held-out native benign data remains no_regression_detected at /tmp/chrimp-gate-benign-challenged.json.
         Approximate bootstrap inference and broader native independent challenges remain explicit open work.
+      - Independent source review identifies three material gaps: allocation records reaching comparisons,
+        scoped shared-service attribution, and conditional-reader turnover coupling. Allocation extraction/default
+        diagnostics metrics and CLI source/cancellation reports now pass focused checks. Shared-service calibration
+        and observer equivalence pass. Conditional-reader projection boundaries are repaired and all45default/46diagnostics
+        harness tests pass; largest-duration cost remains subject to declared censoring.
+      - Native independent runtime-spool interventions detect latency, touched-memory residency and their combination,
+        with no signal on the unchanged control.79observations complete in6.26seconds; evidence is
+        /tmp/chr-native-challenge/report.md. Native scaling/lifecycle challenge remains queued.
+      - Saved-query inventory exposes85queries and17unrestricted synthesis cases. All17 run through the native bounded
+        deep selection in67.58seconds:7validated prefixes and10censored. Evidence /tmp/chrimp-all-synthesis-queries.
+        No supplied witnesses replace generation. Additional independent SK/type oracle test passes.
+      - Optimized allocation calibration uses observable storage to prevent allocator-call elision and passes exact
+        live/peak/traffic checks. Raw allocation records reach explicit/default regression detection; negative,
+        boolean, missing and inconsistent byte observations are rejected. CLI cleanup and answer-preservation checks,
+        twelve native runner tests, nineteen detector tests and eight comparator tests pass.
   - id: T003
     type: worker
     assignee: Worker

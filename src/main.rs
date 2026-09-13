@@ -4,6 +4,7 @@ use chr::program::prepare;
 use chr::syntax::{parse_program, parse_query};
 use std::io::{self, Write};
 use std::sync::Arc;
+use std::time::Instant;
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
@@ -27,7 +28,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if path == "--help" {
         println!(
-            "Usage: chr PROGRAM.chr --query 'RELATIONS'\n\nRun a relational program and stream each answer as JSON graph events.\nUse --notebook [--port PORT] to open the browser notebook (default port: 7878)."
+            "Usage: chr PROGRAM.chr --query 'RELATIONS' [--diagnostics]\n\nRun a relational program and stream each answer as JSON graph events.\n--diagnostics writes native work/memory and phase evidence to stderr (build with --features diagnostics).\nUse --notebook [--port PORT] to open the browser notebook (default port: 7878)."
         );
         return Ok(());
     }
@@ -35,16 +36,34 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err("expected --query after the program path".into());
     }
     let query = args.next().ok_or("expected a query after --query")?;
+    let diagnostics = match args.next().as_deref() {
+        None => false,
+        Some("--diagnostics") => true,
+        _ => return Err("expected --diagnostics or end of arguments after the query".into()),
+    };
     if args.next().is_some() {
-        return Err("unexpected argument after the query".into());
+        return Err("unexpected argument after --diagnostics".into());
     }
+    if diagnostics && !cfg!(feature = "diagnostics") {
+        return Err(
+            "build with cargo build --release --features diagnostics to use --diagnostics".into(),
+        );
+    }
+    let setup = diagnostics.then(Instant::now);
     let program = parse_program(&std::fs::read_to_string(path)?)?;
     let query = parse_query(&query)?;
     let code = Arc::new(prepare(&program, &query)?);
     let mut engine = Engine::new(code);
-    execute(&mut engine, io::BufWriter::new(io::stdout().lock()))
+    execute(&mut engine, io::BufWriter::new(io::stdout().lock()), setup)
 }
-fn execute(engine: &mut Engine, mut stdout: impl Write) -> Result<(), Box<dyn std::error::Error>> {
+fn execute(
+    engine: &mut Engine,
+    mut stdout: impl Write,
+    setup: Option<Instant>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(feature = "diagnostics")]
+    let setup_ms = setup.map(|t| t.elapsed().as_secs_f64() * 1000.0);
+    let source_start = setup.map(|_| Instant::now());
     let result = (|| -> Result<(), Box<dyn std::error::Error>> {
         let code = engine.program();
         #[derive(serde::Serialize)]
@@ -76,11 +95,42 @@ fn execute(engine: &mut Engine, mut stdout: impl Write) -> Result<(), Box<dyn st
         stdout.flush()?;
         Ok(())
     })();
+    #[cfg(feature = "diagnostics")]
+    let source = source_start.map(|t| diagnostic_checkpoint(engine, t));
+    let cleanup_start = source_start.map(|_| Instant::now());
     engine.cancel();
     while !engine.cancel_done() {
         engine.advance(512);
     }
+    #[cfg(feature = "diagnostics")]
+    if let Some(start) = cleanup_start {
+        let after_cancel = diagnostic_checkpoint(engine, start);
+        let report = serde_json::json!({"schema": 1, "kind": "cli_diagnostics",
+            "load_prepare_init_ms": setup_ms, "source": source, "after_cancel": after_cancel,
+            "output_succeeded": result.is_ok(),
+            "rules": engine.program().rules().iter().map(|r| &r.name).collect::<Vec<_>>()});
+        // Reporting follows cancellation, so a closed diagnostic sink cannot bypass reclamation.
+        let written = (|| -> io::Result<()> {
+            let mut stderr = io::stderr().lock();
+            serde_json::to_writer(&mut stderr, &report)?;
+            stderr.write_all(b"\n")
+        })();
+        result?;
+        written?;
+        return Ok(());
+    }
+    #[cfg(not(feature = "diagnostics"))]
+    let _ = cleanup_start;
     result
+}
+
+#[cfg(feature = "diagnostics")]
+fn diagnostic_checkpoint(engine: &Engine, start: Instant) -> serde_json::Value {
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    serde_json::json!({"elapsed_ms": elapsed_ms, "work": engine.diagnostics(),
+        "memory_counts": engine.memory(), "pending_tasks": engine.pending_tasks(),
+        "exhausted": engine.exhausted(), "delivery_done": engine.delivery_done(),
+        "cancel_done": engine.cancel_done()})
 }
 fn main() -> std::process::ExitCode {
     match run() {
@@ -129,14 +179,14 @@ mod tests {
             let mut engine = Engine::new(code);
             if let Some((bytes, flushes)) = limit {
                 assert_eq!(
-                    execute(&mut engine, ClosedAfter(bytes, flushes))
+                    execute(&mut engine, ClosedAfter(bytes, flushes), None)
                         .unwrap_err()
                         .to_string(),
                     "closed"
                 );
             } else {
                 let mut bytes = Vec::new();
-                execute(&mut engine, &mut bytes).unwrap();
+                execute(&mut engine, &mut bytes, None).unwrap();
                 let events: Vec<serde_json::Value> = std::str::from_utf8(&bytes)
                     .unwrap()
                     .lines()

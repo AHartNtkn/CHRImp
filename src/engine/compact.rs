@@ -108,6 +108,10 @@ impl Compact {
                     None => e.births.first_key_value(),
                 };
                 if let Some((&id, birth)) = next {
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        e.diagnostics.shared.compaction.choices_examined += 1;
+                    }
                     self.choice = id;
                     self.boolean = Some(e.arena.start(Operation::And(self.active, birth.decision)));
                     self.phase = Phase::Global;
@@ -124,7 +128,11 @@ impl Compact {
                 }
             }
             Phase::Global => {
-                if let Some(scope) = poll(&mut self.boolean, &mut e.arena) {
+                if let Some(scope) = measured_poll!(
+                    &mut self.boolean,
+                    &mut e.arena,
+                    e.diagnostics.shared.compaction.boolean
+                ) {
                     if scope == Condition::FALSE || scope == self.active {
                         self.image = if scope == self.active {
                             Condition::TRUE
@@ -150,13 +158,21 @@ impl Compact {
                 }
             }
             Phase::BirthSupport => {
-                if let Some(scope) = self.transformed(&mut e.arena) {
+                if let Some(scope) = measured_poll!(
+                    &mut self.transform,
+                    &mut e.arena,
+                    e.diagnostics.shared.compaction.transform
+                ) {
                     self.boolean = Some(e.arena.start(Operation::And(self.active, scope)));
                     self.phase = Phase::Born;
                 }
             }
             Phase::Born => {
-                if let Some(scope) = poll(&mut self.boolean, &mut e.arena) {
+                if let Some(scope) = measured_poll!(
+                    &mut self.boolean,
+                    &mut e.arena,
+                    e.diagnostics.shared.compaction.boolean
+                ) {
                     if scope == Condition::FALSE {
                         e.births.remove(&self.choice);
                         self.after = Some(self.choice);
@@ -172,7 +188,11 @@ impl Compact {
                 }
             }
             Phase::Positive => {
-                if let Some(c) = poll(&mut self.boolean, &mut e.arena) {
+                if let Some(c) = measured_poll!(
+                    &mut self.boolean,
+                    &mut e.arena,
+                    e.diagnostics.shared.compaction.boolean
+                ) {
                     if c == Condition::FALSE {
                         self.image = Condition::FALSE;
                         self.reduce(e);
@@ -187,7 +207,11 @@ impl Compact {
                 }
             }
             Phase::Negative => {
-                if let Some(c) = poll(&mut self.boolean, &mut e.arena) {
+                if let Some(c) = measured_poll!(
+                    &mut self.boolean,
+                    &mut e.arena,
+                    e.diagnostics.shared.compaction.boolean
+                ) {
                     if c == Condition::FALSE {
                         self.image = Condition::TRUE;
                         self.reduce(e);
@@ -200,20 +224,32 @@ impl Compact {
                 }
             }
             Phase::ProjectPositive => {
-                if let Some(c) = self.transformed(&mut e.arena) {
+                if let Some(c) = measured_poll!(
+                    &mut self.transform,
+                    &mut e.arena,
+                    e.diagnostics.shared.compaction.transform
+                ) {
                     self.image = c;
                     self.transform = Some(e.arena.project_before(self.born, self.choice));
                     self.phase = Phase::ProjectNegative;
                 }
             }
             Phase::ProjectNegative => {
-                if let Some(c) = self.transformed(&mut e.arena) {
+                if let Some(c) = measured_poll!(
+                    &mut self.transform,
+                    &mut e.arena,
+                    e.diagnostics.shared.compaction.transform
+                ) {
                     self.boolean = Some(e.arena.start(Operation::And(self.image, c)));
                     self.phase = Phase::Disjoint;
                 }
             }
             Phase::Disjoint => {
-                if let Some(c) = poll(&mut self.boolean, &mut e.arena) {
+                if let Some(c) = measured_poll!(
+                    &mut self.boolean,
+                    &mut e.arena,
+                    e.diagnostics.shared.compaction.boolean
+                ) {
                     if c == Condition::FALSE {
                         // No older assignment permits both born arms. The positive
                         // projection is the unique value there; outside the birth
@@ -226,7 +262,11 @@ impl Compact {
                 }
             }
             Phase::Reduce => {
-                if let Some(c) = self.transformed(&mut e.arena) {
+                if let Some(c) = measured_poll!(
+                    &mut self.transform,
+                    &mut e.arena,
+                    e.diagnostics.shared.compaction.transform
+                ) {
                     self.active = c;
                     // Every temporary transform has released its assignment
                     // reference before extending the shared substitution map.
@@ -238,6 +278,10 @@ impl Compact {
                 }
             }
             Phase::Graph => {
+                #[cfg(feature = "diagnostics")]
+                {
+                    e.diagnostics.shared.compaction.graph_index_steps += 1;
+                }
                 if let Some(root) = self
                     .index
                     .as_mut()
@@ -254,6 +298,10 @@ impl Compact {
                 }
             }
             Phase::History => {
+                #[cfg(feature = "diagnostics")]
+                {
+                    e.diagnostics.shared.compaction.history_index_steps += 1;
+                }
                 if let Some(root) = self
                     .index
                     .as_mut()
@@ -270,12 +318,19 @@ impl Compact {
                 }
             }
             Phase::Pending => {
-                if let Some(root) = self
-                    .pending
-                    .as_mut()
-                    .unwrap()
-                    .tick(&mut e.obligations, &mut e.arena)
+                #[cfg(feature = "diagnostics")]
                 {
+                    e.diagnostics.shared.compaction.pending_index_steps += 1;
+                }
+                let pending = self.pending.as_mut().unwrap();
+                let result = pending.tick(&mut e.obligations, &mut e.arena);
+                #[cfg(feature = "diagnostics")]
+                {
+                    let delta = std::mem::take(&mut pending.measured_transform);
+                    e.diagnostics.shared.compaction.pending_transform.calls += delta.calls;
+                    e.diagnostics.shared.compaction.pending_transform.work += delta.work;
+                }
+                if let Some(root) = result {
                     self.pending_root = root;
                     self.pending = None;
                     self.phase = Phase::Tasks;
@@ -299,7 +354,11 @@ impl Compact {
                         self.transform =
                             Some(e.arena.substitute(scheduled.scope, self.bindings.clone()));
                         self.slot = 1;
-                    } else if let Some(c) = self.transformed(&mut e.arena) {
+                    } else if let Some(c) = measured_poll!(
+                        &mut self.transform,
+                        &mut e.arena,
+                        e.diagnostics.shared.compaction.transform
+                    ) {
                         scheduled.scope = c;
                         if let Task::Body(body) = &mut scheduled.task {
                             debug_assert!(
@@ -339,11 +398,19 @@ impl Compact {
                             Some(e.arena.substitute(birth.support, self.bindings.clone()));
                         self.slot = 1;
                     } else if self.slot == 1 {
-                        if let Some(c) = self.transformed(&mut e.arena) {
+                        if let Some(c) = measured_poll!(
+                            &mut self.transform,
+                            &mut e.arena,
+                            e.diagnostics.shared.compaction.transform
+                        ) {
                             self.boolean = Some(e.arena.start(Operation::And(c, self.active)));
                             self.slot = 2;
                         }
-                    } else if let Some(c) = poll(&mut self.boolean, &mut e.arena) {
+                    } else if let Some(c) = measured_poll!(
+                        &mut self.boolean,
+                        &mut e.arena,
+                        e.diagnostics.shared.compaction.boolean
+                    ) {
                         if c == Condition::FALSE {
                             e.births.remove(&id);
                         } else {
@@ -361,6 +428,12 @@ impl Compact {
                 e.active = self.active;
                 e.pending_root = self.pending_root.clone();
                 if !self.bindings.is_empty() {
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        e.diagnostics.shared.coordinates.publications += 1;
+                        e.diagnostics.shared.coordinates.assignments_published +=
+                            self.bindings.len() as u64;
+                    }
                     e.coordinates.publish(self.bindings.clone());
                 }
                 return true;
@@ -374,14 +447,5 @@ impl Compact {
             Arc::new(BTreeMap::from([(self.choice, self.image)])),
         ));
         self.phase = Phase::Reduce;
-    }
-    fn transformed(&mut self, arena: &mut Arena) -> Option<Condition> {
-        match self.transform.as_mut().unwrap().tick(arena) {
-            Progress::Pending => None,
-            Progress::Complete(c) => {
-                self.transform = None;
-                Some(c)
-            }
-        }
     }
 }

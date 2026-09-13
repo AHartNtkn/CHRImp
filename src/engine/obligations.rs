@@ -110,6 +110,8 @@ impl Obligations {
         assignments: Arc<BTreeMap<u64, Condition>>,
     ) -> Substitution {
         Substitution {
+            #[cfg(feature = "diagnostics")]
+            measured_transform: Default::default(),
             input: root.clone(),
             filter: self.index.filter(root),
             assignments: Some(assignments),
@@ -158,6 +160,8 @@ impl Obligations {
 /// A staged cofactor of certificate and syntax supports. Changed descriptors
 /// get fresh identities; input versions remain immutable even in this epoch.
 pub(super) struct Substitution {
+    #[cfg(feature = "diagnostics")]
+    pub(super) measured_transform: diagnostics::ConditionalWork,
     input: Root,
     filter: crate::store::Filter<Pending>,
     assignments: Option<Arc<BTreeMap<u64, Condition>>>,
@@ -239,7 +243,7 @@ impl Substitution {
                 let scope = if let Some(&value) = self.memo.get(&input) {
                     value
                 } else if let Some(condition) = &mut self.condition {
-                    match condition.tick(arena) {
+                    match measured_tick!(condition, arena, self.measured_transform) {
                         Progress::Pending => return None,
                         Progress::Complete(value) => {
                             self.memo.insert(input, value);

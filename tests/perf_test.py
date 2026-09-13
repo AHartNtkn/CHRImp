@@ -56,6 +56,30 @@ class CampaignTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 perf.records('measurement={"schema":1,"kind":"result","data":{"duration":'+number+'}}')
 
+    def test_allocation_traffic_and_live_bytes_reach_comparisons_by_named_phase(self):
+        allocation=dict(schema=1,kind='allocations',data=dict(process_live_requested_bytes=32,
+            process_peak_requested_bytes=128,phases=[dict(phase='engine',allocations=3,deallocations=2,
+            allocated_bytes=192,freed_bytes=160),dict(phase='cleanup',allocations=0,deallocations=1,
+            allocated_bytes=0,freed_bytes=32)]))
+        sample=dict(warmup=False,status='completed',process=process(),records=[event(),allocation])
+        values=perf.sample_values(sample)
+        self.assertEqual(values['allocations.process_peak_requested_bytes'],128)
+        self.assertEqual(values['allocations.phases.engine.allocated_bytes'],192)
+        self.assertEqual(values['allocations.phases.cleanup.freed_bytes'],32)
+        self.assertEqual(values['allocations.total_allocated_bytes'],192)
+        allocation['data']['phases'].reverse()
+        self.assertEqual(values,perf.sample_values(sample))
+        self.assertEqual(perf.summary([sample])['metrics']['allocations.total_allocated_bytes']['median'],192)
+        for invalid in (-1,True,None):
+            allocation['data']['phases'][0]['allocated_bytes']=invalid
+            with self.assertRaises(ValueError):perf.sample_values(sample)
+        allocation['data']['phases'][0]['allocated_bytes']=0
+        allocation['data']['process_live_requested_bytes']=129
+        with self.assertRaises(ValueError):perf.sample_values(sample)
+        allocation['data']['process_live_requested_bytes']=32
+        sample['records'].append(allocation)
+        with self.assertRaises(ValueError):perf.sample_values(sample)
+
     def test_censored_and_warmup_samples_never_become_success_timings(self):
         samples=[dict(warmup=False,status='completed',process=process(),records=[event()]),
                  dict(warmup=False,status='censored',records=[]),dict(warmup=True,status='completed',process=process(),records=[event()])]

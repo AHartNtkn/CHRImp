@@ -52,6 +52,27 @@ class RegressionTests(unittest.TestCase):
             self.assertEqual(report['status'],'failed_evidence')
             self.assertEqual(report['outcome_layers']['rewrite-8'][0],dict(suite='failed',campaign='completed'))
 
+    def test_allocation_growth_uses_raw_campaign_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            suites=[]
+            for name,multiplier in [('ca',1),('cb',1),('before',1),('after',4)]:
+                root=Path(tmp)/name;point=root/'rewrite-8';point.mkdir(parents=True);suites.append(root)
+                (root/'suite.json').write_text(json.dumps(dict(status='completed',points=[dict(id='rewrite-8',status='completed',family='rewrite',axis='size',value=8,workload=['rewrite','8'])])))
+                (point/'campaign.json').write_text(json.dumps(dict(status='finished',samples_executed=9,aggregate_censored=False)))
+                for i in range(9):
+                    cfg=config();cfg['data']['diagnostics_feature']=True
+                    allocation=dict(schema=1,kind='allocations',data=dict(process_live_requested_bytes=0,
+                        process_peak_requested_bytes=1048576*multiplier,phases=[dict(phase='engine',
+                        allocations=1,deallocations=1,allocated_bytes=1048576*multiplier,freed_bytes=1048576*multiplier)]))
+                    (point/f'{i}.json').write_text(json.dumps(dict(status='completed',warmup=False,process=process(),records=[cfg,event(),allocation])))
+            report=regress.compare(*suites,['allocations.total_allocated_bytes','allocations.process_peak_requested_bytes'])
+            self.assertEqual(report['status'],'regression')
+            self.assertEqual(report['regression_count'],2)
+            defaults=regress.compare(*suites)
+            allocation_findings=[f for f in defaults['findings'] if f['metric'].startswith('allocations.')]
+            self.assertEqual(len(allocation_findings),2)
+            self.assertTrue(all(f['status']=='regression' for f in allocation_findings))
+
     def test_noise_controls_prevent_small_qualified_change_becoming_regression(self):
         base=[10.]*9;after=[10.1]*9
         finding=regress.evaluate(base,after,[9.8]*9,[10.2]*9)

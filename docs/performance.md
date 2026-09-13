@@ -1,6 +1,6 @@
 # Performance tools
 
-Run measurements from `/home/ahart/Documents/CHRImp`. The full suite goal remains active; calibrated regression detection, expanded lifecycle coverage and independent challenges are still being implemented.
+Run measurements from `/home/ahart/Documents/CHRImp`. The full suite goal remains active; independent native challenges and remaining shared-service/lifecycle coverage are in progress.
 
 ## CPU flame graphs
 
@@ -57,7 +57,7 @@ target/release/examples/measure notebook-behavior-i 1 50000000 15
 target/release/examples/measure notebook-behavior-i 1 50000000 15 --detail
 ```
 
-Default observation records phase totals, first-event/first-answer latency and periodic budget/memory checks. `--detail` additionally measures per-step maximum latency where supported, validator duration and collection-status samples. Both modes execute the same workload and all semantic validators. Unmeasured detail-only fields are `null`, not zero. First-event fields retain the existing `Some`/`None` textual notation until structured results are integrated. `source_delivery_ms` includes validation; the separately reported subtraction exists only in detailed mode. First-answer latency is elapsed time before validation of its final event, including work to handle preceding events.
+Default observation records phase totals, first-event/first-answer latency and periodic budget/memory checks. `--detail` additionally measures per-step maximum latency where supported, validator duration and collection-status samples. Both modes execute the same workload and all semantic validators. Unmeasured detail-only fields are `null`, not zero. Typed records expose first-event measurements directly; the display text is for reading. `source_delivery_ms` includes validation; the separately reported subtraction exists only in detailed mode. First-answer latency is elapsed time before validation of its final event, including work to handle preceding events.
 
 Lifecycle deadline checks occur every 2048 work units and at phase completion; they cannot preempt one engine or API call. Lifecycle memory peaks are sampled every 2048 ticks and at application milestones in baseline mode, every source tick in detailed mode. External supervision is still required for stuck calls, output and destruction. Detailed observation and the allocation/work `diagnostics` build feature are independent; baseline timing uses neither. Mode identity and feature status are printed in each command result.
 
@@ -86,7 +86,7 @@ Allocation JSON records process-wide successful allocation/reallocation counts, 
 
 The final `allocations=` JSON is sampled after the workload function returns, before serializing that report and before process shutdown. Earlier reports contribute allocation traffic to subsequent checkpoints. Snapshots are consistent at quiescent single-thread checkpoints; atomics make counting safe across threads but do not make simultaneous counter reads an atomic snapshot. Engine object-count checkpoints remain available alongside byte accounting.
 
-The `diagnostics` feature compiles engine counters and the measure allocator in. Default builds contain neither; these instrumented timings require observer-overhead calibration and must not be substituted for baseline timing. Allocation stack attribution, full ownership timelines, and baseline/detailed comparisons remain outstanding suite work.
+The `diagnostics` feature compiles engine counters and the measure allocator in. Default builds contain neither; these instrumented timings require observer-overhead calibration and must not be substituted for baseline timing. CPU and heap profiles provide source attribution, while scoped lifetime workloads check resource release. Broader observer calibration and coupled ownership stresses remain open.
 
 ## External limits and process resources
 
@@ -115,7 +115,7 @@ python3 -m unittest discover -s tests -p perf_test.py
 
 The repeat command builds before timing unless `--binary` selects an existing binary. It records the command, toolchain, host, build environment, revision and dirty-tree status. Prebuilt binary build flags remain unavailable. One warmup is the default; every warmup, unsuccessful sample and completed sample retains stdout/stderr plus an atomically published typed `<index>.json` record. `campaign.json` records outcome counts and completed-sample median, range, median absolute deviation, sample count and missing-value count. Unavailable values remain null. Censored runs never become completed timing samples; their raw observations remain available.
 
-`measurement=` lines are versioned JSON emitted directly from measured values. Configuration, result, diagnostics, allocations and lifecycle phase records are separate; named memory gauges replace positional interpretation. The runner does not scrape display text and rejects missing/duplicate/inconsistent final results. Per-phase and per-rule diagnostic summaries retain scope; cumulative checkpoints must not be summed as exclusive work. The aggregate sample budget reserves interrupt/cleanup grace and can end before the requested repeat count, reported as aggregate censoring. A campaign alarm also bounds parsing and summarization; processing interrupted by that deadline retains a censored record and raw output. Prebuilt-binary toolchain/source details are explicitly unverified local context. Build has a separate five-minute cap. This repeat command is infrastructure for routine/deep comparisons; calibrated regression decisions and campaign selection remain unfinished and are explicitly reported as not performed.
+`measurement=` lines are versioned JSON emitted directly from measured values. Configuration, result, diagnostics, allocations and lifecycle phase records are separate; named memory gauges replace positional interpretation. The runner does not scrape display text and rejects missing/duplicate/inconsistent final results. Per-phase and per-rule diagnostic summaries retain scope; cumulative checkpoints must not be summed as exclusive work. The aggregate sample budget reserves interrupt/cleanup grace and can end before the requested repeat count, reported as aggregate censoring. A campaign alarm also bounds parsing and summarization; processing interrupted by that deadline retains a censored record and raw output. Prebuilt-binary toolchain/source details are explicitly unverified local context. Build has a separate five-minute cap. This repeat command is infrastructure for routine/deep comparisons; the separate suite and regression commands below provide campaign selection and calibrated comparisons; this command reports regression assessment as not performed.
 
 ## Retention and concurrency interactions
 
@@ -246,3 +246,63 @@ python3 examples/profile.py --counters --cli --out /tmp/chr-cli-counters -- exam
 ```
 
 This uses the same native build/supervision path as CPU sampling, with perf instruction, cycle, cache-miss, branch and branch-miss events. Raw perf JSON and typed counter records retain event/PMU names, event runtime and running percentage. Unsupported or uncounted events remain null; they are not zero. Values may be scaled by perf. In particular, this host has separate atom/core PMUs: migration can split exposure, so the report preserves those domains and does not invent an aggregate IPC or sum their scaled counts. Counts include native setup, validation, delivery and cleanup; they are not logical engine work. The `rewrite 128` native check completed with available hardware events.
+
+## Saved notebook coverage
+
+```sh
+python3 examples/perf_suite.py deep --notebook-inventory
+python3 examples/perf_suite.py deep --only notebook-type-s --only notebook-behavior-m --out /tmp/saved-synthesis
+```
+
+The inventory reads all 85 saved queries directly from the four notebook files. It maps all 17 unrestricted synthesis queries to exact native measurement cases: eight type-directed targets and nine behavior-directed targets. `i`, `k`, `ki`, `s`, `b`, `c`, `w`, `t`, and behavior-only `m` denote identity, constant, second argument, substitution, composition, swap, duplication, application to a function, and self-application. Each case executes the saved query without supplying a witness. Independent SK reduction checks each delivered program; type cases additionally use independent finite-simple-type inference. Size requests an answer prefix, with budget exhaustion kept censored.
+
+Other saved queries remain visibly classified as `saved_query`, with no claim of an exact performance case. Arithmetic magnitude/direction and nested lambda identities have separate generated performance cases. Saved arithmetic, lambda, and supplied-program synthesis checks live in `tests/notebook_arithmetic.rs`, `tests/notebook_lambda.rs`, and `tests/notebook_synthesis.rs`; those semantic tests are not substituted for unrestricted-search timing.
+
+## Comparing allocation costs
+
+Diagnostics campaigns expose `allocations.total_allocated_bytes`, `allocations.process_peak_requested_bytes`, and `allocations.phases.<phase>.allocated_bytes` (plus allocations, deallocations and freed bytes). Phase names remain stable if emission order changes. Totals sum exclusive executing-code categories. Live/peak values cover Rust global-allocator requests across the process, including the harness; direct foreign allocations, allocator arena overhead and retaining-owner identity are outside this counter. Cumulative checkpoints remain separate observations and are not summed into traffic totals.
+
+```sh
+python3 examples/perf_regress.py /tmp/control-a /tmp/control-b /tmp/before /tmp/after --metric allocations.total_allocated_bytes --metric allocations.process_peak_requested_bytes --out /tmp/alloc-regressions.json
+```
+
+Default regression comparisons include total requested allocation traffic and the requested-byte peak when the campaigns use the diagnostics feature. Baseline campaigns do not claim these observations. The raw-record control checks that a fourfold allocation increase reaches both explicit and default detection paths, including phase reordering and malformed duplicate records.
+
+## Work diagnostics for arbitrary native queries
+
+```sh
+cargo build --offline --release --features diagnostics --bin chr
+target/release/chr examples/reachability.chr --query 'edge(A,B),edge(B,C)' --diagnostics
+```
+
+Answers use the ordinary stdout graph stream. The optional stderr JSON report contains source and after-cancellation work/memory checkpoints, rule names, source completion, and phase durations. Work is cumulative over this one Engine; subtract checkpoints for cleanup work. Source elapsed includes output writes and flushing; load/prepare/init includes file reading. Diagnostic serialization and final Rust value destruction are outside these phase clocks. Cancellation finishes before diagnostic output is written, including when the answer sink failed. A still-live Engine retains its current coordinate epoch after cancellation; this is visible separately from released execution objects.
+
+This report is emitted when execution returns, not periodically. An externally terminated continuing query can therefore lack it; CPU/heap profiling still provides bounded evidence for those inputs. Builds without the diagnostics feature reject the flag before evaluation. Ordinary execution requests no diagnostic clocks or report.
+
+## Independent native detection challenge
+
+The existing runtime-session workload detected independently introduced spool-read delay, a touched 64 MiB mapping retained through execution, and their combination. Twelve measured samples per variant preserved the workload's exact output/progress/resource checks. Tiny-answer median latency increased from 3.62 to 16.66 ms; process peak RSS from 4,496 to 70,002 KiB. Each intervention signaled regression, and the bracketing unchanged control signaled none. All 79 observations including feasibility and warmups completed in 6.26 seconds of summed native execution.
+
+The temporary interposer affected real native reads and preserved returned data. These observations establish latency/residency sensitivity and a coupled control, not an engine leak, allocator-accounting calibration, scaling proof, or rare-event rate. Raw local evidence is in `/tmp/chr-native-challenge`; routine use requires only the maintained commands.
+
+Shared-service diagnostics separate entered collection phases, compaction-owned Boolean/transform work, persistent-index substitution steps, coordinate publications/retirements, and search/completion coordinate transport. Counters include cancellation and explicit maintenance. Nested operation work is a subset of the enclosing service and cannot be summed as exclusive CPU time. Conditional work outside those measured responsibilities remains explicitly unavailable; CPU and heap stacks provide broader source attribution. Calibration checks actual physical maintenance, conditional compaction and coordinate retirement. Observer checks require the measured graph-pruning/arena traversal difference to account for the permitted collection-iteration difference.
+
+Observer costs can be compared explicitly while holding the workload fixed:
+
+```sh
+python3 examples/perf_compare.py /tmp/baseline /tmp/detailed --observer-overhead --metric workload.times_ms.source_delivery --out /tmp/observer-cost.json
+```
+
+Only `detailed` and `diagnostics_feature` may differ in this mode; query size, inputs, budgets and other configuration still must match. The report lists observation changes and retains raw distributions. Ordinary comparisons reject mode changes. An observed ratio describes those workloads and samples, not a universal instrumentation surcharge.
+
+The all-target synthesis selection completed in 67.58 seconds with one warmup and one measured sample per query: seven validated first-answer prefixes and ten censored samples at the declared limits. These establish execution/oracle coverage and preserve expensive searches, not stable timing estimates. Local results are in `/tmp/chrimp-all-synthesis-queries`.
+
+## Conditional turnover with retained readers
+
+```sh
+python3 examples/perf_suite.py deep --only life-archive-rotate-conditional-owners --only life-archive-rotate-conditional-duration --out /tmp/conditional-readers
+```
+
+The four lifecycle interaction cases also accept `-conditional`: held output, fixed archive, rotating archive, and partly unread inspectors. Owner-count and continuing-work sweeps vary independently. Snapshot/inspection cases keep a fixed relational payload while a nullary rewrite creates explicit choices with a known surviving arm. Projection selects that surviving prefix; it does not enumerate unfinished failing histories. Archives overlap capture and release, while inspector cases release the snapshot handle so inspectors themselves must retain the old state.
+
+The oracles verify exact committed payloads, newly born choices, retained choice pins through collection, reader completion, and release while the source is still live. Projection-only draining after the declared source-work prefix must perform zero additional source applications. The report separates admitted, held, resumed, and unpinned phases, followed by cancellation and final reclamation. Work and snapshot lifetimes can legitimately amplify inspection/reclamation cost; larger cases retain honest censoring at their declared limits.
