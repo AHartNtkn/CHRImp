@@ -63,7 +63,7 @@ visual_board:
     url: null
   reason: Use concise file state; a visual process surface does not advance this architectural
     decision.
-active_task: T003
+active_task: T004
 tasks:
   - id: T001
     type: pm
@@ -122,7 +122,7 @@ tasks:
   - id: T003
     type: worker
     assignee: Worker
-    status: active
+    status: done
     objective: Implement a bounded source-driven comparison of whole-head feasibility
       and on-demand query plans in an isolated prototype; test correctness before
       timing.
@@ -140,8 +140,41 @@ tasks:
         uncertainty, no automatic extension.'
       - Supporting the hypothesis requires full engine integration; do not expand
         prototype silently.
-    receipt: null
+    receipt:
+      result: done
+      changed_files:
+        - /tmp/chr-arch-whole-head/examples/arch_whole_head.rs
+      commands:
+        - cmd: cargo test --offline --release --example arch_whole_head (9 tests)
+          status: pass
+        - cmd: cargo build --offline --release --example arch_whole_head
+          status: pass
+        - cmd: 'Bounded supervisor campaign: all 55 completed observations exact;
+            five Engine observations honestly censored'
+          status: pass
+      summary: Whole-head feasibility avoids 16.8 million candidates with 258 probes
+        at n256; ~142x total-process gain over on-demand in same executor. No benefit
+        established on connected/dense controls; general maintained views not justified
+        by this static result.
+      note: notes/T003-comparison.md
+      commit: c95cc9f6b9231c84f67564930327e198fdc79ddd
+      harness: codex
     agent_id: 01a09936-4ec2-79e3-bbb2-56c93f31bc24
+  - id: T004
+    type: pm
+    assignee: PM
+    status: active
+    objective: Select and scope a representation-lowering experiment that includes
+      conditional structural normalization and actual evaluator interaction.
+    inputs:
+      - notes/T001-hypotheses.md
+      - notes/T003-comparison.md
+      - Targeted Curie code-level feasibility study
+    constraints:
+      - Read-only source study; control-file updates only until prototype scope selected.
+      - Do not expand the static join prototype by default.
+    agent_id: 01a09935-dd83-7411-9e01-d83f1cbd9efa
+    receipt: null
   - id: T999
     type: pm
     assignee: PM
