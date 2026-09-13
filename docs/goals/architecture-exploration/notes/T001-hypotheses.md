@@ -34,3 +34,21 @@ Budget for this initial discriminator: at most 30 minutes implementation/validat
 Advance to a bounded whole-head prototype if the baseline demonstrates substantial avoidable scaling (superlinear work while the empty component needs linear inspection) and a source-driven alternative can include its own setup/maintenance costs. Compare against an improved on-demand plan as well, so a simple plan improvement is not misattributed to a new architecture. If the baseline avoids the proposed excess, reject this witness as grounds for that prototype and select the next high-value uncertainty. Either result changes the decision.
 
 A complete prototype comparison must subsequently include invalidation by explicit equality and consuming rules before claiming a robust foundation. Those become required only if this hypothesis advances, not because they appeared in research notes.
+
+## Stronger compiler region established during T003
+
+A follow-up inspection of all 59 behavior-synthesis rules identified a materially stronger opportunity than exclusive control fusion. The first 45 rules are nine consistency rules and all 36 pairwise clashes for nine structural-description relations. Their source rules enforce at most one consistent description per root identity within each alternative. The other 14 rules retain these descriptions, except a consuming interaction that fails. A legal chosen schedule normalizes descriptions after posting or merging, before evaluator use. Each consistency step consumes an occurrence and introduces only finitely many field equalities, so finite-store normalization terminates even with cyclic fields; it still needs fair suspension.
+
+A compiler can derive conditional attachments and same-description field merging directly from this complete rule subsystem. This would avoid generic multihead discovery and commitment for those 45 rules. Conditional support, merge maintenance, consumer wakeups, residual descriptions and evaluator search remain real costs. Equal shapes do not merge their root identities. This is a program-derived representation opportunity, not built-in structural syntax.
+
+Existing evidence was reused rather than running another campaign: /tmp/chrimp-observer-calibration/diagnostics-behavior/1.stdout, the source checkpoint for unrestricted identity synthesis. Its 59 rule records align with the current notebook ordering. The first 45 rules account for:
+
+| Counter | Subsystem | All rules | Share |
+|---|---:|---:|---:|
+| Matching dispatches | 147570 | 215115 | 68.6% |
+| Indexed candidate visits | 4221 | 6037 | 69.9% |
+| Tasks created | 3350 | 4776 | 70.1% |
+| Committed applications | 35 | 383 | 9.1% |
+| Commitment dispatches | 1978 | 16543 | 12.0% |
+
+These are work counts, not CPU proportions or predicted savings. They establish that most matching effort in this observation concerns the lowerable subsystem despite relatively few successful applications. The next representation experiment should include conditional field merging that enables evaluator matching, cycles, and the actual unrestricted synthesis query. A general scheduler with normalization priority is the attribution control; otherwise early-failure scheduling gains could be mistaken for representation savings. This is a promising next candidate, not an added mandatory implementation independent of the exploration decision.
