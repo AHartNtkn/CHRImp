@@ -20,12 +20,18 @@ from supervise import run
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def finite_float(value):
+    number = float(value)
+    if not math.isfinite(number): raise ValueError("nonfinite JSON number: "+value)
+    return number
+
+
 def records(text):
     result = []
     for line in text.splitlines():
         if not line.startswith('measurement='):
             continue
-        record = json.loads(line[len('measurement='):], parse_constant=lambda value: (_ for _ in ()).throw(ValueError('nonfinite JSON number: '+value)))
+        record = json.loads(line[len('measurement='):], parse_float=finite_float, parse_constant=lambda value: (_ for _ in ()).throw(ValueError('nonfinite JSON number: '+value)))
         if not isinstance(record,dict) or record.get('schema') != 1 or not isinstance(record.get('kind'), str) or not isinstance(record.get('data'),dict):
             raise ValueError('invalid measurement record')
         result.append(record)
@@ -104,22 +110,26 @@ def deadline_signal(*_):
     raise CampaignDeadline('aggregate deadline reached during campaign work')
 
 
+def sample_values(sample):
+    result = next(e['data'] for e in sample['records'] if e['kind'] == 'result')
+    values = {'process': {k:v for k,v in sample['process'].items() if k not in ('limits', 'returncode', 'descendant_pids')}, 'workload':{k:result[k] for k in ('times_ms','work','memory_counts','first_event','first_answer','source_exhausted','native_peak_rss_estimate_kib') if k in result}}
+    for kind in ('phase','diagnostics'):
+        occurrences=Counter()
+        grouped={}
+        for event in sample['records']:
+            if event['kind'] != kind: continue
+            name=event['data'].get('phase','unnamed')
+            index=occurrences[name]; occurrences[name]+=1
+            grouped[f'{name}.{index}']=event['data']
+        if grouped: values[kind]=grouped
+    return dict(numbers(values))
+
+
 def summary(samples):
     usable = [s for s in samples if not s['warmup'] and s['status'] == 'completed']
     metrics = {}
     for sample in usable:
-        result = next(e['data'] for e in sample['records'] if e['kind'] == 'result')
-        values = {'process': {k:v for k,v in sample['process'].items() if k not in ('limits', 'returncode', 'descendant_pids')}, 'workload':{k:result[k] for k in ('times_ms','work','memory_counts','first_event','first_answer','source_exhausted') if k in result}}
-        for kind in ('phase','diagnostics'):
-            occurrences=Counter()
-            grouped={}
-            for event in sample['records']:
-                if event['kind'] != kind: continue
-                name=event['data'].get('phase','unnamed')
-                index=occurrences[name]; occurrences[name]+=1
-                grouped[f'{name}.{index}']=event['data']
-            if grouped: values[kind]=grouped
-        for key, value in numbers(values):
+        for key, value in sample_values(sample).items():
             metrics.setdefault(key, [])
             if value is not None: metrics[key].append(value)
     return {'counts':dict(Counter(s['status'] for s in samples if not s['warmup'])),
@@ -170,8 +180,8 @@ def main():
     samples=[]; inflight=None; started=time.monotonic()
     aggregate_deadline=False
     previous_handler=signal.signal(signal.SIGALRM,deadline_signal)
-    signal.setitimer(signal.ITIMER_REAL,args.total_seconds)
     try:
+        signal.setitimer(signal.ITIMER_REAL,args.total_seconds)
         for index in range(args.warmup+args.repeat):
             remaining=args.total_seconds-(time.monotonic()-started)
             # Reserve the supervisor's interrupt and original-group cleanup grace.

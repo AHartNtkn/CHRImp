@@ -127,3 +127,19 @@ target/release/examples/measure life-inspections 2 5000000 5 --rows 3 --work 24
 ```
 
 SIZE varies continuing siblings, retained snapshots, or concurrent inspections. `--rows` controls committed residual width; `--work` continued applications; `--cadence` the application interval between archive replacements. Snapshot admission may require additional source applications; actual work is recorded, so milestones are lower bounds. Held output pauses consumption after Begin while the source continues, then validates the full answer. Inspections remain partly unread during continued work. Fixed and rotating archives inspect their retained committed multisets, then release ownership. Pending syntax is outside the committed-view oracle. Every case checks source progress and eventual cleanup; none enables default history retention.
+
+## Comparing repeated measurements
+
+```sh
+python3 examples/perf_compare.py /tmp/before /tmp/after --out /tmp/comparison.json
+python3 examples/perf_compare.py /tmp/before /tmp/after --out /tmp/work-change.json --metric workload.work.ticks
+python3 -m unittest discover -s tests -p perf_compare_test.py
+```
+
+The comparator consumes raw campaign samples with matching workload/observation configurations. It reports median changes, ranges and counts, using a two-sided permutation test of absolute median differences with Holm correction across the requested metrics. Up to 10,000 assignments are enumerated exactly; larger tests use 9,999 seeded permutations with the conservative plus-one estimator. Fewer than five observations per side means insufficient evidence; missing values remain unavailable. The default processing budget is 30 seconds (`--seconds`). Failures, censoring, invalid records and comparison timeouts have distinct outcomes; completed subsets cannot establish the outcome of an incomplete campaign. Raw sample outcomes determine counts.
+
+An increase/decrease is statistical change evidence, not a material regression verdict. Exchangeability/independence assumptions can fail under machine drift or ordered execution; uncertainty does not establish equivalence. Materiality, scaling policy and broad control calibration remain required suite work. Exit 0 means the comparison was calculated, not that performance passed an acceptance gate; exit 1 means failed/invalid evidence and exit 2 means censoring or a processing deadline.
+
+The native result includes `native_peak_rss_estimate_kib`, read once at final-result emission from Linux `/proc/self/status` VmHWM. This covers the native harness address space through that point, including parsing, validation, allocator overhead and reporting so far; it excludes the launcher address space before exec. It remains null when unavailable. [Linux documents VmHWM as approximate](https://man7.org/linux/man-pages/man5/proc_pid_status.5.html); the estimate can move slightly downward as accounting updates. A subprocess calibration touches 32 MiB and verifies both held and released observations expose at least 30 MiB above baseline. This tests a material signal, not exact byte accuracy. Wait4 RSS remains separate launcher-inclusive evidence. Requested-allocation peaks provide a different, precisely defined measurement under diagnostics.
+
+Two unchanged seven-sample `rewrite 512` campaigns gave native peak medians 6,936 and 6,932 KiB, with ranges 6,888–7,084 and 6,816–7,084 KiB. No default metric showed a statistically qualified change; source-delivery medians were 24.84 and 25.68 ms. This is one local benign control, not full false-positive calibration or a universal noise bound.

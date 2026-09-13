@@ -49,7 +49,7 @@ class CampaignTests(unittest.TestCase):
             self.assertEqual(perf.classify(process(),[config(),row],'rewrite'),'report_error')
         bad=process(-9,'censored');bad['group_cleanup_complete']=False
         self.assertEqual(perf.classify(bad,[],'rewrite'),'cleanup_failure')
-        for number in ['NaN','Infinity','-Infinity']:
+        for number in ['NaN','Infinity','-Infinity','1e400']:
             with self.assertRaises(ValueError):
                 perf.records('measurement={"schema":1,"kind":"result","data":{"duration":'+number+'}}')
 

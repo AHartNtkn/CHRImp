@@ -143,7 +143,8 @@ tasks:
       - An external environment constraint prevents required evidence after safe alternatives are evaluated; record
         the exact unblock.
     write_scopes:
-      PM: *id001
+      PM: All allowed files except examples/measure/preparation.rs
+      Mendel: examples/measure/preparation.rs (preparation shape, reuse and destruction workloads)
     progress: Typed core/notebook/lifecycle results and bounded repeated measurements now use commands, build settings,
       limits and raw results. Four independently parameterized retention/concurrency workloads check held output,
       fixed/rotating archives and concurrent unread inspections. Remaining work includes preparation/fresh-production
@@ -210,6 +211,13 @@ tasks:
       - Performance tools execute the selected binary directly. Records focus on command/build/environment/limits
         and measured outcomes, with raw stdout/stderr and typed per-sample records.
       - 'python3 -m unittest discover -s tests -p profile_test.py: 4 passed; supervise_test.py: 11 passed.'
+      - Raw-sample median-difference comparisons use exact/seeded permutation evidence with family correction,
+        explicit failed/censored/invalid outcomes and a processing deadline. Seven comparator and seven runner
+        tests pass; review corrected statistical quantity mismatch, outcome classification and nonfinite decoding.
+      - Native VmHWM estimate has a touched-32MiB subprocess calibration; scope is native address space at result
+        emission with approximate kernel accounting. Two unchanged seven-sample rewrite512 campaigns showed no
+        qualified default-metric changes; native peak medians 6936/6932KiB. This is a benign control, not full
+        materiality/scaling or false-positive calibration. Records at /tmp/chrimp-native-rss-{a,b}.
   - id: T003
     type: worker
     assignee: Worker
