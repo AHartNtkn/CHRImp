@@ -1,5 +1,6 @@
 //! Persistent remaining expressions, independent of scheduler continuations.
 use super::*;
+use crate::condition::cleanup_substitution;
 type Root = crate::store::Root<Pending>;
 use crate::identity::{Resolve, ResolveStatus};
 use crate::observe::ExpressionKind;
@@ -180,17 +181,7 @@ impl Substitution {
         std::iter::once(self.input.clone()).chain(self.filter.roots())
     }
     fn cleanup_tick(&mut self) -> bool {
-        if self.memo.pop_first().is_some() {
-            return false;
-        }
-        if let Some(assignments) = self.assignments.take() {
-            if let Some(assignments) = Arc::into_inner(assignments) {
-                self.draining = assignments;
-            }
-            return false;
-        }
-        self.draining.pop_first();
-        self.draining.is_empty()
+        cleanup_substitution(&mut self.memo, &mut self.assignments, &mut self.draining)
     }
     /// One filter/Boolean/cleanup transition, or an atomic descriptor+leaf
     /// publication. Keep source work frozen and publish only the complete root.

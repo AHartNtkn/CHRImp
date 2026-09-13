@@ -1,7 +1,8 @@
 //! Budgeted substitution of a persistent condition-valued index.
 
 use super::{Filter, FilterStatus, Root, Store};
-use crate::condition::{Arena, Condition, Progress, Transform};
+use crate::condition::{Arena, Condition, Progress, Transform, cleanup_substitution};
+use crate::gc::discard_slot;
 use crate::trace::{Cursor, Step, Trace};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -73,17 +74,7 @@ impl Substitution {
     }
 
     fn cleanup_tick(&mut self) -> bool {
-        if self.memo.pop_first().is_some() {
-            return false;
-        }
-        if let Some(bindings) = self.bindings.take() {
-            if let Some(bindings) = Arc::into_inner(bindings) {
-                self.draining = bindings;
-            }
-            return false;
-        }
-        self.draining.pop_first();
-        self.draining.is_empty()
+        cleanup_substitution(&mut self.memo, &mut self.bindings, &mut self.draining)
     }
 
     /// Cancel without traversing another leaf or evaluating another substitution.
@@ -93,16 +84,10 @@ impl Substitution {
         self.filter = None; // Filter frames are bounded scalar index handles.
         self.result = None;
         self.operand = Condition::FALSE;
-        if let Some(boolean) = &mut self.boolean {
-            if boolean.discard_tick() {
-                self.boolean = None;
-            }
+        if discard_slot(&mut self.boolean, |child| child.discard_tick()) {
             return false;
         }
-        if let Some(guard) = &mut self.arena_guard {
-            if guard.discard_tick() {
-                self.arena_guard = None;
-            }
+        if discard_slot(&mut self.arena_guard, |child| child.discard_tick()) {
             return false;
         }
         self.done = self.cleanup_tick();

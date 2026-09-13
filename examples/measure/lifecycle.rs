@@ -1,6 +1,6 @@
 //! Lifecycle probes use application milestones; runtime probes use the real API and scheduler.
 use crate::allocation::{Phase, during};
-use crate::observation;
+use crate::{ms, observation};
 use chr::{
     engine::{Engine, InspectionError, Memory, ViewId},
     notebook::Runtime,
@@ -23,9 +23,6 @@ pub use interactions::Options as InteractionOptions;
 
 pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive life-held-output life-archive-fixed life-archive-rotate life-inspections life-held-output-conditional life-archive-fixed-conditional life-archive-rotate-conditional life-inspections-conditional runtime";
 const REWRITE: &str = "p(X) <=> q(X). q(X) <=> done(X).";
-fn ms(d: Duration) -> f64 {
-    d.as_secs_f64() * 1000.0
-}
 fn check(ok: bool, why: &str) -> Result<(), String> {
     if ok { Ok(()) } else { Err(why.into()) }
 }

@@ -24,10 +24,10 @@
 //! Setup/source share one work/time budget. Cleanup gets a separate equal budget
 //! and also runs after censoring/errors. Work counts requests plus scheduler
 //! turns. Synchronous requests/ticks/drop still need external supervision.
-use super::{Budget, Reader, check, event, ms};
+use super::{Budget, Reader, check, event};
 use crate::{
     allocation::{Phase, during},
-    observation,
+    ms, observation,
 };
 use chr::{
     notebook::{Response, Runtime},

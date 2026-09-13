@@ -80,9 +80,7 @@ def assess(before, after, metrics, alpha=.05):
 
 
 def read_json(path):
-    def invalid(value):
-        raise ValueError('nonfinite JSON number: '+value)
-    return json.loads(path.read_text(), parse_constant=invalid, parse_float=finite_float)
+    return json.loads(path.read_text(), parse_constant=finite_float, parse_float=finite_float)
 
 
 def load(directory):

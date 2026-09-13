@@ -282,16 +282,5 @@ impl Constructors {
         {
             ts.retain(|(r, _)| !self.rules.contains(r));
         }
-        let ends = |ts: &Vec<Vec<(usize, usize)>>| {
-            ts.iter()
-                .map(|ts| {
-                    ts.iter()
-                        .rposition(|(r, _)| !result.rules[*r].direct_anchor())
-                        .map_or(0, |i| i + 1)
-                })
-                .collect()
-        };
-        result.indexed_end = ends(&result.triggers);
-        result.merge_indexed_end = ends(&result.merge_triggers);
     }
 }

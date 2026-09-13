@@ -1,6 +1,6 @@
 //! Actual notebook workloads; only one scalar-delivered answer is retained.
 use crate::allocation::{Phase, during};
-use crate::observation;
+use crate::{memory, ms, observation};
 use chr::{
     engine::Engine,
     observe::Output,
@@ -566,29 +566,6 @@ fn validate_lambda(e: &Engine, a: &Answer, n: usize) -> Result<(), String> {
         ));
     }
     Ok(())
-}
-
-fn memory(e: &Engine) -> [usize; 14] {
-    let m = e.memory();
-    [
-        m.graph_nodes,
-        m.occurrences,
-        m.conditions,
-        m.history_nodes,
-        m.history_records,
-        m.pending_nodes,
-        m.obligation_descriptors,
-        m.choices,
-        m.coordinate_records,
-        m.snapshots,
-        m.inspections,
-        e.pending_tasks(),
-        m.release_batches,
-        m.restriction_nodes,
-    ]
-}
-fn ms(d: Duration) -> f64 {
-    d.as_secs_f64() * 1000.0
 }
 
 pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bool, String> {

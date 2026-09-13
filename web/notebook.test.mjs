@@ -357,10 +357,10 @@ edited = applyEdit(edited, { type: 'equal', path: ['query', 'items', 1, 'items',
 edited = applyEdit(edited, { type: 'replace', path: ['query', 'items', 0], node:{kind:'or',items:[edited.query.items[0]]} });
 assert.equal(edited.query.items[0].kind, 'or');
 assert.equal(edited.query.items[0].items.length, 1);
-assert.throws(() => applyEdit(edited, { type: 'remove', path: ['query', 'items', 0, 'items', 0] }), /branch/);
+assert.throws(() => documents.removeSelection(edited, [['query', 'items', 0, 'items', 0]]), /branch/);
 edited = applyEdit(edited, { type: 'add-alternative', path: ['query', 'items', 0] });
 edited = applyEdit(edited, { type: 'replace', path: ['query', 'items', 0,'items',1], node:{kind:'fail'} });
-edited = applyEdit(edited, { type: 'remove', path: ['query', 'items', 0, 'items', 0] });
+edited = documents.removeSelection(edited, [['query', 'items', 0, 'items', 0]]);
 assert.deepEqual(edited.query.items[0], { kind: 'or', items: [{ kind: 'fail' }] });
 assert.equal(at(edited, ['program', 'rules', 0, 'kept', 0]).relation, 'p');
 edited = applyEdit(edited, { type: 'append', path: ['program', 'rules', 0, 'kept'], node: atom('s', 'Z') });
@@ -370,7 +370,7 @@ assert.throws(() => applyEdit(edited, { type: 'rename-relation', path: ['program
 assert.throws(() => applyEdit(edited, { type: 'set-port', path: ['program', 'rules', 0, 'kept', 0], index: 0, variable: 'lower' }));
 assert.throws(() => applyEdit(edited, { type: 'replace', path: ['__proto__'], node: {} }));
 let soleHead = { program: { rules: [{ name: null, kept: [], removed: [{ relation: 'p', args: [] }], body: { kind: 'true' } }] }, query: { kind: 'true' } };
-assert.throws(() => applyEdit(soleHead, { type: 'remove', path: ['program', 'rules', 0, 'removed', 0] }), /head/);
+assert.throws(() => documents.removeSelection(soleHead, [['program', 'rules', 0, 'removed', 0]]), /head/);
 assert.throws(() => validateNotebook({ ...original, query: { kind: 'or', items: [] } }));
 
 // Deliberately differs from AST encounter order: response metadata is authoritative.

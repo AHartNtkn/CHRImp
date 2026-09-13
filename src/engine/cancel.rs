@@ -1,5 +1,6 @@
 //! Source cancellation keeps each task in its traced owner until discard ends.
 use super::*;
+use crate::gc::discard_slot;
 use std::ops::Bound::{Excluded, Included, Unbounded};
 
 #[derive(Default)]
@@ -172,34 +173,19 @@ impl Task {
             Task::Activate { .. } => true,
             Task::Wake(wake) => wake.discard_tick(),
             Task::Body(body) => {
-                if let Some(rejection) = &mut body.rejection {
-                    if rejection.discard_tick() {
-                        body.rejection = None;
-                    }
+                if discard_slot(&mut body.rejection, |child| child.discard_tick()) {
                     return false;
                 }
-                if let Some(dispatch) = &mut body.dispatch {
-                    if dispatch.discard_tick() {
-                        body.dispatch = None;
-                    }
+                if discard_slot(&mut body.dispatch, |child| child.discard_tick()) {
                     return false;
                 }
-                if let Some(n) = &mut body.normalizer {
-                    if n.discard_tick() {
-                        body.normalizer = None;
-                    }
+                if discard_slot(&mut body.normalizer, |child| child.discard_tick()) {
                     return false;
                 }
-                if let Some(job) = &mut body.job {
-                    if job.discard_tick() {
-                        body.job = None;
-                    }
+                if discard_slot(&mut body.job, |child| child.discard_tick()) {
                     return false;
                 }
-                if let Some(merge) = &mut body.merge {
-                    if merge.discard_tick() {
-                        body.merge = None;
-                    }
+                if discard_slot(&mut body.merge, |child| child.discard_tick()) {
                     return false;
                 }
                 body.args = Vec::new();
@@ -208,16 +194,10 @@ impl Task {
                 true
             }
             Task::Search(search) => {
-                if let Some(commit) = &mut search.commit {
-                    if commit.discard_tick() {
-                        search.commit = None;
-                    }
+                if discard_slot(&mut search.commit, |child| child.discard_tick()) {
                     return false;
                 }
-                if let Some(transport) = &mut search.transport {
-                    if transport.discard_tick() {
-                        search.transport = None;
-                    }
+                if discard_slot(&mut search.transport, |child| child.discard_tick()) {
                     return false;
                 }
                 if !search.matches.discard_tick() {

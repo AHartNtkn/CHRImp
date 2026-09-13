@@ -1,5 +1,6 @@
 //! Direct attachment normalization with resumable source application boundaries.
 use super::*;
+use crate::gc::discard_slot;
 use crate::graph::constructors::{Attach, AttachmentStatus, Transfer};
 use crate::identity::{Resolve, ResolveStatus, UnionLink};
 use crate::program::constructors::Constructors;
@@ -460,10 +461,7 @@ impl Normalizer {
             .map(|x| vec![x.0.clone()])
     }
     pub fn discard_tick(&mut self) -> bool {
-        if let Some(gate) = &mut self.gate {
-            if gate.discard_tick() {
-                self.gate = None;
-            }
+        if discard_slot(&mut self.gate, |child| child.discard_tick()) {
             return false;
         }
         if let Some(w) = self.work.front_mut() {

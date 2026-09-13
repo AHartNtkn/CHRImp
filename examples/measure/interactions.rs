@@ -30,6 +30,7 @@
 //! no tick ratio claims CPU or physical GC cost. Final cleanup checks zero owners
 //! and execution objects using lifecycle's existing reclamation oracle.
 use super::*;
+use crate::ms;
 use std::collections::VecDeque;
 
 #[derive(Clone, Copy, Debug)]

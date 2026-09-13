@@ -9,7 +9,7 @@
 //! Conditions denote sets; causal choice births and answer multiplicity belong
 //! to the executor, never to Boolean simplification.
 
-use crate::gc::GcLease;
+use crate::gc::{GcLease, discard_slot};
 use crate::trace::{Cursor, Step, Trace};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ops::Bound::{Excluded, Unbounded};
@@ -24,6 +24,25 @@ pub(crate) fn poll(job: &mut Option<Job>, arena: &mut Arena) -> Option<Condition
             Some(result)
         }
     }
+}
+
+/// Drain one substitution scratch step, leaving shared images with their owner.
+pub(crate) fn cleanup_substitution(
+    memo: &mut BTreeMap<Condition, Condition>,
+    images: &mut Option<Arc<BTreeMap<u64, Condition>>>,
+    draining: &mut BTreeMap<u64, Condition>,
+) -> bool {
+    if memo.pop_first().is_some() {
+        return false;
+    }
+    if let Some(images) = images.take() {
+        if let Some(images) = Arc::into_inner(images) {
+            *draining = images;
+        }
+        return false;
+    }
+    draining.pop_first();
+    draining.is_empty()
 }
 
 static NEXT_ARENA: AtomicU32 = AtomicU32::new(1);
@@ -1543,27 +1562,13 @@ impl Transform {
             .chain(self.job.iter().flat_map(Job::roots))
     }
     fn cleanup_tick(&mut self) -> bool {
-        if self.memo.pop_first().is_some() {
-            return false;
-        }
-        if let Some(images) = self.images.take() {
-            // Only the last map owner drains; a shared owner retains its roots.
-            if let Some(images) = Arc::into_inner(images) {
-                self.draining = images;
-            }
-            return false;
-        }
-        self.draining.pop_first();
-        self.draining.is_empty()
+        cleanup_substitution(&mut self.memo, &mut self.images, &mut self.draining)
     }
     pub fn discard_tick(&mut self) -> bool {
         self.discarding = true;
         self.frames = Vec::new();
         self.last = None;
-        if let Some(job) = self.job.as_mut() {
-            if job.discard_tick() {
-                self.job = None;
-            }
+        if discard_slot(&mut self.job, |child| child.discard_tick()) {
             return false;
         }
         self.cleanup_tick()

@@ -528,9 +528,6 @@ impl Runtime {
                 if let Some(response) = entry.replay(command, path, body)? {
                     return Ok(Response::ok(response));
                 }
-                validate_program(&input.program)
-                    .and_then(|()| validate_query(&input.query))
-                    .map_err(|e| Response::error(400, e))?;
                 let code = Arc::new(
                     prepare(&input.program, &input.query).map_err(|e| Response::error(400, e))?,
                 );
@@ -1141,24 +1138,14 @@ fn connection(mut stream: TcpStream, runtime: &Runtime, port: u16) -> io::Result
             .take((65537 - head.len()) as u64)
             .read_until(b'\n', &mut head)?;
         if n == 0 || head.len() > 65536 {
-            return write_response(
-                &mut stream,
-                400,
-                "application/json",
-                br#"{"error":"invalid HTTP headers"}"#,
-            );
+            return write_json_error(&mut stream, 400, "invalid HTTP headers");
         }
         if &head[before..] == b"\r\n" {
             break;
         }
     }
     let Ok(head) = std::str::from_utf8(&head) else {
-        return write_response(
-            &mut stream,
-            400,
-            "application/json",
-            br#"{"error":"invalid HTTP headers"}"#,
-        );
+        return write_json_error(&mut stream, 400, "invalid HTTP headers");
     };
     let mut lines = head.split("\r\n");
     let parts = lines
@@ -1167,34 +1154,19 @@ fn connection(mut stream: TcpStream, runtime: &Runtime, port: u16) -> io::Result
         .split_whitespace()
         .collect::<Vec<_>>();
     if parts.len() != 3 || parts[2] != "HTTP/1.1" {
-        return write_response(
-            &mut stream,
-            400,
-            "application/json",
-            br#"{"error":"expected HTTP/1.1"}"#,
-        );
+        return write_json_error(&mut stream, 400, "expected HTTP/1.1");
     }
     let (method, path) = (parts[0], parts[1]);
     let mut headers = BTreeMap::new();
     for line in lines.filter(|l| !l.is_empty()) {
         let Some((key, value)) = line.split_once(':') else {
-            return write_response(
-                &mut stream,
-                400,
-                "application/json",
-                br#"{"error":"invalid header"}"#,
-            );
+            return write_json_error(&mut stream, 400, "invalid header");
         };
         if headers
             .insert(key.to_ascii_lowercase(), value.trim())
             .is_some()
         {
-            return write_response(
-                &mut stream,
-                400,
-                "application/json",
-                br#"{"error":"duplicate header"}"#,
-            );
+            return write_json_error(&mut stream, 400, "duplicate header");
         }
     }
     let hosts = [format!("127.0.0.1:{port}"), format!("localhost:{port}")];
@@ -1204,12 +1176,7 @@ fn connection(mut stream: TcpStream, runtime: &Runtime, port: u16) -> io::Result
             .get("origin")
             .is_some_and(|origin| **origin != format!("http://{host}"))
     {
-        return write_response(
-            &mut stream,
-            403,
-            "application/json",
-            br#"{"error":"notebook requests must be same-origin"}"#,
-        );
+        return write_json_error(&mut stream, 403, "notebook requests must be same-origin");
     }
     if method == "GET" {
         let asset = match path {
@@ -1270,31 +1237,16 @@ fn connection(mut stream: TcpStream, runtime: &Runtime, port: u16) -> io::Result
             .get("content-type")
             .is_none_or(|value| value.split(';').next() != Some("application/json"))
     {
-        return write_response(
-            &mut stream,
-            400,
-            "application/json",
-            br#"{"error":"expected JSON POST with Content-Length"}"#,
-        );
+        return write_json_error(&mut stream, 400, "expected JSON POST with Content-Length");
     }
     let Some(length) = headers
         .get("content-length")
         .and_then(|s| s.parse::<usize>().ok())
     else {
-        return write_response(
-            &mut stream,
-            400,
-            "application/json",
-            br#"{"error":"missing Content-Length"}"#,
-        );
+        return write_json_error(&mut stream, 400, "missing Content-Length");
     };
     if length > BODY_LIMIT {
-        return write_response(
-            &mut stream,
-            413,
-            "application/json",
-            br#"{"error":"request too large"}"#,
-        );
+        return write_json_error(&mut stream, 413, "request too large");
     }
     let mut body = vec![0; length];
     reader.read_exact(&mut body)?;
@@ -1307,6 +1259,14 @@ fn connection(mut stream: TcpStream, runtime: &Runtime, port: u16) -> io::Result
         response.status,
         "application/json",
         &serde_json::to_vec(&response.body)?,
+    )
+}
+fn write_json_error(stream: &mut TcpStream, status: u16, message: &str) -> io::Result<()> {
+    write_response(
+        stream,
+        status,
+        "application/json",
+        &serde_json::to_vec(&Response::error(status, message).body)?,
     )
 }
 fn write_response(stream: &mut TcpStream, status: u16, mime: &str, body: &[u8]) -> io::Result<()> {

@@ -1,6 +1,7 @@
 //! Snapshot-local support summaries. Construction and search yield at each
 //! Boolean operation and tree action; payloads are rows, never answers.
 use crate::condition::{Arena, Condition, Job, Operation, poll};
+use crate::gc::discard_slot;
 use crate::trace::{Cursor, Step, Trace};
 
 #[derive(Clone, Copy)]
@@ -75,10 +76,7 @@ impl Index {
         self.nodes = Vec::new();
         self.level = Vec::new();
         self.next = Vec::new();
-        if let Some(job) = &mut self.boolean {
-            if job.discard_tick() {
-                self.boolean = None;
-            }
+        if discard_slot(&mut self.boolean, |child| child.discard_tick()) {
             return false;
         }
         true
@@ -140,10 +138,7 @@ impl Search {
     pub fn discard_tick(&mut self) -> bool {
         self.pending = Vec::new();
         self.current = None;
-        if let Some(job) = &mut self.boolean {
-            if job.discard_tick() {
-                self.boolean = None;
-            }
+        if discard_slot(&mut self.boolean, |child| child.discard_tick()) {
             return false;
         }
         true

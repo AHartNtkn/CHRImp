@@ -234,18 +234,6 @@ pub fn prepare(program: &Program, query: &Body) -> Result<Prepared, ParseError> 
             }
         }
     }
-    let indexed_end = |targets: &Vec<Vec<(usize, usize)>>| {
-        targets
-            .iter()
-            .map(|ts| {
-                ts.iter()
-                    .rposition(|(r, _)| !rules[*r].direct_anchor())
-                    .map_or(0, |i| i + 1)
-            })
-            .collect()
-    };
-    let normal_end = indexed_end(&triggers);
-    let merge_end = indexed_end(&merge_triggers);
     let mut code = Prepared {
         constructors: None,
         signatures: builder.signatures,
@@ -254,8 +242,8 @@ pub fn prepare(program: &Program, query: &Body) -> Result<Prepared, ParseError> 
         triggers,
         merge_triggers,
         tuple_indexes,
-        indexed_end: normal_end,
-        merge_indexed_end: merge_end,
+        indexed_end: Vec::new(),
+        merge_indexed_end: Vec::new(),
         query,
         query_variables: variables.names,
     };
@@ -263,6 +251,18 @@ pub fn prepare(program: &Program, query: &Body) -> Result<Prepared, ParseError> 
         plan.lower_triggers(&mut code);
         code.constructors = Some(std::sync::Arc::new(plan));
     }
+    let indexed_end = |targets: &Vec<Vec<(usize, usize)>>| {
+        targets
+            .iter()
+            .map(|ts| {
+                ts.iter()
+                    .rposition(|(r, _)| !code.rules[*r].direct_anchor())
+                    .map_or(0, |i| i + 1)
+            })
+            .collect()
+    };
+    code.indexed_end = indexed_end(&code.triggers);
+    code.merge_indexed_end = indexed_end(&code.merge_triggers);
     Ok(code)
 }
 

@@ -2,6 +2,7 @@
 //! Rows remain ordinary occurrences; attachments select their surviving supports.
 use super::*;
 use crate::condition::{Arena, Job, Operation, poll};
+use crate::gc::discard_slot;
 use crate::trace::{Cursor as TraceCursor, Step, Trace};
 
 pub(crate) const ATTACHMENT: u64 = 7;
@@ -95,14 +96,7 @@ impl Attach {
     pub fn discard_tick(&mut self) -> bool {
         self.remaining = Condition::FALSE;
         self.hit = Condition::FALSE;
-        if let Some(j) = &mut self.job {
-            if j.discard_tick() {
-                self.job = None;
-            }
-            false
-        } else {
-            true
-        }
+        !discard_slot(&mut self.job, |child| child.discard_tick())
     }
 }
 impl Trace for Attach {
@@ -184,14 +178,7 @@ impl Transfer {
         self.scope = Condition::FALSE;
         self.old = Condition::FALSE;
         self.hit = Condition::FALSE;
-        if let Some(j) = &mut self.job {
-            if j.discard_tick() {
-                self.job = None;
-            }
-            false
-        } else {
-            true
-        }
+        !discard_slot(&mut self.job, |child| child.discard_tick())
     }
 }
 impl Trace for Transfer {

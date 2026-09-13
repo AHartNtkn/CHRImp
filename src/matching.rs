@@ -6,6 +6,7 @@
 //! liveness, identity and propagation eligibility before using a candidate.
 
 use crate::condition::{Arena, Condition, Job, Operation, Progress};
+use crate::gc::discard_slot;
 use crate::graph::{Graph, Occurrences};
 use crate::identity::{Equal, ResolveStatus};
 use crate::members::Members;
@@ -130,10 +131,7 @@ impl Source {
     }
     fn discard_tick(&mut self) -> bool {
         self.scope = Condition::FALSE;
-        if let Some(j) = &mut self.boolean {
-            if j.discard_tick() {
-                self.boolean = None;
-            }
+        if discard_slot(&mut self.boolean, |child| child.discard_tick()) {
             return false;
         }
         if let SourceKind::Port { members, .. } = &mut self.kind {

@@ -9,6 +9,7 @@ use index::{Found, Index, Search};
 
 use crate::condition::{Arena, Condition, Job, Operation, poll};
 use crate::engine::{Birth, Completion};
+use crate::gc::discard_slot;
 use crate::graph::{Graph, Occurrences};
 use crate::identity::{Resolve, ResolveStatus};
 use crate::program::Prepared;
@@ -233,22 +234,13 @@ impl Observe {
         if !self.births_index.discard_tick() || !self.rows_index.discard_tick() {
             return false;
         }
-        if let Some(search) = &mut self.search {
-            if search.discard_tick() {
-                self.search = None;
-            }
+        if discard_slot(&mut self.search, |child| child.discard_tick()) {
             return false;
         }
-        if let Some(job) = self.boolean.as_mut() {
-            if job.discard_tick() {
-                self.boolean = None;
-            }
+        if discard_slot(&mut self.boolean, |child| child.discard_tick()) {
             return false;
         }
-        if let Some(resolve) = self.resolve.as_mut() {
-            if resolve.discard_tick() {
-                self.resolve = None;
-            }
+        if discard_slot(&mut self.resolve, |child| child.discard_tick()) {
             return false;
         }
         true

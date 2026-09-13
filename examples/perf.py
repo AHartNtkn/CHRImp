@@ -31,7 +31,7 @@ def records(text):
     for line in text.splitlines():
         if not line.startswith('measurement='):
             continue
-        record = json.loads(line[len('measurement='):], parse_float=finite_float, parse_constant=lambda value: (_ for _ in ()).throw(ValueError('nonfinite JSON number: '+value)))
+        record = json.loads(line[len('measurement='):], parse_float=finite_float, parse_constant=finite_float)
         if not isinstance(record,dict) or record.get('schema') != 1 or not isinstance(record.get('kind'), str) or not isinstance(record.get('data'),dict):
             raise ValueError('invalid measurement record')
         result.append(record)

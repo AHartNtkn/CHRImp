@@ -932,7 +932,7 @@ function mountNotebook() {
     const atom = atomOf(node), target = selected.path;
     if(selected.compartment){
       panel.append(el('h3','Compartment'),el('p','Use Add above to place an item in this highlighted compartment.'));
-      if(target.at(-2)==='items'&&at(model,target.slice(0,-2)).kind==='or')panel.append(button('Remove alternative',async()=>{await edit({type:'remove',path:target});select(null);}));
+      if(target.at(-2)==='items'&&at(model,target.slice(0,-2)).kind==='or')panel.append(button('Remove alternative',async()=>{await commit(removeSelection(model,[target]));select(null);}));
       return;
     }
     panel.append(el('h3', atom ? 'Relation & ordered ports' : 'Expression'));
@@ -967,7 +967,7 @@ function mountNotebook() {
       panel.append(button('Move earlier', () => edit({ type: 'move-item', path: target, to: index - 1 }), index === 0), button('Move later', () => edit({ type: 'move-item', path: target, to: index + 1 }), index === parent.length - 1));
     }
     if(selected.port!==undefined)panel.querySelectorAll('.port-row')[selected.port]?.scrollIntoView({block:'nearest'});
-    panel.append(button('Remove item', async () => { await edit({ type: 'remove', path: target }); selected = null; renderWorkspace(); }));
+    panel.append(button('Remove item', async () => { await commit(removeSelection(model, [target])); selected = null; renderWorkspace(); }));
   }
   function renderRun() {
     $('run-status').textContent = session.status;
@@ -1312,7 +1312,7 @@ function mountNotebook() {
   $('edit-query').onclick=()=>navigate(['query']);
   $('rule-name-input').onchange = () => safe(() => edit({ type: 'rule-name', path: path.slice(0, 3), name: $('rule-name-input').value }));
   $('add-rule').onclick = () => safe(async () => { await edit({ type: 'add-rule' }); navigate(['program', 'rules', model.program.rules.length - 1, 'body']);ruleCards.get(model.program.rules.length-1)?.element.scrollIntoView({block:'nearest'}); });
-  $('remove-rule').onclick = () => safe(async () => { await edit({ type: 'remove-rule', index: path[2] }); navigate(['query']); });
+  $('remove-rule').onclick = () => safe(async () => { await commit(removeSelection(model, [path.slice(0, 3)])); navigate(['query']); });
   $('add').onclick = () => safe(async () => {
     const kind = $('add-kind').value;
     const scope=destination(),[left,right]=freshVariables(model,scope,2);

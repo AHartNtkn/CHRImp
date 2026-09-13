@@ -85,22 +85,12 @@ export function applyEdit(model, op) {
       else { require(node.kind, 'Select a body or head list.'); replace({ kind: 'and', items: [node, clone(op.node)] }); }
       break;
     }
-    case 'remove': {
-      const parent = at(next, path.slice(0, -1));
-      if (Array.isArray(parent)) {
-        const container = at(next, path.slice(0, -2));
-        require(container.kind !== 'or' || parent.length > 1, 'An alternative needs at least one branch.');
-        parent.splice(path.at(-1), 1);
-      } else { require(node.kind, 'Select a body expression.'); replace({ kind: 'true' }); }
-      break;
-    }
     case 'move-item': {
       const parent = at(next, path.slice(0, -1));
       require(Array.isArray(parent) && Number.isInteger(op.to) && op.to >= 0 && op.to < parent.length, 'Choose an item position.');
       parent.splice(op.to, 0, parent.splice(path.at(-1), 1)[0]); break;
     }
     case 'add-rule': next.program.rules.push(clone(op.rule ?? { name: null, kept: [], removed: [{ relation: 'p', args: ['X'] }], body: { kind: 'true' } })); break;
-    case 'remove-rule': require(Number.isInteger(op.index) && next.program.rules[op.index], 'Select a rule.'); next.program.rules.splice(op.index, 1); break;
     case 'rule-name': require(node.kept && node.removed, 'Select a rule.'); node.name = op.name || null; break;
     default: throw new Error('Unknown graph edit.');
   }

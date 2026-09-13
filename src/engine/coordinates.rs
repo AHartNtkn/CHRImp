@@ -1,6 +1,7 @@
 //! Coordinate ownership for immutable readers across causal compaction.
 use super::*;
 use crate::condition::Transform;
+use crate::gc::discard_slot;
 use crate::trace::{Cursor as TraceCursor, Step, Trace};
 use std::sync::Weak;
 
@@ -182,10 +183,7 @@ impl Transport {
     pub(super) fn discard_tick(&mut self) -> bool {
         self.discarding = true;
         self.value = Condition::FALSE;
-        if let Some(job) = &mut self.job {
-            if job.discard_tick() {
-                self.job = None;
-            }
+        if discard_slot(&mut self.job, |child| child.discard_tick()) {
             return false;
         }
         true

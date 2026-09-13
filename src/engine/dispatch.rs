@@ -1,6 +1,7 @@
 //! Select original constructor-led arms on already described support. No field
 //! substitution or post fusion: each selected arm still executes its source body.
 use super::*;
+use crate::gc::discard_slot;
 use crate::identity::{Resolve, ResolveStatus};
 use crate::program::constructors::ConstructorChoice;
 use crate::store;
@@ -183,16 +184,10 @@ impl Dispatch {
         Status::Pending
     }
     pub fn discard_tick(&mut self) -> bool {
-        if let Some(job) = &mut self.job {
-            if job.discard_tick() {
-                self.job = None;
-            }
+        if discard_slot(&mut self.job, |child| child.discard_tick()) {
             return false;
         }
-        if let Some(resolve) = &mut self.resolve {
-            if resolve.discard_tick() {
-                self.resolve = None;
-            }
+        if discard_slot(&mut self.resolve, |child| child.discard_tick()) {
             return false;
         }
         self.selected.pop_first().is_none()

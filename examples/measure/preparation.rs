@@ -26,7 +26,7 @@ use crate::{
     Reader,
     allocation::{Phase, during},
     families::{self, Workload},
-    observation,
+    ms, observation,
 };
 use chr::{
     engine::Engine,
@@ -105,9 +105,6 @@ pub struct Measurement {
     pub prepared_released: bool,
     pub syntax_source_drop_ms: f64,
     pub elapsed_ms: f64,
-}
-fn ms(d: Duration) -> f64 {
-    d.as_secs_f64() * 1000.0
 }
 fn timed<T>(phase: Phase, f: impl FnOnce() -> T) -> (T, f64) {
     let start = Instant::now();

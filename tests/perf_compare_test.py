@@ -1,4 +1,3 @@
-import importlib.util
 from pathlib import Path
 import sys
 import json
@@ -7,8 +6,7 @@ import subprocess
 from perf_test import process, config, event
 import unittest
 sys.path.insert(0,str(Path(__file__).parents[1]/'examples'))
-spec=importlib.util.spec_from_file_location('compare',Path(__file__).parents[1]/'examples/perf_compare.py')
-compare=importlib.util.module_from_spec(spec);spec.loader.exec_module(compare)
+import perf_compare as compare
 
 
 def raw_campaign(root, rss=4096, missing_cleanup=False, seconds=5):

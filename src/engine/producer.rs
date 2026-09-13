@@ -3,6 +3,7 @@
 //! a finite source witness: its original leading post then a terminal consumer.
 //! No consumer is actually consumed on surviving support.
 use super::*;
+use crate::gc::discard_slot;
 use crate::graph::Occurrences;
 use crate::identity::Equal;
 use crate::program::constructors::{ConstructorChoice, ConsumerValue};
@@ -304,16 +305,10 @@ impl Split {
         None
     }
     pub fn discard_tick(&mut self) -> bool {
-        if let Some(job) = &mut self.job {
-            if job.discard_tick() {
-                self.job = None;
-            }
+        if discard_slot(&mut self.job, |child| child.discard_tick()) {
             return false;
         }
-        if let Some(equal) = &mut self.equal {
-            if equal.discard_tick() {
-                self.equal = None;
-            }
+        if discard_slot(&mut self.equal, |child| child.discard_tick()) {
             return false;
         }
         true

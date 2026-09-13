@@ -1,5 +1,4 @@
 """Typed-record and campaign classification checks."""
-import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -10,8 +9,7 @@ import signal
 from unittest.mock import patch
 import unittest
 sys.path.insert(0,str(Path(__file__).parents[1]/'examples'))
-spec=importlib.util.spec_from_file_location('chr_perf',Path(__file__).parents[1]/'examples/perf.py')
-perf=importlib.util.module_from_spec(spec);spec.loader.exec_module(perf)
+import perf
 
 
 def process(code=0,status='completed'):
