@@ -2,7 +2,7 @@
 
 Continue profiling, independent architectural brainstorming, isolated spikes, and integration of demonstrated winners until the user pauses or stops the loop. The Codex heartbeat runs hourly in the existing thread. A wake resumes an unfinished cycle; only one cycle and one timing campaign run at a time.
 
-Repository: `/home/ahart/Documents/CHRImp`. Landing branch: `codex/shared-relational-engine`. Read `docs/optimization-state.md` first and update its current phase, evidence, experiment budget, branch/worktree and next action as work proceeds. Keep this policy separate from that small working record.
+Repository: `/home/ahart/Documents/CHRImp`. Landing branch: `codex/shared-relational-engine`. Set every execution command’s working directory explicitly to this repository or its selected worktree. Read `docs/optimization-state.md` first and update its current phase, evidence, experiment budget, branch/worktree and next action as work proceeds. Keep this policy separate from that small working record. Retain brief tested-hypothesis conclusions and revisit conditions; older detail belongs in Git history, not an expanding backlog.
 
 ## Cycle
 

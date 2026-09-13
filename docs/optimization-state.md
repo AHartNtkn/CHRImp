@@ -1,8 +1,12 @@
 # Current optimization cycle
 
-- Status: waiting for the approved production integration and its validation.
-- Integration worktree: `/tmp/chr-integrate-normalization`, branch `codex/integrate-normalization-dispatch`.
-- Next action: after integration, profile the production path and select the next decision-changing experiment under `optimization-loop.md`.
-- Existing evidence: `goals/architecture-exploration/notes/decision.md` and its linked comparisons.
-- Important uncertainty: hard composition/duplicator synthesis remains censored; broader conditional-state lifetime is unresolved. Existing direct-normalization profiling shows substantial collection/coordinate-compaction cost, but profile the integrated implementation before transferring that attribution.
-- No next spike has been selected. Previously considered ideas are hypotheses, not queued obligations.
+- Status: production integration complete; ready to profile the integrated system.
+- Automation: `chr-architecture-optimization`, active hourly heartbeat in this thread.
+- Landing branch: `codex/shared-relational-engine`; integration commit `0ded0c4` (implementation `23208ad`).
+- Integrated: source-derived structural normalization and conditional dispatch, automatically prepared once and shared by the normal CLI/notebook engine. Source stepping, pending RHS and optional history use this same executor.
+- Validation: 416 debug tests, 416 release tests, 431 diagnostic release tests, documentation tests, nine web test files, Clippy and formatting passed in the integration worktree. Focused independent source review found no blocker. Parent CLI checks verified known/mixed/unknown dispatch and all 16 independent alternatives with exact residual structure, fresh identities and multiplicity. Merged source matches tested source.
+- Production comparison: five alternating paired ordinary release runs against pre-integration `995cecf`; identity synthesis first-answer process median 128.36 -> 33.57 ms (3.82x), rewrite-512 control 23.76 -> 23.50 ms. Both synthesis outputs pass the maintained behavioral validator; source application trajectories differ (383 -> 141), so this is an end-to-end improvement, not an equal-work cost claim. Parsing, preparation, execution, validation and cleanup are included. All runs completed within declared 3-second source / 8-second external limits. Raw local evidence: `/tmp/chr-integration-comparison.jsonl`.
+- Next action: profile the production path, explain a material resource cost, then select the next decision-changing experiment under `optimization-loop.md`. No next spike selected.
+- Cycle budget: not started; default initial budget is roughly one active hour and two minutes of serialized measurement. Carry the same experiment budget across wakes.
+- Existing research: `goals/architecture-exploration/notes/decision.md` and linked comparisons. Structural normalization plus dispatch demonstrated a combined gain. Static whole-head feasibility remains unintegrated: revisit only with a concrete dynamic workload and applicability case.
+- Important uncertainty: hard composition/duplicator synthesis remains censored; broader conditional-state lifetime is unresolved. Prior prototype profiles show substantial collection/coordinate-compaction cost, but profile the integrated implementation before transferring that attribution. Possible optimizations are hypotheses, not queued obligations.
