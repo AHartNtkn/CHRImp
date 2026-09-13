@@ -1,5 +1,6 @@
 //! Shared relational occurrence state and ordered-port indexes.
 
+pub(crate) mod constructors;
 mod prune;
 pub use prune::Prune;
 

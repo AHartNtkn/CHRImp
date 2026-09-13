@@ -167,6 +167,12 @@ impl Task {
             Task::Activate { .. } => true,
             Task::Wake(wake) => wake.discard_tick(),
             Task::Body(body) => {
+                if let Some(n) = &mut body.normalizer {
+                    if n.discard_tick() {
+                        body.normalizer = None;
+                    }
+                    return false;
+                }
                 if let Some(job) = &mut body.job {
                     if job.discard_tick() {
                         body.job = None;

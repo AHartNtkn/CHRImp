@@ -1,5 +1,6 @@
 //! Prepared variable slots, relation signatures and reusable rule bodies.
 
+pub mod constructors;
 use crate::syntax::{self, Body, ParseError, Program};
 use std::collections::HashMap;
 
@@ -25,6 +26,7 @@ pub enum Instruction {
     Fail,
 }
 
+#[derive(Clone)]
 pub struct RulePlan {
     pub name: Option<String>,
     /// Kept heads precede removed heads; each position needs a distinct occurrence.
@@ -59,6 +61,7 @@ impl RulePlan {
 ///     code.rules()[0].kept = 0;
 /// }
 /// ```
+#[derive(Clone)]
 pub struct Prepared {
     pub(crate) signatures: Vec<Signature>,
     pub(crate) instructions: Vec<Instruction>,

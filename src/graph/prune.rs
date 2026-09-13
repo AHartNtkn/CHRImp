@@ -197,7 +197,7 @@ impl Prune {
             Phase::Occurrences => match self.filter.as_mut().unwrap().tick(&mut graph.index) {
                 FilterStatus::Pending => {}
                 FilterStatus::Leaf { key, value } => {
-                    if key[0] <= INCIDENCE {
+                    if key[0] <= INCIDENCE || key[0] == super::constructors::ATTACHMENT {
                         self.key = key;
                         self.boolean = Some(arena.start(Operation::And(value, self.active)));
                         self.phase = Phase::OccurrenceHit;
@@ -337,6 +337,22 @@ impl Prune {
 #[cfg(test)]
 mod certificate_tests {
     use super::*;
+    #[test]
+    fn failed_support_cannot_retain_a_constructor_attachment() {
+        use crate::graph::constructors::ATTACHMENT;
+        let mut g = Graph::new(&[]);
+        let mut a = Arena::default();
+        let (_, choice) = a.fresh_choice();
+        let key = [ATTACHMENT, 17, 23, 0];
+        let root = g.write(g.empty(), key, choice);
+        let mut prune = g.prune(root, choice.not());
+        let result = loop {
+            if let Some(r) = prune.tick(&mut g, &mut a) {
+                break r;
+            }
+        };
+        assert!(g.index.get(&result, &key).is_none());
+    }
     #[test]
     fn certificate_probe_uses_bounded_key_paths() {
         let mut g = Graph::new(&[]);
