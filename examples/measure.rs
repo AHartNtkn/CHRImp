@@ -15,6 +15,8 @@ use std::{
 
 #[path = "measure/families.rs"]
 mod families;
+#[path = "measure/generated.rs"]
+mod generated;
 #[path = "measure/lifecycle.rs"]
 mod lifecycle;
 #[path = "measure/notebooks.rs"]
@@ -365,7 +367,18 @@ fn run_options(
     timeout: Duration,
 ) -> Result<bool, String> {
     // Input generation is outside timings; parsing and preparation remain charged.
-    let mut w = families::make(case, n, rows)?;
+    let w = families::make(case, n, rows)?;
+    run_workload(w, case, n, rows, prefix, max_ticks, timeout)
+}
+fn run_workload(
+    mut w: Workload,
+    case: &str,
+    n: usize,
+    rows: usize,
+    prefix: Option<usize>,
+    max_ticks: u64,
+    timeout: Duration,
+) -> Result<bool, String> {
     if let Some(count) = prefix {
         if !matches!(w.goal, Goal::Complete) || w.answers.is_some_and(|total| count > total) {
             return Err(
@@ -596,6 +609,10 @@ fn main() -> ExitCode {
     let args = env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() || args == ["--help"] || args == ["--list"] {
         println!(
+            "Generated cases: {}. Options: --seed N --shape chain|ring|star|diamond|dense|random. SIZE is vertex/copy/distractor count; --rows is edge multiplicity, constraints per edge, duplicate groups or probe count. graph-bits has an exhaustive oracle limited to 16 vertices; proof-dag rejects cyclic shapes. Seed 0 is canonical order, other seeds reproducibly vary inputs and order.",
+            generated::CASES
+        );
+        println!(
             "Usage: measure CASE SIZE [MAX_TICKS] [TIMEOUT_SECONDS] [--rows N] [--prefix N]\nCases: {CASES} {} {} {}\nDefaults: MAX_TICKS=50000000 TIMEOUT_SECONDS=30 rows=1. SIZE positive; rows may be zero.\nanswers: SIZE alternatives, --rows residual rows (zero gives empty answers).\nbits-chain/star[-delayed]: SIZE bits; delayed constraints have an 8*SIZE+1 application gate.\nalias-consume: SIZE conditional merges plus one unmerged arm.\nfair-loop/grow: SIZE continuing siblings, --rows finite-chain length; stops at first complete answer.\nstream-fail: SIZE application prefix, four approximately equal application windows.\nrejected3: SIZE rows per head, no hits. multiport[-hit|-probes-first]: SIZE rows per bucket, --rows probes.\nsimpagation: SIZE copies, --rows depth. repeated-alias: SIZE aliases, --rows probes; raw-probes: same probes without aliases.\nreach-chain: SIZE edges. prepare: SIZE irrelevant rules; fanout: SIZE enabled propagation rules.\nlife-*: SIZE initial application milestone; windows continue through 8*SIZE. life-archive: SIZE retained snapshots, then 2048 additional applications.\nruntime: SIZE alternatives, each with SIZE residual rows.\nnotebook-arithmetic-*: SIZE arithmetic magnitude. notebook-type/behavior-*: SIZE answer-prefix count.\nnotebook-lambda: SIZE nested identity count; stops at its first validated answer.\n--prefix N stops finite core cases after N validated answers; never claims exhaustion.\nNo history or retained views in core cases. Wall times include instrumentation; validator time separately charged.\nFirst-answer time is at End, before its validation. Collection ticks sample collecting before OR after advance.\nMemory counts sampled every 2048 ticks and at exit, not bytes or exact peaks. Validator retains one answer plus IDs.\nSource and cleanup each get the supplied tick/time limits; timeout cannot preempt a tick or drop.",
             families::CASES,
             notebooks::CASES,
@@ -610,10 +627,23 @@ fn main() -> ExitCode {
         let n: usize = args[1].parse().map_err(|_| "invalid size")?;
         let (mut max_ticks, mut seconds, mut rows, mut prefix) =
             (50_000_000u64, 30u64, 1usize, None);
+        let (mut seed, mut shape) = (0u64, "chain".to_string());
+        let mut generated_options = false;
         let mut positional = 0;
         let mut i = 2;
         while i < args.len() {
             match args[i].as_str() {
+                "--seed" | "--shape" => {
+                    generated_options = true;
+                    let flag = &args[i];
+                    i += 1;
+                    let value = args.get(i).ok_or("missing generated option value")?;
+                    if flag == "--seed" {
+                        seed = value.parse().map_err(|_| "invalid seed")?;
+                    } else {
+                        shape.clone_from(value);
+                    }
+                }
                 "--rows" | "--prefix" => {
                     let flag = &args[i];
                     i += 1;
@@ -655,6 +685,25 @@ fn main() -> ExitCode {
             return Err(
                 "positive size/limits/prefix required; dimensions must not overflow".into(),
             );
+        }
+        if generated::CASES
+            .split_whitespace()
+            .any(|name| name == args[0])
+        {
+            let w = generated::make(&args[0], n, rows, seed, &shape)?;
+            println!("generator_seed={seed} generator_shape={shape}");
+            return run_workload(
+                w,
+                &args[0],
+                n,
+                rows,
+                prefix,
+                max_ticks,
+                Duration::from_secs(seconds),
+            );
+        }
+        if generated_options {
+            return Err("--seed/--shape require a generated case".into());
         }
         if lifecycle::CASES
             .split_whitespace()

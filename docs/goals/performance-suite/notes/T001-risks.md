@@ -1,0 +1,24 @@
+# Prospective risk model and implementation evidence
+
+The independent semantics and resource-lifetime reviews examined supported computation and ownership paths rather than starting from the synthesis incident. These are risk hypotheses; the suite must measure them before claiming present defects or complexity guarantees.
+
+| Responsibility / risk | Independent dimensions and detection evidence | Current coverage / required work |
+|---|---|---|
+| Partially bound correlations cause repeated irrelevant scans | Independent row/probe counts, hit/miss, unconstrained ports, skew and order; exact hit tuples and candidates/work growth | Fully bound multiport exists; partial binding needs generated witnesses (`program.rs:209`) |
+| Occurrence multiplicity and fresh witnesses | Duplicate-group size, groups, head width; falling-factorial applications and distinct fresh identities | Distinct-row dense cases exist; duplicate occurrence oracle required (`matching.rs`, `tests/semantics.rs`) |
+| Shared proof graphs amplify derivations | DAG width/depth/topology; independent path-count dynamic programming with multiset residuals | Chain reachability misses reconvergence; cycles need bounded progress, not set-closure assumptions |
+| Correlated explicit choices depend on topology | Agreement/disagreement edges, seeds, vertex order, causal posting delay; exhaustive small Boolean assignment oracle | Chain/star agreement exists; mixed cyclic/disconnected generated constraints required |
+| Fresh production coupled to equality/consumption | Group count, copies and chain depth; exact final cells, fresh identities, preserved level distinctions | Initial cell chains exist; generated fresh-body chains and contraction required |
+| Preparation cost depends on rule shape | Inactive head count/arity/repetition and body width/depth, repeated prepared use; empty-answer oracle, source/plan size and phase costs | Unary rule count exists; shape and repeated-use dimensions missing (`program.rs:176`) |
+| Suspended output pins state during continuing work | Hold after Begin, vary producer duration/siblings, resume through End; progress, answer and release oracle | Immediate draining and first-answer cases miss retention over time (`engine.rs:428`, `observe.rs:265`) |
+| Fixed-size archive turnover repeatedly rebuilds protection | Retention K versus replacement cadence R; compare fixed archive at same work, inspect captured facts and release | Fixed archives and one-snapshot rotation exist; independent churn axes missing (`engine/inspection.rs:385`) |
+| Concurrent inspection multiplies projection storage and service | Snapshot size, inspection count and unread fraction while source runs; exact view contents, source progress, final-owner release | One inspection after cancellation exists; competition/retention interactions missing |
+| Output replay / tiny reads amplify I/O | Batch size, replay cadence, interleaved source; exact acknowledged stream, replay and application invariance, CPU/I/O cost | One batch size and correctness spool tests exist; throughput/latency interactions missing (`notebook.rs:158`) |
+| Historical sessions affect fresh requests or leave resources | Completed-open population versus fixed-concurrency churn; tiny-answer latency, descriptors/spool/live ownership after closure | Two-owner competition exists; history versus current-owner separation missing (`notebook.rs:910`) |
+| Preparation / sink / final destruction evade tick limits | Phase-specific direct drop and shared Prepared controls; externally bounded process with resource release | Tick limits and cooperative cleanup exist; maintained external supervisor required |
+| Conditional representation, index and coordinate growth hide in aggregate ticks | Shapes/correlation/aliases and unrelated-state controls, actual operations/CPU and allocation volume per owner | Object sampling exists; calibrated phase and per-rule/operation accounting still required |
+| Observer and validator costs distort comparisons | Same endpoint with baseline/counters/profiling, counters calibrated on tiny inputs, independent CPU/allocation checks | Current per-tick timing and validation subtraction alone cannot prove absence of observer effects |
+
+No row mandates an optimal algorithm or assumes equal cost from equivalent answers. Existing fairness, lifecycle, head-mode, Boolean, output and notebook cases remain part of coverage. Generated tests must preserve distinct occurrences, duplicate answers, explicit-choice-only search, nonbinding matching and legitimate derivation multiplicity.
+
+Implementation starts with shared generated workload/oracle support, then closes resource-lifetime and measurement paths and adds the bounded runner/detectors. Final independent challenges must test beyond these construction cases. A row is complete only with executable evidence; none is marked closed by this discovery note.

@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Build and sample a native CHR workload, retaining an interactive CPU flame graph.
+
+python3 examples/profile.py --out /tmp/chr-profile -- notebook-behavior-i 1 50000000 15
+python3 examples/profile.py --cli --out /tmp/chr-query -- examples/proofs.chr --query '...'
+Requires Linux perf, GNU c++filt, inferno-collapse-perf and inferno-flamegraph.
+"""
+import argparse
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import platform
+import re
+import resource
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from urllib.parse import quote
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def normalize_stacks(text):
+    # Inferno's perf parser requires a whitespace-free DSO token. Keep raw stacks
+    # separately; encode only DSO paths, never symbol text or sample headers.
+    text = re.sub(r" \(([^\n]*)\)$", lambda m: " (" + quote(m[1], safe="/._-[]") + ")", text, flags=re.M)
+    # GNU's Rust demangler cannot parse LLVM's internal cloning suffix.
+    return re.sub(r"(?<=\w)\.llvm\.\d+(?=[+ ]|$)", "", text, flags=re.M)
+
+
+def folded_weight(text):
+    total = 0
+    for line in text.splitlines():
+        stack, weight = line.rsplit(" ", 1)
+        weight = int(weight)
+        if not stack or weight <= 0:
+            raise ValueError("invalid folded stack weight")
+        total += weight
+    if not total:
+        raise ValueError("no CPU samples: use a longer workload; no flame graph was validated")
+    return total
+
+
+def validate_samples(raw, folded):
+    samples = folded_weight(folded)
+    observed = len(re.findall(r"^[^\s].* cpu-clock:u:\s*$", raw, flags=re.M))
+    if samples != observed:
+        raise ValueError(f"sample accounting mismatch: perf={observed}, folded={samples}")
+    return samples
+
+
+def capture(command, **kwargs):
+    return subprocess.run(command, cwd=ROOT, check=True, text=True, capture_output=True, timeout=60, **kwargs).stdout
+
+
+def outcome(code, limited, cli):
+    if limited or (code == 2 and not cli):
+        return "censored"
+    return "completed" if code == 0 else "failed"
+
+
+def record(command, out, seconds, memory_mib):
+    def limits():
+        resource.setrlimit(resource.RLIMIT_AS, (memory_mib * 1024**2,) * 2)
+        resource.setrlimit(resource.RLIMIT_CPU, (int(seconds) + 5,) * 2)
+
+    with (out / "workload.log").open("w") as stdout, (out / "perf.log").open("w") as stderr:
+        start = time.monotonic()
+        process = subprocess.Popen(command, cwd=ROOT, stdout=stdout, stderr=stderr, start_new_session=True, preexec_fn=limits)
+        limited = False
+        try:
+            process.wait(timeout=seconds)
+        except subprocess.TimeoutExpired:
+            limited = True
+            # SIGINT lets perf finish writing the sampled data. A stuck child or
+            # recorder still has a hard stop; the result remains censored.
+            os.killpg(process.pid, signal.SIGINT)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+        return process.returncode, limited, time.monotonic() - start
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--out", required=True, type=Path, help="new directory for raw profile, metadata and flame.svg")
+    parser.add_argument("--cli", action="store_true", help="profile the language CLI instead of the measure example")
+    parser.add_argument("--seconds", type=float, default=40, help="external wall limit including workload cleanup")
+    parser.add_argument("--memory-mib", type=int, default=4096, help="per-process address-space ceiling")
+    parser.add_argument("--frequency", type=int, default=499, help="user-space CPU samples per second")
+    parser.add_argument("args", nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    workload = args.args[1:] if args.args[:1] == ["--"] else args.args
+    if not workload or (not math.isfinite(args.seconds) or args.seconds <= 0) or args.memory_mib <= 0 or args.frequency <= 0:
+        parser.error("a workload and positive limits are required")
+    for tool in ["cargo", "rustc", "perf", "c++filt", "inferno-collapse-perf", "inferno-flamegraph"]:
+        if not shutil.which(tool):
+            parser.error(f"required executable is unavailable: {tool}")
+    out = args.out.resolve()
+    out.mkdir(parents=True, exist_ok=False)
+    env = os.environ.copy()
+    env["RUSTFLAGS"] = (env.get("RUSTFLAGS", "") + " -C force-frame-pointers=yes").strip()
+    build = ["cargo", "build", "--offline", "--profile", "profiling", *( ["--bin", "chr"] if args.cli else ["--example", "measure"] )]
+    with (out / "build.log").open("w") as log:
+        subprocess.run(build, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=300)
+    target = Path(env.get("CARGO_TARGET_DIR", ROOT / "target"))
+    if not target.is_absolute():
+        target = ROOT / target
+    binary = target / "profiling" / ("chr" if args.cli else "examples/measure")
+    with binary.open("rb") as source:
+        binary_hash = hashlib.file_digest(source, "sha256").hexdigest()
+    command = ["perf", "record", "-q", "-e", "cpu-clock:u", "-F", str(args.frequency), "--call-graph", "fp", "-o", str(out / "perf.data"), "--", str(binary), *workload]
+    metadata = {
+        "schema": 1, "kind": "cpu_flamegraph", "command": command, "build": build,
+        "rustflags": env["RUSTFLAGS"], "binary_sha256": binary_hash,
+        "revision": capture(["git", "rev-parse", "HEAD"]).strip(),
+        "working_tree": capture(["git", "status", "--short"]),
+        "rustc": capture(["rustc", "-Vv"]), "host": platform.platform(),
+        "external_wall_seconds": args.seconds, "memory_mib": args.memory_mib,
+        "measurement": "Sampled user-space CPU call stacks across the entire process, including preparation, validation, delivery and cleanup; not baseline wall timing or kernel/I/O wait time.",
+        "status": "recording", "profile_validated": False,
+    }
+    meta = out / "profile.json"
+    meta.write_text(json.dumps(metadata, indent=2) + "\n")
+    code, limited, elapsed = record(command, out, args.seconds, args.memory_mib)
+    metadata.update(returncode=code, external_limit=limited, elapsed_seconds=elapsed,
+                    status=outcome(code, limited, args.cli))
+    meta.write_text(json.dumps(metadata, indent=2) + "\n")
+    if metadata["status"] == "failed":
+        raise RuntimeError(f"profiling/workload failed with status {code}; see {out / 'perf.log'} and workload.log")
+    raw = capture(["perf", "script", "-i", str(out / "perf.data"), "-F", "comm,pid,tid,time,event,ip,sym,dso"])
+    (out / "stacks.txt").write_text(raw)
+    readable = capture(["c++filt", "-s", "rust", "-i"], input=normalize_stacks(raw))
+    collapsed = subprocess.run(["inferno-collapse-perf"], input=readable, text=True, capture_output=True, check=True, timeout=60)
+    (out / "collapse.log").write_text(collapsed.stderr)
+    if "Weird stack line" in collapsed.stderr:
+        raise RuntimeError("stack parsing lost frames; see collapse.log")
+    samples = validate_samples(raw, collapsed.stdout)
+    (out / "stacks.folded").write_text(collapsed.stdout)
+    svg = capture(["inferno-flamegraph", "--title", "CHR CPU profile", "--subtitle", " ".join(workload), "--countname", "samples", "--colors", "rust", "--deterministic"], input=collapsed.stdout)
+    import xml.etree.ElementTree as ET
+    if ET.fromstring(svg).tag != "{http://www.w3.org/2000/svg}svg":
+        raise ValueError("flame graph renderer did not produce SVG")
+    (out / "flame.svg").write_text(svg)
+    metadata.update(samples=samples, flamegraph="flame.svg", profile_validated=True,
+                    uncertainty="Sampling uncertainty applies; short runs with few samples cannot support precise percentage comparisons.")
+    meta.write_text(json.dumps(metadata, indent=2) + "\n")
+    print(json.dumps({"status": metadata["status"], "samples": samples, "flamegraph": str(out / "flame.svg"), "metadata": str(meta)}))
+    return 2 if metadata["status"] == "censored" else 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        sys.exit(1)
