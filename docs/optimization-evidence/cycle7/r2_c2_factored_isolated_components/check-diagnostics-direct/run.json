@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "command": [
+    "target/release/deps/factored_components_boundary-b33df5af9e9cc0bb",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "cwd": "/tmp/chr-cycle7-opt-factored-isolated-components",
+  "binary": "/tmp/chr-cycle7-opt-factored-isolated-components/target/release/deps/factored_components_boundary-b33df5af9e9cc0bb",
+  "host": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "status": "completed",
+  "returncode": 0,
+  "limit_reason": null,
+  "descendants_signaled_after_exit": false,
+  "descendant_pids": [],
+  "group_cleanup_complete": true,
+  "launch_parent_rss_kib": 12832,
+  "wall_seconds": 0.0044170699547976255,
+  "user_cpu_seconds": 0.003767,
+  "system_cpu_seconds": 0.0,
+  "max_rss_kib": 8792,
+  "minor_faults": 385,
+  "major_faults": 0,
+  "voluntary_context_switches": 11,
+  "involuntary_context_switches": 1,
+  "filesystem_input_blocks": 0,
+  "filesystem_output_blocks": 8,
+  "scope": "Managed original process group only, not containment for commands that change sessions/groups. Linux wait4 includes launcher/pre-exec work and leader plus waited descendants; max_rss is a high-water mark, not summed tree RSS; CPU includes harness/output/cleanup; block counts are kernel accounting, not byte or syscall counts",
+  "limits": {
+    "wall_seconds": 15.0,
+    "interrupt_grace_seconds": 1,
+    "group_cleanup_grace_seconds": 1,
+    "address_space_mib_per_process": 2048,
+    "file_mib_per_file": 256,
+    "cpu_soft_seconds_per_process": 15,
+    "cpu_hard_seconds_per_process": 16
+  }
+}

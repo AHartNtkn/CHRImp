@@ -1,0 +1,17 @@
+
+running 5 tests
+cleanup={"choices":0,"conditions":0,"coordinate_records":1,"graph_nodes":0,"history_nodes":0,"history_records":0,"inspections":0,"obligation_descriptors":0,"occurrences":0,"pending_nodes":0,"release_batches":0,"restriction_nodes":0,"snapshots":0}
+cleanup={"choices":0,"conditions":0,"coordinate_records":1,"graph_nodes":0,"history_nodes":0,"history_records":0,"inspections":0,"obligation_descriptors":0,"occurrences":0,"pending_nodes":0,"release_batches":0,"restriction_nodes":0,"snapshots":0}
+frontier=1 memory={"graph_nodes":51,"release_batches":1,"occurrences":6,"conditions":0,"history_nodes":0,"history_records":0,"pending_nodes":9,"obligation_descriptors":8,"choices":0,"coordinate_records":1,"snapshots":1,"inspections":0,"restriction_nodes":0}
+cleanup={"choices":0,"conditions":0,"coordinate_records":1,"graph_nodes":0,"history_nodes":0,"history_records":0,"inspections":0,"obligation_descriptors":0,"occurrences":0,"pending_nodes":0,"release_batches":0,"restriction_nodes":0,"snapshots":0}
+test unequal_components_and_equal_tuples_keep_exact_occurrence_multiplicity ... ok
+test variable_disjoint_components_can_interact_without_shared_head_variables ... ok
+test source_equality_can_export_identity_before_a_later_keyed_join ... ok
+frontier=5 memory={"graph_nodes":158,"release_batches":1,"occurrences":12,"conditions":0,"history_nodes":0,"history_records":0,"pending_nodes":27,"obligation_descriptors":15,"choices":0,"coordinate_records":1,"snapshots":2,"inspections":0,"restriction_nodes":0}
+cleanup={"choices":0,"conditions":0,"coordinate_records":1,"graph_nodes":0,"history_nodes":0,"history_records":0,"inspections":0,"obligation_descriptors":0,"occurrences":0,"pending_nodes":0,"release_batches":0,"restriction_nodes":0,"snapshots":0}
+test every_logical_post_and_application_has_its_own_history_boundary ... ok
+cleanup={"choices":0,"conditions":0,"coordinate_records":1,"graph_nodes":0,"history_nodes":0,"history_records":0,"inspections":0,"obligation_descriptors":0,"occurrences":0,"pending_nodes":0,"release_batches":0,"restriction_nodes":0,"snapshots":0}
+test equivalent_instances_need_distinct_committed_frontiers_and_events ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

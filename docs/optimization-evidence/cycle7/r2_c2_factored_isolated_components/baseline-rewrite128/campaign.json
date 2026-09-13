@@ -1,0 +1,3661 @@
+{
+  "schema": 1,
+  "command": [
+    "/tmp/chr-cycle7-opt-factored-isolated-components/target/release/examples/measure",
+    "rewrite",
+    "128",
+    "5000000",
+    "5"
+  ],
+  "build": null,
+  "local_revision": "3f5bb819cb0f496d5fb261bade0660277caf2693",
+  "working_tree": "?? docs/optimization-evidence/cycle7/r2_c2_factored_isolated_components/\n?? tests/factored_components_boundary.rs",
+  "local_rustc": "rustc 1.95.0-nightly (18d13b533 2026-02-09)\nbinary: rustc\ncommit-hash: 18d13b5332916ffca8eadb9106d54b5b434e9978\ncommit-date: 2026-02-09\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0-nightly\nLLVM version: 22.1.0",
+  "host": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "build_environment": null,
+  "limits": {
+    "per_sample_seconds": 15.0,
+    "total_sample_seconds": 20.0,
+    "repeats": 1,
+    "warmups": 0,
+    "memory_mib": 2048
+  },
+  "status": "finished",
+  "samples_executed": 1,
+  "requested_samples": 1,
+  "aggregate_censored": false,
+  "elapsed_seconds": 0.01085308799520135,
+  "summary": {
+    "counts": {
+      "completed": 1
+    },
+    "warmup_count": 0,
+    "metrics": {
+      "allocations.phases.calibration.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.calibration.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.calibration.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.calibration.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.cleanup.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4672,
+        "min": 4672,
+        "max": 4672,
+        "mad": 0
+      },
+      "allocations.phases.cleanup.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 5,
+        "min": 5,
+        "max": 5,
+        "mad": 0
+      },
+      "allocations.phases.cleanup.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1611,
+        "min": 1611,
+        "max": 1611,
+        "mad": 0
+      },
+      "allocations.phases.cleanup.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 177352,
+        "min": 177352,
+        "max": 177352,
+        "mad": 0
+      },
+      "allocations.phases.delivery.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.delivery.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.delivery.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.delivery.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.engine.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4350264,
+        "min": 4350264,
+        "max": 4350264,
+        "mad": 0
+      },
+      "allocations.phases.engine.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 19608,
+        "min": 19608,
+        "max": 19608,
+        "mad": 0
+      },
+      "allocations.phases.engine.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 18305,
+        "min": 18305,
+        "max": 18305,
+        "mad": 0
+      },
+      "allocations.phases.engine.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4195224,
+        "min": 4195224,
+        "max": 4195224,
+        "mad": 0
+      },
+      "allocations.phases.inspection.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.inspection.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.inspection.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.inspection.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "allocations.phases.other.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 224456,
+        "min": 224456,
+        "max": 224456,
+        "mad": 0
+      },
+      "allocations.phases.other.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1876,
+        "min": 1876,
+        "max": 1876,
+        "mad": 0
+      },
+      "allocations.phases.other.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2554,
+        "min": 2554,
+        "max": 2554,
+        "mad": 0
+      },
+      "allocations.phases.other.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 262913,
+        "min": 262913,
+        "max": 262913,
+        "mad": 0
+      },
+      "allocations.phases.setup.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 115701,
+        "min": 115701,
+        "max": 115701,
+        "mad": 0
+      },
+      "allocations.phases.setup.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2330,
+        "min": 2330,
+        "max": 2330,
+        "mad": 0
+      },
+      "allocations.phases.setup.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1621,
+        "min": 1621,
+        "max": 1621,
+        "mad": 0
+      },
+      "allocations.phases.setup.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 75724,
+        "min": 75724,
+        "max": 75724,
+        "mad": 0
+      },
+      "allocations.phases.validator.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 45470,
+        "min": 45470,
+        "max": 45470,
+        "mad": 0
+      },
+      "allocations.phases.validator.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 940,
+        "min": 940,
+        "max": 940,
+        "mad": 0
+      },
+      "allocations.phases.validator.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 660,
+        "min": 660,
+        "max": 660,
+        "mad": 0
+      },
+      "allocations.phases.validator.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 27664,
+        "min": 27664,
+        "max": 27664,
+        "mad": 0
+      },
+      "allocations.process_live_requested_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1686,
+        "min": 1686,
+        "max": 1686,
+        "mad": 0
+      },
+      "allocations.process_peak_requested_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 714671,
+        "min": 714671,
+        "max": 714671,
+        "mad": 0
+      },
+      "allocations.total_allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4740563,
+        "min": 4740563,
+        "max": 4740563,
+        "mad": 0
+      },
+      "allocations.total_allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 24759,
+        "min": 24759,
+        "max": 24759,
+        "mad": 0
+      },
+      "allocations.total_deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 24751,
+        "min": 24751,
+        "max": 24751,
+        "mad": 0
+      },
+      "allocations.total_freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4738877,
+        "min": 4738877,
+        "max": 4738877,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.0.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 93751,
+        "min": 93751,
+        "max": 93751,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.0.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 810,
+        "min": 810,
+        "max": 810,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.0.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 800,
+        "min": 800,
+        "max": 800,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.0.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 92053,
+        "min": 92053,
+        "max": 92053,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.1.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 115701,
+        "min": 115701,
+        "max": 115701,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.1.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2330,
+        "min": 2330,
+        "max": 2330,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.1.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1621,
+        "min": 1621,
+        "max": 1621,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.1.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 75724,
+        "min": 75724,
+        "max": 75724,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.2.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4350264,
+        "min": 4350264,
+        "max": 4350264,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.2.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 19608,
+        "min": 19608,
+        "max": 19608,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.2.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 18305,
+        "min": 18305,
+        "max": 18305,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.2.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4195224,
+        "min": 4195224,
+        "max": 4195224,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.3.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 45470,
+        "min": 45470,
+        "max": 45470,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.3.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 940,
+        "min": 940,
+        "max": 940,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.3.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 660,
+        "min": 660,
+        "max": 660,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.3.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 27664,
+        "min": 27664,
+        "max": 27664,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.4.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.4.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.4.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.4.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.5.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4672,
+        "min": 4672,
+        "max": 4672,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.5.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 5,
+        "min": 5,
+        "max": 5,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.5.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1306,
+        "min": 1306,
+        "max": 1306,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.5.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 156384,
+        "min": 156384,
+        "max": 156384,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.6.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.6.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.6.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.6.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.7.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.7.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.7.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.phases.7.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.process_live_requested_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 62809,
+        "min": 62809,
+        "max": 62809,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.allocation.process_peak_requested_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 714671,
+        "min": 714671,
+        "max": 714671,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.choices": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.conditions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.coordinate_records": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.graph_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.history_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.history_records": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.inspections": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.obligation_descriptors": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.occurrences": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.pending_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.pending_tasks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.release_batches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.restriction_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.memory_counts.snapshots": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.normalization.applications": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.normalization.attachment_overlaps": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.normalization.clashes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.normalization.coalescences": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.normalization.conditional_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.normalization.field_equalities": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.normalization.generative_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.normalization.known_arm_admissions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.normalization.steps": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.normalization.transactions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.shared_restrictions.created": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.shared_restrictions.entries": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.shared_restrictions.partition_lookups": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.shared_restrictions.peak_retained_partitions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.shared_restrictions.peak_retained_rows": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.shared_restrictions.producer_candidates": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.shared_restrictions.projected_ports": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.shared_restrictions.retained_partitions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.shared_restrictions.retained_rows": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.shared_restrictions.reused": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.advance_iterations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 27935,
+        "min": 27935,
+        "max": 27935,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.body_merges": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.body_posts": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 384,
+        "min": 384,
+        "max": 384,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.certificates_published": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.certificates_started": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.choice_births": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.complete_answers": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.activation": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 640,
+        "min": 640,
+        "max": 640,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.body": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 3585,
+        "min": 3585,
+        "max": 3585,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.cancellation": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 8,
+        "min": 8,
+        "max": 8,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.collection": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 5486,
+        "min": 5486,
+        "max": 5486,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.discard": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.idle": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.init": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 129,
+        "min": 129,
+        "max": 129,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.inspection": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.observer": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1812,
+        "min": 1812,
+        "max": 1812,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.ready": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 6,
+        "min": 6,
+        "max": 6,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.search": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4608,
+        "min": 4608,
+        "max": 4608,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.step_gate": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.store_release": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 11661,
+        "min": 11661,
+        "max": 11661,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.dispatch.wake": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.fail_applications": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.fail_support_changes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.merge_support_changes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.obligation_rows_scanned": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.output_events": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 514,
+        "min": 514,
+        "max": 514,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.0.applied": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.0.commit_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1536,
+        "min": 1536,
+        "max": 1536,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.0.commits_started": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.0.direct_anchor_matches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.0.found": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.0.indexed_candidate_visits": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.0.matching_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 384,
+        "min": 384,
+        "max": 384,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.0.rejected": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.0.tasks_created": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.1.applied": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.1.commit_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1536,
+        "min": 1536,
+        "max": 1536,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.1.commits_started": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.1.direct_anchor_matches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.1.found": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.1.indexed_candidate_visits": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.1.matching_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 384,
+        "min": 384,
+        "max": 384,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.1.rejected": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.rules.1.tasks_created": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.arena": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 20,
+        "min": 20,
+        "max": 20,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.births": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.compact": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4,
+        "min": 4,
+        "max": 4,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.completed": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.coordinates": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 6,
+        "min": 6,
+        "max": 6,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.graph": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1545,
+        "min": 1545,
+        "max": 1545,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.history": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 10,
+        "min": 10,
+        "max": 10,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.inspections": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4,
+        "min": 4,
+        "max": 4,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.observe": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 23,
+        "min": 23,
+        "max": 23,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.parked": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.pending": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 395,
+        "min": 395,
+        "max": 395,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.prune": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.prune_graph": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 3332,
+        "min": 3332,
+        "max": 3332,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.ready": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.rule_step": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.seed_boolean.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.seed_boolean.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.seed_variables": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 131,
+        "min": 131,
+        "max": 131,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.snapshots": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.started": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.tasks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.collection.trim_births": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.compaction.boolean.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.compaction.boolean.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.compaction.choices_examined": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.compaction.graph_index_steps": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.compaction.history_index_steps": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.compaction.pending_index_steps": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.compaction.pending_transform.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.compaction.pending_transform.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.compaction.transform.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.compaction.transform.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.completion_boolean.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.completion_boolean.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.assignments_drained": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.assignments_published": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.cleanup_probes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 16275,
+        "min": 16275,
+        "max": 16275,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.completion.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.completion.epochs_crossed": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.completion.transform.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.completion.transform.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.epochs_retired": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.maps_retired": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.publications": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.search.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 256,
+        "min": 256,
+        "max": 256,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.search.epochs_crossed": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.search.transform.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.coordinates.search.transform.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.shared.unclassified_conditional_work": {
+        "n": 0,
+        "incomplete_or_missing": 1,
+        "median": null,
+        "min": null,
+        "max": null,
+        "mad": null
+      },
+      "diagnostics.after_cancel.0.work.task_parks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 639,
+        "min": 639,
+        "max": 639,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.task_requeues": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 7297,
+        "min": 7297,
+        "max": 7297,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.task_wakes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 639,
+        "min": 639,
+        "max": 639,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.tasks_canceled": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.tasks_completed": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1026,
+        "min": 1026,
+        "max": 1026,
+        "mad": 0
+      },
+      "diagnostics.after_cancel.0.work.tasks_created": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1026,
+        "min": 1026,
+        "max": 1026,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.0.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 6863,
+        "min": 6863,
+        "max": 6863,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.0.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 59,
+        "min": 59,
+        "max": 59,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.0.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 49,
+        "min": 49,
+        "max": 49,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.0.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 5165,
+        "min": 5165,
+        "max": 5165,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.1.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 115701,
+        "min": 115701,
+        "max": 115701,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.1.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2330,
+        "min": 2330,
+        "max": 2330,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.1.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1621,
+        "min": 1621,
+        "max": 1621,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.1.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 75724,
+        "min": 75724,
+        "max": 75724,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.2.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4350264,
+        "min": 4350264,
+        "max": 4350264,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.2.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 19608,
+        "min": 19608,
+        "max": 19608,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.2.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 18305,
+        "min": 18305,
+        "max": 18305,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.2.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4195224,
+        "min": 4195224,
+        "max": 4195224,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.3.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 45470,
+        "min": 45470,
+        "max": 45470,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.3.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 940,
+        "min": 940,
+        "max": 940,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.3.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 660,
+        "min": 660,
+        "max": 660,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.3.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 27664,
+        "min": 27664,
+        "max": 27664,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.4.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.4.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.4.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.4.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.5.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.5.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.5.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.5.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.6.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.6.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.6.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.6.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.7.allocated_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.7.allocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.7.deallocations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.phases.7.freed_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.process_live_requested_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 214521,
+        "min": 214521,
+        "max": 214521,
+        "mad": 0
+      },
+      "diagnostics.source.0.allocation.process_peak_requested_bytes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 714671,
+        "min": 714671,
+        "max": 714671,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.choices": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.conditions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.coordinate_records": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.graph_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1022,
+        "min": 1022,
+        "max": 1022,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.history_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.history_records": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.inspections": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.obligation_descriptors": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.occurrences": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.pending_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.pending_tasks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.release_batches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.restriction_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.memory_counts.snapshots": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.normalization.applications": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.normalization.attachment_overlaps": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.normalization.clashes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.normalization.coalescences": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.normalization.conditional_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.normalization.field_equalities": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.normalization.generative_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.normalization.known_arm_admissions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.normalization.steps": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.normalization.transactions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.shared_restrictions.created": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.shared_restrictions.entries": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.shared_restrictions.partition_lookups": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.shared_restrictions.peak_retained_partitions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.shared_restrictions.peak_retained_rows": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.shared_restrictions.producer_candidates": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.shared_restrictions.projected_ports": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.shared_restrictions.retained_partitions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.shared_restrictions.retained_rows": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.shared_restrictions.reused": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.advance_iterations": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 27247,
+        "min": 27247,
+        "max": 27247,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.body_merges": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.body_posts": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 384,
+        "min": 384,
+        "max": 384,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.certificates_published": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.certificates_started": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.choice_births": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.complete_answers": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.activation": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 640,
+        "min": 640,
+        "max": 640,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.body": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 3585,
+        "min": 3585,
+        "max": 3585,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.cancellation": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.collection": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 5317,
+        "min": 5317,
+        "max": 5317,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.discard": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.idle": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.init": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 129,
+        "min": 129,
+        "max": 129,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.inspection": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.observer": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1812,
+        "min": 1812,
+        "max": 1812,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.ready": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 6,
+        "min": 6,
+        "max": 6,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.search": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4608,
+        "min": 4608,
+        "max": 4608,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.step_gate": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.store_release": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 11150,
+        "min": 11150,
+        "max": 11150,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.dispatch.wake": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.fail_applications": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.fail_support_changes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.merge_support_changes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.obligation_rows_scanned": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.output_events": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 514,
+        "min": 514,
+        "max": 514,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.0.applied": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.0.commit_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1536,
+        "min": 1536,
+        "max": 1536,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.0.commits_started": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.0.direct_anchor_matches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.0.found": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.0.indexed_candidate_visits": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.0.matching_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 384,
+        "min": 384,
+        "max": 384,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.0.rejected": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.0.tasks_created": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.1.applied": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.1.commit_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1536,
+        "min": 1536,
+        "max": 1536,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.1.commits_started": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.1.direct_anchor_matches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.1.found": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.1.indexed_candidate_visits": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.1.matching_dispatches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 384,
+        "min": 384,
+        "max": 384,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.1.rejected": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.rules.1.tasks_created": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.arena": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 10,
+        "min": 10,
+        "max": 10,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.births": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.compact": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 4,
+        "min": 4,
+        "max": 4,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.completed": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.coordinates": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.graph": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1412,
+        "min": 1412,
+        "max": 1412,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.history": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 5,
+        "min": 5,
+        "max": 5,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.inspections": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.observe": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 22,
+        "min": 22,
+        "max": 22,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.parked": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.pending": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 390,
+        "min": 390,
+        "max": 390,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.prune": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.prune_graph": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 3331,
+        "min": 3331,
+        "max": 3331,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.ready": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.rule_step": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.seed_boolean.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.seed_boolean.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.seed_variables": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 130,
+        "min": 130,
+        "max": 130,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.snapshots": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.started": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.tasks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.collection.trim_births": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.compaction.boolean.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.compaction.boolean.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.compaction.choices_examined": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.compaction.graph_index_steps": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.compaction.history_index_steps": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.compaction.pending_index_steps": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.compaction.pending_transform.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.compaction.pending_transform.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.compaction.transform.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.compaction.transform.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.completion_boolean.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.completion_boolean.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.assignments_drained": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.assignments_published": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.cleanup_probes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 16097,
+        "min": 16097,
+        "max": 16097,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.completion.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.completion.epochs_crossed": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.completion.transform.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.completion.transform.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.epochs_retired": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.maps_retired": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.publications": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.search.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 256,
+        "min": 256,
+        "max": 256,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.search.epochs_crossed": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.search.transform.calls": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.coordinates.search.transform.work": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.shared.unclassified_conditional_work": {
+        "n": 0,
+        "incomplete_or_missing": 1,
+        "median": null,
+        "min": null,
+        "max": null,
+        "mad": null
+      },
+      "diagnostics.source.0.work.task_parks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 639,
+        "min": 639,
+        "max": 639,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.task_requeues": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 7297,
+        "min": 7297,
+        "max": 7297,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.task_wakes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 639,
+        "min": 639,
+        "max": 639,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.tasks_canceled": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.tasks_completed": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1026,
+        "min": 1026,
+        "max": 1026,
+        "mad": 0
+      },
+      "diagnostics.source.0.work.tasks_created": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1026,
+        "min": 1026,
+        "max": 1026,
+        "mad": 0
+      },
+      "process.filesystem_input_blocks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "process.filesystem_output_blocks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 40,
+        "min": 40,
+        "max": 40,
+        "mad": 0
+      },
+      "process.involuntary_context_switches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "process.launch_parent_rss_kib": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 14592,
+        "min": 14592,
+        "max": 14592,
+        "mad": 0
+      },
+      "process.limit_reason": {
+        "n": 0,
+        "incomplete_or_missing": 1,
+        "median": null,
+        "min": null,
+        "max": null,
+        "mad": null
+      },
+      "process.major_faults": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "process.max_rss_kib": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 10236,
+        "min": 10236,
+        "max": 10236,
+        "mad": 0
+      },
+      "process.minor_faults": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 567,
+        "min": 567,
+        "max": 567,
+        "mad": 0
+      },
+      "process.system_cpu_seconds": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0.001028,
+        "min": 0.001028,
+        "max": 0.001028,
+        "mad": 0.0
+      },
+      "process.user_cpu_seconds": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0.0072,
+        "min": 0.0072,
+        "max": 0.0072,
+        "mad": 0.0
+      },
+      "process.voluntary_context_switches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "process.wall_seconds": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0.008966803085058928,
+        "min": 0.008966803085058928,
+        "max": 0.008966803085058928,
+        "mad": 0.0
+      },
+      "workload.first_answer.ms": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 5.944884999999999,
+        "min": 5.944884999999999,
+        "max": 5.944884999999999,
+        "mad": 0.0
+      },
+      "workload.first_answer.tick": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 27245,
+        "min": 27245,
+        "max": 27245,
+        "mad": 0
+      },
+      "workload.first_event.ms": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 5.812566,
+        "min": 5.812566,
+        "max": 5.812566,
+        "mad": 0.0
+      },
+      "workload.first_event.tick": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 25836,
+        "min": 25836,
+        "max": 25836,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.choices": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.conditions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.coordinate_records": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.graph_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.history_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.history_records": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.inspections": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.obligation_descriptors": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.occurrences": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.pending_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.pending_tasks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.release_batches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.restriction_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.after_cleanup.snapshots": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.choices": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.conditions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.coordinate_records": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.graph_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1022,
+        "min": 1022,
+        "max": 1022,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.history_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.history_records": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.inspections": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.obligation_descriptors": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.occurrences": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.pending_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.pending_tasks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.release_batches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.restriction_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.before_cleanup.snapshots": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.choices": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.conditions": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.coordinate_records": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.graph_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1023,
+        "min": 1023,
+        "max": 1023,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.history_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.history_records": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.inspections": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.obligation_descriptors": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 385,
+        "min": 385,
+        "max": 385,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.occurrences": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 384,
+        "min": 384,
+        "max": 384,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.pending_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 257,
+        "min": 257,
+        "max": 257,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.pending_tasks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 129,
+        "min": 129,
+        "max": 129,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.release_batches": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.restriction_nodes": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.memory_counts.sampled_peak.snapshots": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "mad": 0
+      },
+      "workload.native_peak_rss_estimate_kib": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 5028,
+        "min": 5028,
+        "max": 5028,
+        "mad": 0
+      },
+      "workload.source_exhausted.ms": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 5.509202999999999,
+        "min": 5.509202999999999,
+        "max": 5.509202999999999,
+        "mad": 0.0
+      },
+      "workload.source_exhausted.tick": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 20118,
+        "min": 20118,
+        "max": 20118,
+        "mad": 0
+      },
+      "workload.times_ms.cleanup": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0.09111999999999999,
+        "min": 0.09111999999999999,
+        "max": 0.09111999999999999,
+        "mad": 0.0
+      },
+      "workload.times_ms.engine_drop": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0.006828,
+        "min": 0.006828,
+        "max": 0.006828,
+        "mad": 0.0
+      },
+      "workload.times_ms.engine_init": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0.021384,
+        "min": 0.021384,
+        "max": 0.021384,
+        "mad": 0.0
+      },
+      "workload.times_ms.max_advance1": {
+        "n": 0,
+        "incomplete_or_missing": 1,
+        "median": null,
+        "min": null,
+        "max": null,
+        "mad": null
+      },
+      "workload.times_ms.parse_program": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0.015432999999999999,
+        "min": 0.015432999999999999,
+        "max": 0.015432999999999999,
+        "mad": 0.0
+      },
+      "workload.times_ms.parse_query": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0.073467,
+        "min": 0.073467,
+        "max": 0.073467,
+        "mad": 0.0
+      },
+      "workload.times_ms.prepare": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0.12180600000000001,
+        "min": 0.12180600000000001,
+        "max": 0.12180600000000001,
+        "mad": 0.0
+      },
+      "workload.times_ms.prepared_drop": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 0.005032,
+        "min": 0.005032,
+        "max": 0.005032,
+        "mad": 0.0
+      },
+      "workload.times_ms.source_delivery": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 5.9921180000000005,
+        "min": 5.9921180000000005,
+        "max": 5.9921180000000005,
+        "mad": 0.0
+      },
+      "workload.times_ms.source_delivery_without_validator": {
+        "n": 0,
+        "incomplete_or_missing": 1,
+        "median": null,
+        "min": null,
+        "max": null,
+        "mad": null
+      },
+      "workload.times_ms.validator": {
+        "n": 0,
+        "incomplete_or_missing": 1,
+        "median": null,
+        "min": null,
+        "max": null,
+        "mad": null
+      },
+      "workload.work.advance1_ticks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 27247,
+        "min": 27247,
+        "max": 27247,
+        "mad": 0
+      },
+      "workload.work.answers": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "workload.work.applications": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 256,
+        "min": 256,
+        "max": 256,
+        "mad": 0
+      },
+      "workload.work.cleanup_ticks": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 688,
+        "min": 688,
+        "max": 688,
+        "mad": 0
+      },
+      "workload.work.collection_status_ticks": {
+        "n": 0,
+        "incomplete_or_missing": 1,
+        "median": null,
+        "min": null,
+        "max": null,
+        "mad": null
+      },
+      "workload.work.collections": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "mad": 0
+      },
+      "workload.work.facts": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "workload.work.ports": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 128,
+        "min": 128,
+        "max": 128,
+        "mad": 0
+      },
+      "workload.work.scalars": {
+        "n": 1,
+        "incomplete_or_missing": 0,
+        "median": 514,
+        "min": 514,
+        "max": 514,
+        "mad": 0
+      }
+    },
+    "regression_assessment": "not_performed"
+  }
+}

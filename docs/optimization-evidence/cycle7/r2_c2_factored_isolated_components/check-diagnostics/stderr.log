@@ -1,0 +1,3 @@
+   Compiling chr v0.1.0 (/tmp/chr-cycle7-opt-factored-isolated-components)
+    Finished `release` profile [optimized] target(s) in 2.50s
+     Running tests/factored_components_boundary.rs (target/release/deps/factored_components_boundary-b33df5af9e9cc0bb)
