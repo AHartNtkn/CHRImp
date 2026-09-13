@@ -144,11 +144,11 @@ tasks:
         the exact unblock.
     write_scopes:
       PM: *id001
-    progress: Generated workloads, native CPU profiles, engine/allocation diagnostics, baseline/detail modes and
-      shared external native supervision with resource accounting are implemented and calibrated. Remaining T002
-      work includes lifetime/preparation interactions, representation/ownership attribution, allocation stacks and
-      broader calibration. T003 maintained supervised campaigns, structured comparisons/detectors and T004 independent
-      challenges remain required.
+    progress: Typed core/notebook/lifecycle results and bounded repeated measurements now use commands, build settings,
+      limits and raw results. Four independently parameterized retention/concurrency workloads check held output,
+      fixed/rotating archives and concurrent unread inspections. Remaining work includes preparation/fresh-production
+      interactions, session churn/replay, representation/ownership and allocation-stack attribution, routine/deep
+      scaling selection, calibrated regression decisions and independent challenges.
     evidence:
       - 'cargo test --release --example measure: 23 passed, including generated end-to-end cases across shapes and
         seeds.'
@@ -199,6 +199,17 @@ tasks:
         per-process rather than aggregate quotas, detached processes and kernel-uninterruptible/launch caveats visible.
         T003 must establish applicability and bounds for actual maintained campaigns, not claim arbitrary process
         containment.
+      - 'cargo test --example measure: 25 passed; diagnostics feature: 26 passed; default clippy and fmt passed.'
+      - 'python3 -m unittest discover -s tests -p perf_test.py: 7 passed, including actual typed-count oracles,
+        repeat result preservation, aggregate censoring, contradictory success/cleanup and nonfinite-report rejection.'
+      - Four new lifecycle interaction cases completed two-run campaigns with SIZE=2, rows=3, work=24, cadence=4.
+        Typed admission/held/resumed/cleanup measurements are retained in /tmp/chrimp-campaign-life-*/campaign.json;
+        /tmp/chrimp-campaign-final-inspections validates current repeat integrity checks.
+      - Independent repeat-runner review led to stronger outcome/configuration consistency, explicit null/nonfinite
+        handling, cleanup-failure classification, aggregate processing deadline and notebook goal/censor separation.
+      - Performance tools execute the selected binary directly. Records focus on command/build/environment/limits
+        and measured outcomes, with raw stdout/stderr and typed per-sample records.
+      - 'python3 -m unittest discover -s tests -p profile_test.py: 4 passed; supervise_test.py: 11 passed.'
   - id: T003
     type: worker
     assignee: Worker
@@ -261,8 +272,8 @@ checks:
     result: pass
     task: T002
     commands:
-      - python3 -m unittest discover -s tests -p supervise_test.py
+      - python3 -m unittest discover -s tests -p perf_test.py
       - python3 -m unittest discover -s tests -p profile_test.py
-      - python3 examples/profile.py --out /tmp/chrimp-profile-supervision-final -- notebook-behavior-i 1 50000000
-        15
+      - python3 -m unittest discover -s tests -p supervise_test.py
+      - cargo fmt --check
       - git diff --check

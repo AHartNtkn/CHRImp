@@ -861,6 +861,27 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
             }
         );
     }
+    crate::report::emit(
+        "result",
+        serde_json::json!({
+            "case": case, "size": n, "status": status, "goal": if finite { "complete" } else { "answer_prefix" },
+            "goal_count": expected, "source_goal_reached": answers == expected && (!finite || delivery_done),
+            "timed_out": elapsed >= timeout,
+            "censor_reason": if elapsed >= timeout { Some("source_timeout") } else if !cleanup_in_time { Some("cleanup_timeout") } else if !cleanup_done { Some("cleanup_ticks") } else if !achieved { Some(if ticks >= max_ticks { "source_ticks" } else { "search_ended_before_prefix" }) } else { None }, "cleanup_done": cleanup_done,
+            "cleanup_in_time": cleanup_in_time, "error": error, "search_exhausted": exhausted,
+            "delivery_done": delivery_done, "max_ticks": max_ticks, "timeout_ms": ms(timeout),
+            "times_ms": {"parse": ms(parse_time), "prepare": ms(prepare_time), "engine_init": ms(init_time),
+                "source_delivery": ms(elapsed), "validator": detailed.then(|| ms(validator)),
+                "source_delivery_without_validator": detailed.then(|| ms(elapsed.saturating_sub(validator))), "cleanup": ms(cleanup_time)},
+            "first_event": first_event.map(|(tick,t)| serde_json::json!({"tick":tick,"ms":ms(t)})),
+            "first_answer": first_answer.map(|(tick,t)| serde_json::json!({"tick":tick,"ms":ms(t)})),
+            "first_complete_answer": first_answer_value,
+            "work": {"advance1_ticks":ticks,"applications":applications,"collections":collections,
+                "collection_status_ticks":detailed.then_some(collection_ticks),"answers":answers,
+                "scalars":reader.scalars,"cleanup_ticks":cleanup_ticks},
+            "memory_counts": {"sampled_peak":crate::report::memory(peak),"before_cleanup":crate::report::memory(before),"after_cleanup":crate::report::memory(after)}
+        }),
+    );
     if let Some(error) = error {
         return Err(error);
     }

@@ -15,7 +15,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive runtime";
+#[path = "interactions.rs"]
+mod interactions;
+pub use interactions::Options as InteractionOptions;
+
+pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive life-held-output life-archive-fixed life-archive-rotate life-inspections runtime";
 const REWRITE: &str = "p(X) <=> q(X). q(X) <=> done(X).";
 fn ms(d: Duration) -> f64 {
     d.as_secs_f64() * 1000.0
@@ -223,12 +227,37 @@ fn cancel(e: &mut Engine, limit: u64, timeout: Duration) -> bool {
         done,
         e.memory()
     );
+    crate::report::emit(
+        "phase",
+        json!({"phase":"cancel", "request_ms":ms(request),
+        "elapsed_ms":ms(elapsed),"ticks":b.ticks,"complete":done,
+        "applications":e.applications(),"memory":crate::report::memory(crate::memory(e))}),
+    );
     crate::report_diagnostics("after_cancel", e);
     done
 }
 fn release(e: &mut Engine, limit: u64, timeout: Duration) -> Result<bool, String> {
     let mut b = Budget::new(limit, timeout);
     b.phase = Phase::Cleanup;
+    // Cancellation finishes projections, but handles remain independently owned.
+    loop {
+        let next = e.inspections().next();
+        let Some(id) = next else {
+            break;
+        };
+        if !b.available() {
+            return Ok(false);
+        }
+        match e.release_inspection(id) {
+            Ok(()) => b.ticks += 1,
+            Err(InspectionError::Busy) => {
+                if !b.step(e) {
+                    return Ok(false);
+                }
+            }
+            Err(err) => return Err(err.to_string()),
+        }
+    }
     // Release all registered views before sweeping their shared roots.
     loop {
         let next = e.snapshots().next().map(|s| s.id);
@@ -259,6 +288,11 @@ fn release(e: &mut Engine, limit: u64, timeout: Duration) -> Result<bool, String
         observation::milliseconds(b.detailed, b.maximum),
         done,
         e.memory()
+    );
+    crate::report::emit(
+        "phase",
+        json!({"phase":"release", "elapsed_ms":ms(b.start.elapsed()),
+        "ticks":b.ticks,"complete":done,"memory":crate::report::memory(crate::memory(e))}),
     );
     if done {
         check(
@@ -465,6 +499,17 @@ fn stream(case: &str, n: usize, limit: u64, timeout: Duration) -> Result<bool, S
         observation::count(b.detailed, b.collection_ticks),
         e.collections()
     );
+    crate::report::emit(
+        "phase",
+        json!({"phase":"source", "complete":complete,
+        "applications":e.applications(),"answers":reader.answers,"ticks":b.ticks,
+        "elapsed_ms":ms(b.start.elapsed()),"first_answer_tick":first_answer_tick,
+        "first_answer_ms":first_answer.map(ms),"first_event_ms":first_event.map(ms),
+        "validator_ms":b.detailed.then(|| ms(b.validator)),
+        "max_step_ms":b.detailed.then(|| ms(b.maximum)),
+        "collection_status_ticks":b.detailed.then_some(b.collection_ticks),
+        "memory":crate::report::memory(crate::memory(&e))}),
+    );
     println!("first_answer_tick={first_answer_tick:?}");
     let mut checkpoint_done = false;
     if complete {
@@ -580,6 +625,13 @@ fn archive(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
         ms(b.start.elapsed()),
         observation::count(b.detailed, b.collection_ticks),
         e.memory()
+    );
+    crate::report::emit(
+        "phase",
+        json!({"phase":"archive_source","complete":complete,
+        "setup_complete":admitted,"setup_ticks":setup.ticks,"retained_snapshots":views.len(),
+        "continued_applications":e.applications()-initial,"ticks":b.ticks,
+        "elapsed_ms":ms(b.start.elapsed()),"memory":crate::report::memory(crate::memory(&e))}),
     );
     let mut clean = cancel(&mut e, limit, timeout);
     if clean {
@@ -753,6 +805,7 @@ fn runtime(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
         }
     }
     complete &= b.in_time();
+    let delivery_elapsed = delivery.elapsed();
     if complete {
         check(
             reader.answers == n && !reader.open && tiny_reader.answers == 1 && !tiny_reader.open,
@@ -810,10 +863,48 @@ fn runtime(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
         cleanup.ticks,
         observation::milliseconds(cleanup.detailed, cleanup.maximum)
     );
+    crate::report::emit(
+        "phase",
+        json!({"phase":"runtime","complete":complete,"closed":closed,
+        "answers":reader.answers,"batches":batches,"event_json_bytes":bytes,
+        "production_turns":production_turns,"tiny_answer_turn":tiny_turn,
+        "tiny_answer_ms":tiny_latency.map(ms),"delivery_ms":ms(delivery_elapsed),
+        "close_ticks":cleanup.ticks,"close_ms":ms(cleanup.start.elapsed())}),
+    );
     Ok(complete && closed)
 }
 
 pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bool, String> {
+    run_options(case, n, InteractionOptions::default(), max_ticks, timeout)
+}
+
+/// SIZE selects siblings, retained snapshots or concurrent inspections.
+/// Options independently select view width, continued applications and rotation cadence.
+pub fn run_options(
+    case: &str,
+    n: usize,
+    options: InteractionOptions,
+    max_ticks: u64,
+    timeout: Duration,
+) -> Result<bool, String> {
+    let result = run_inner(case, n, options, max_ticks, timeout);
+    crate::report::emit(
+        "result",
+        json!({"case":case,"size":n,
+        "rows":options.rows,"work":options.work,"cadence":options.cadence,
+        "status":match &result { Ok(true) => if case == "runtime" { "COMPLETE" } else { "PREFIX_COMPLETE" }, Ok(false) => "INCOMPLETE", Err(_) => "INVALID" },
+        "censored":matches!(result, Ok(false)),"error":result.as_ref().err(),
+        "max_ticks":max_ticks,"timeout_seconds":timeout.as_secs_f64()}),
+    );
+    result
+}
+fn run_inner(
+    case: &str,
+    n: usize,
+    options: InteractionOptions,
+    max_ticks: u64,
+    timeout: Duration,
+) -> Result<bool, String> {
     check(
         n > 0 && max_ticks > 0 && !timeout.is_zero(),
         "positive size and budgets required",
@@ -821,7 +912,12 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
     println!(
         "lifecycle_limits apply independently to source, checkpoint collection, cancellation, inspection and release; ticks are Engine::advance(1), runtime work is scheduler turns/API reads; collection_ticks counts ticks entered with collection requested/active; timings include checks; memory is object counts, not bytes; runtime excludes HTTP/browser"
     );
-    if case == "life-archive" {
+    if matches!(
+        case,
+        "life-held-output" | "life-archive-fixed" | "life-archive-rotate" | "life-inspections"
+    ) {
+        interactions::run(case, n, options, max_ticks, timeout)
+    } else if case == "life-archive" {
         archive(n, max_ticks, timeout)
     } else if case == "runtime" {
         runtime(n, max_ticks, timeout)

@@ -5,7 +5,6 @@ python3 examples/supervise.py --out /tmp/run -- target/release/examples/measure 
 The command is executed directly, without a shell. Build before timing.
 """
 import argparse
-import hashlib
 import json
 import math
 import os
@@ -144,7 +143,7 @@ def main():
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
     metadata = {'schema': 1, 'command': command, 'cwd': str(Path.cwd()),
-                'binary': str(binary), 'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
+                'binary': str(binary),
                 'host': platform.platform(), 'status': 'starting'}
     path = out / 'run.json'
     path.write_text(json.dumps(metadata, indent=2)+'\n')

@@ -20,7 +20,7 @@ python3 examples/profile.py --cli --seconds 5 --out /tmp/chr-cli-profile -- exam
 
 This cyclic proof query keeps producing derivations; its profile intentionally ends at the external deadline.
 
-The output directory must be new. It contains `perf.data`, raw and folded stacks, `flame.svg`, workload/build/profiler logs and `profile.json` with command, revision/dirty status, binary hash, toolchain, build flags, host, limits, sample count and completion status. Raw profiles are local artifacts, not committed test fixtures. The collector checks that folding preserves sample count and refuses empty profiles or malformed stack parsing. Unknown native frames may remain visible rather than being attributed to engine functions.
+The output directory must be new. It contains `perf.data`, raw and folded stacks, `flame.svg`, workload/build/profiler logs and `profile.json` with command, revision/dirty status, toolchain, build flags, host, limits, sample count and completion status. Raw profiles are local artifacts, not committed test fixtures. The collector checks that folding preserves sample count and refuses empty profiles or malformed stack parsing. Unknown native frames may remain visible rather than being attributed to engine functions.
 
 `--seconds` bounds the entire profiled process including cleanup (default 40 seconds); an additional five-second interrupt grace allows perf to write its data before a hard kill. `--memory-mib` sets a per-process address-space ceiling (default 4096 MiB). `--frequency` selects sample frequency (default 499 Hz). A capped run is reported as censored, never a completed answer. Build/postprocessing have separate bounded timeouts. This is an instrumented CPU profile, not a baseline timing run.
 
@@ -98,8 +98,32 @@ python3 examples/supervise.py --seconds 10 --out /tmp/chr-cli-run -- target/rele
 python3 -m unittest discover -s tests -p supervise_test.py
 ```
 
-The new output directory contains stdout/stderr and `run.json`: exact command, working directory, executable hash, host, limits, status, elapsed time, user/system CPU, peak resident KiB, minor/major faults, voluntary/involuntary context switches and filesystem block counts. Build flags/revision belong to the campaign metadata still under construction; a binary hash alone does not reconstruct a build.
+The new output directory contains stdout/stderr and `run.json`: exact command, working directory, host, limits, status, elapsed time, user/system CPU, peak resident KiB, minor/major faults, voluntary/involuntary context switches and filesystem block counts. Build flags/revision belong to the campaign metadata still under construction.
 
 Linux `pidfd` readiness enforces the wall deadline without busy polling. After the deadline, the process group receives an interrupt and then a hard kill after a one-second grace; CPU profiling uses five seconds to flush sampling data. A run remains censored even if it handles the interrupt and exits zero. Live children in the original process group are killed before reaping the leader; termination is checked for up to one second and reported separately. A normal exit with leftover group members is failed; a deadline remains censored with its cleanup result attached. The supervisor manages native CHR/profiler processes that stay in their launch group; it is not containment for commands that detach into another group/session. Launch/pre-exec and kernel-uninterruptible termination are not made preemptible by a user-space deadline. Address-space limits are per process, file-size limits per file, and CPU limits per process; these are not aggregate process-tree or disk quotas. SIGXCPU/SIGXFSZ are identified; other failures retain their status and stderr without guessing whether a cap caused them. `--measure` recognizes that harness's incomplete exit code; arbitrary CLI exit 2 is an error.
 
 Resource accounting comes from Linux `wait4` for the launched process and descendants it waited for. It includes pre-exec/launcher work and, for profiling, perf itself. Peak RSS is a high-water mark, not summed process-tree memory or live allocation bytes. Fork/pre-exec memory can impose a floor on small workloads; `launch_parent_rss_kib` exposes the launch context. Filesystem blocks are kernel accounting, not bytes or syscall counts. These metrics complement engine/allocation measurements; subtracting CPU from wall time does not identify a particular blocking cause.
+
+## Repeated typed measurements
+
+```sh
+python3 examples/perf.py --out /tmp/chr-repeat --repeat 5 --seconds 10 --total-seconds 120 -- rewrite 128 5000000 5
+python3 examples/perf.py --diagnostics --out /tmp/chr-work --repeat 3 -- partial-join 32 5000000 5 --rows 16
+cargo build --offline --release --example measure
+python3 -m unittest discover -s tests -p perf_test.py
+```
+
+The repeat command builds before timing unless `--binary` selects an existing binary. It records the command, toolchain, host, build environment, revision and dirty-tree status. Prebuilt binary build flags remain unavailable. One warmup is the default; every warmup, unsuccessful sample and completed sample retains stdout/stderr plus an atomically published typed `<index>.json` record. `campaign.json` records outcome counts and completed-sample median, range, median absolute deviation, sample count and missing-value count. Unavailable values remain null. Censored runs never become completed timing samples; their raw observations remain available.
+
+`measurement=` lines are versioned JSON emitted directly from measured values. Configuration, result, diagnostics, allocations and lifecycle phase records are separate; named memory gauges replace positional interpretation. The runner does not scrape display text and rejects missing/duplicate/inconsistent final results. Per-phase and per-rule diagnostic summaries retain scope; cumulative checkpoints must not be summed as exclusive work. The aggregate sample budget reserves interrupt/cleanup grace and can end before the requested repeat count, reported as aggregate censoring. A campaign alarm also bounds parsing and summarization; processing interrupted by that deadline retains a censored record and raw output. Prebuilt-binary toolchain/source details are explicitly unverified local context. Build has a separate five-minute cap. This repeat command is infrastructure for routine/deep comparisons; calibrated regression decisions and campaign selection remain unfinished and are explicitly reported as not performed.
+
+## Retention and concurrency interactions
+
+```sh
+target/release/examples/measure life-held-output 2 5000000 5 --rows 3 --work 24
+target/release/examples/measure life-archive-fixed 2 5000000 5 --rows 3 --work 24 --cadence 4
+target/release/examples/measure life-archive-rotate 2 5000000 5 --rows 3 --work 24 --cadence 4
+target/release/examples/measure life-inspections 2 5000000 5 --rows 3 --work 24
+```
+
+SIZE varies continuing siblings, retained snapshots, or concurrent inspections. `--rows` controls committed residual width; `--work` continued applications; `--cadence` the application interval between archive replacements. Snapshot admission may require additional source applications; actual work is recorded, so milestones are lower bounds. Held output pauses consumption after Begin while the source continues, then validates the full answer. Inspections remain partly unread during continued work. Fixed and rotating archives inspect their retained committed multisets, then release ownership. Pending syntax is outside the committed-view oracle. Every case checks source progress and eventual cleanup; none enables default history retention.

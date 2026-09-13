@@ -6,7 +6,6 @@ python3 examples/profile.py --cli --out /tmp/chr-query -- examples/proofs.chr --
 Requires Linux perf, GNU c++filt, inferno-collapse-perf and inferno-flamegraph.
 """
 import argparse
-import hashlib
 import json
 import math
 import os
@@ -87,12 +86,10 @@ def main():
     if not target.is_absolute():
         target = ROOT / target
     binary = target / "profiling" / ("chr" if args.cli else "examples/measure")
-    with binary.open("rb") as source:
-        binary_hash = hashlib.file_digest(source, "sha256").hexdigest()
     command = ["perf", "record", "-q", "-e", "cpu-clock:u", "-F", str(args.frequency), "--call-graph", "fp", "-o", str(out / "perf.data"), "--", str(binary), *workload]
     metadata = {
         "schema": 1, "kind": "cpu_flamegraph", "command": command, "build": build,
-        "rustflags": env["RUSTFLAGS"], "binary_sha256": binary_hash,
+        "rustflags": env["RUSTFLAGS"],
         "revision": capture(["git", "rev-parse", "HEAD"]).strip(),
         "working_tree": capture(["git", "status", "--short"]),
         "rustc": capture(["rustc", "-Vv"]), "host": platform.platform(),

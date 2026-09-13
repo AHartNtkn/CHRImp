@@ -25,6 +25,8 @@ mod lifecycle;
 mod notebooks;
 #[path = "measure/observation.rs"]
 mod observation;
+#[path = "measure/report.rs"]
+mod report;
 use allocation::{Phase, during};
 use families::{Goal, Workload};
 
@@ -626,6 +628,31 @@ fn run_workload(
             observation::count(detailed, *gc)
         );
     }
+    report::emit(
+        "result",
+        serde_json::json!({
+            "case": case, "size": n, "rows": rows, "status": status,
+            "goal": match w.goal { Goal::Complete => "complete", Goal::Answers(_) => "answer_prefix", Goal::Applications(_) => "application_prefix" },
+            "goal_count": match w.goal { Goal::Complete => None, Goal::Answers(v) => Some(v as u64), Goal::Applications(v) => Some(v) },
+            "source_goal_reached": reached, "cleanup_done": cleanup_done, "cleanup_in_time": cleanup_in_time,
+            "timed_out": timed_out, "error": error, "max_ticks": max_ticks, "timeout_ms": ms(timeout),
+            "times_ms": {"parse_program": ms(parse_program_time), "parse_query": ms(parse_query_time),
+                "prepare": ms(prepare_time), "engine_init": ms(init_time), "source_delivery": ms(elapsed),
+                "validator": detailed.then(|| ms(validator)),
+                "source_delivery_without_validator": detailed.then(|| ms(elapsed.saturating_sub(validator))),
+                "max_advance1": detailed.then(|| ms(max_tick)), "cleanup": ms(cleanup_time),
+                "engine_drop": ms(engine_drop), "prepared_drop": ms(prepared_drop)},
+            "first_event": first_event.map(|(tick, t)| serde_json::json!({"tick": tick, "ms": ms(t)})),
+            "first_answer": first_answer.map(|(tick, t)| serde_json::json!({"tick": tick, "ms": ms(t)})),
+            "source_exhausted": exhausted.map(|(tick, t)| serde_json::json!({"tick": tick, "ms": ms(t)})),
+            "work": {"advance1_ticks": ticks, "collection_status_ticks": detailed.then_some(collection_ticks),
+                "collections": collections, "applications": apps, "answers": reader.answers,
+                "facts": reader.facts, "ports": reader.ports, "scalars": reader.scalars, "cleanup_ticks": cleanup_ticks},
+            "expected": {"answers": w.answers, "applications": w.apps},
+            "memory_counts": {"sampled_peak": report::memory(peak), "before_cleanup": report::memory(before), "after_cleanup": report::memory(after)},
+            "windows": windows.iter().map(|(apps,ticks,gc,memory)| serde_json::json!({"applications": apps,"ticks": ticks,"collection_status_ticks": detailed.then_some(gc),"memory_counts": report::memory(*memory)})).collect::<Vec<_>>()
+        }),
+    );
     if let Some(error) = error {
         return Err(error);
     }
@@ -635,6 +662,10 @@ fn report_diagnostics(phase: &str, e: &Engine) {
     #[cfg(feature = "diagnostics")]
     {
         let allocation = allocation::snapshot();
+        report::emit(
+            "diagnostics",
+            serde_json::json!({"phase": phase, "work": e.diagnostics(), "allocation": allocation, "memory_counts": report::memory(memory(e))}),
+        );
         println!(
             "diagnostics={}",
             serde_json::json!({"phase": phase, "work": e.diagnostics(), "allocation": allocation, "memory_counts": memory(e)})
@@ -647,7 +678,7 @@ fn main() -> ExitCode {
     let args = env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() || args == ["--help"] || args == ["--list"] {
         println!(
-            "Generated cases: {}. Options: --seed N --shape chain|ring|star|diamond|dense|random. SIZE is vertex/copy/distractor count; --rows is edge multiplicity, constraints per edge, duplicate groups or probe count. graph-bits has an exhaustive oracle limited to 16 vertices; proof-dag rejects cyclic shapes. Seed 0 is canonical order, other seeds reproducibly vary inputs and order.",
+            "Lifecycle interactions: life-held-output, life-archive-fixed, life-archive-rotate, life-inspections; SIZE counts siblings/snapshots/inspections; --rows sets residual width, --work continued applications (default 32), --cadence applications between rotations (default 1). Generated cases: {}. Options: --seed N --shape chain|ring|star|diamond|dense|random. SIZE is vertex/copy/distractor count; --rows is edge multiplicity, constraints per edge, duplicate groups or probe count. graph-bits has an exhaustive oracle limited to 16 vertices; proof-dag rejects cyclic shapes. Seed 0 is canonical order, other seeds reproducibly vary inputs and order.",
             generated::CASES
         );
         println!(
@@ -668,11 +699,31 @@ fn main() -> ExitCode {
         let (mut seed, mut shape) = (0u64, "chain".to_string());
         let mut generated_options = false;
         let mut detailed = false;
+        let (mut work, mut cadence) = (32u64, 1u64);
+        let mut interaction_options = false;
         let mut positional = 0;
         let mut i = 2;
         while i < args.len() {
             match args[i].as_str() {
                 "--detail" => detailed = true,
+                "--work" | "--cadence" => {
+                    interaction_options = true;
+                    let flag = &args[i];
+                    i += 1;
+                    let value = args
+                        .get(i)
+                        .ok_or("missing interaction option")?
+                        .parse::<u64>()
+                        .map_err(|_| "invalid interaction option")?;
+                    if value == 0 {
+                        return Err("positive work/cadence required".into());
+                    }
+                    if flag == "--work" {
+                        work = value;
+                    } else {
+                        cadence = value;
+                    }
+                }
                 "--seed" | "--shape" => {
                     generated_options = true;
                     let flag = &args[i];
@@ -726,7 +777,18 @@ fn main() -> ExitCode {
                 "positive size/limits/prefix required; dimensions must not overflow".into(),
             );
         }
+        let interaction = matches!(
+            args[0].as_str(),
+            "life-held-output" | "life-archive-fixed" | "life-archive-rotate" | "life-inspections"
+        );
+        if interaction_options && !interaction {
+            return Err("--work/--cadence require lifecycle interaction cases".into());
+        }
         observation::configure(detailed);
+        report::emit(
+            "configuration",
+            serde_json::json!({"case": args[0], "size": n, "rows": rows, "prefix": prefix, "seed": seed, "shape": shape, "detailed": detailed, "diagnostics_feature": cfg!(feature = "diagnostics"), "max_ticks": max_ticks, "timeout_seconds": seconds, "continued_work": interaction.then_some(work), "rotation_cadence": interaction.then_some(cadence)}),
+        );
         println!(
             "measurement_mode={} diagnostics_feature={}",
             if detailed { "detailed" } else { "baseline" },
@@ -755,6 +817,22 @@ fn main() -> ExitCode {
             .split_whitespace()
             .any(|name| name == args[0])
         {
+            if interaction {
+                if prefix.is_some() {
+                    return Err("lifecycle interactions do not use --prefix".into());
+                }
+                return lifecycle::run_options(
+                    &args[0],
+                    n,
+                    lifecycle::InteractionOptions {
+                        rows,
+                        work,
+                        cadence,
+                    },
+                    max_ticks,
+                    Duration::from_secs(seconds),
+                );
+            }
             if rows != 1 || prefix.is_some() {
                 return Err("lifecycle modes use SIZE; no --rows/--prefix".into());
             }
@@ -785,12 +863,14 @@ fn main() -> ExitCode {
     #[cfg(feature = "diagnostics")]
     {
         let sample = allocation::snapshot();
+        report::emit("allocations", serde_json::json!(sample));
         println!("allocations={}", serde_json::to_string(&sample).unwrap());
     }
     match result {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(2),
         Err(error) => {
+            report::emit("error", serde_json::json!({"message": error}));
             eprintln!("ERROR: {error}");
             ExitCode::FAILURE
         }
