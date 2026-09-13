@@ -143,12 +143,12 @@ tasks:
       - An external environment constraint prevents required evidence after safe alternatives are evaluated; record
         the exact unblock.
     write_scopes:
-      PM: *id001
+      PM: All allowed files; independent detector repair is integrated.
     progress: Typed core/notebook/lifecycle results and bounded repeated measurements now use commands, build settings,
       limits and raw results. Four independently parameterized retention/concurrency workloads check held output,
       fixed/rotating archives and concurrent unread inspections. Preparation shape/reuse/direct destruction now has bounded native cases and independent result/work/ownership
       oracles. Fresh-production/equality/consumption cases and bounded routine/deep sweeps now run. Remaining work includes
-      representation/ownership and allocation-stack attribution, broader calibration/detection challenges, remaining
+      representation/ownership adequacy, broader calibration/detection challenges, remaining
       end-to-end query inventory/diagnoses and independent full-scope review. Runtime session churn/replay and
       control-qualified cost/scaling comparisons now have maintained commands and specific sensitivity evidence.
     evidence:
@@ -238,7 +238,7 @@ tasks:
         behavior-W each of5samples censored. /tmp/chrimp-deep-interactions completed19selected interaction points
         with3samples each in1.71sec. No calibrated regression gate is claimed; status reports execution outcomes.
       - perf_regress.py compares suite mean costs and adjacent-size ratios against two unchanged control campaigns,
-        with observed control-span qualification and one Holm family. Resolution scales with family size; exact
+        with robust median-drift/MAD resolution and one Holm family. Scaling uses independent bootstrap ratios; exact
         two-sided complements and mathematically insufficient resolution are explicit. Seven regression tests pass,
         including a1000-hypothesis signal, false-positive control and preserved suite/report failure precedence.
       - Six native points with9repeats supplied unchanged controls and a held-out benign campaign (zero signals).
@@ -252,6 +252,14 @@ tasks:
       - Independent session review corrected initial-deadline failure classification and loss of already validated
         tiny-answer progress. Four runtime session tests pass in release and diagnostics modes, including stopping
         at the measured tiny-answer work boundary. Eleven runner tests, four suite tests, clippy/fmt pass.
+      - Heaptrack provides native allocation and peak-live-byte stacks plus a sampled heap timeline under supervised
+        recording and analysis. Known C allocation-count/byte/timeline/status controls pass; behavior-I native profile
+        validates at /tmp/chrimp-heap-final. Hardware perf counters preserve PMU exposure and unavailable values;
+        native rewrite128 completes at /tmp/chrimp-counters-native. Normal execution has no tracing.
+      - Independent detector challenges cover reordered samples, isolated control extremes, mean-preserving spikes,
+        coupled faster-time/higher-memory behavior and censoring. Eighteen detector and seven comparator tests pass.
+        Held-out native benign data remains no_regression_detected at /tmp/chrimp-gate-benign-challenged.json.
+        Approximate bootstrap inference and broader native independent challenges remain explicit open work.
   - id: T003
     type: worker
     assignee: Worker
@@ -309,7 +317,7 @@ tasks:
       - If gaps remain, lead reactivates the relevant implementation package, repairs it and obtains fresh review.
     receipt: null
 checks:
-  dirty_fingerprint: T002 implementation active; T001 evidence in notes/T001-risks.md.
+  work_status: T002 implementation active; T001 evidence in notes/T001-risks.md.
   last_verification:
     result: pass
     task: T002

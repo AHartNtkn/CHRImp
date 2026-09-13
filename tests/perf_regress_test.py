@@ -3,6 +3,8 @@ import sys
 import unittest
 import json
 import tempfile
+import math
+from unittest.mock import patch
 from perf_test import process, config, event
 sys.path.insert(0,str(Path(__file__).parents[1]/'examples'))
 import perf_regress as regress
@@ -19,11 +21,10 @@ class RegressionTests(unittest.TestCase):
         self.assertAlmostEqual(findings[0]['noise_span'],.08)
 
     def test_deep_family_has_enough_resolution_for_a_large_regression(self):
-        control=[10+i*.01 for i in range(9)]
         control=[10+i*.01 for i in range(12)]
         draws=regress.permutation_draws(100,5)
         signal=regress.evaluate(control,[v*3 for v in control],control,control,draws=draws)
-        findings=[signal]+[dict(status='uncertain',p_value=1.,noise_span=1.,absolute_change=0.,method='monte_carlo',assignments=draws) for _ in range(999)]
+        findings=[signal]+[dict(status='uncertain',p_value=1.,noise_resolution=1.,absolute_change=0.,method='monte_carlo',assignments=draws) for _ in range(999)]
         regress.correct(findings)
         self.assertEqual(signal['status'],'regression')
         weak=regress.evaluate(control,[v*3 for v in control],control,control)
@@ -33,7 +34,7 @@ class RegressionTests(unittest.TestCase):
     def test_exact_two_sided_resolution_requires_both_complements(self):
         a=[1,2,3,4,5];b=[101,102,103,104,105]
         finding=regress.evaluate(a,b,a,a)
-        controls=[dict(status='uncertain',p_value=1.,noise_span=1.,absolute_change=0.,method='exact',assignments=252,before_n=5,after_n=5) for _ in range(9)]
+        controls=[dict(status='uncertain',p_value=1.,noise_resolution=1.,absolute_change=0.,method='exact',assignments=252,before_n=5,after_n=5) for _ in range(9)]
         regress.correct([finding]+controls)
         self.assertEqual(finding['status'],'resolution_limited')
         self.assertEqual(finding['permutation_resolution_lower_bound'],2/252)
@@ -58,21 +59,159 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(finding['status'],'within_control_spread')
         self.assertEqual(regress.evaluate(base,after,[],[])['status'],'uncalibrated')
 
-    def test_ratio_zero_and_incomplete_values_are_undefined(self):
-        def p(a,status='completed'): return dict(status=status,values=[{'x':v} for v in a])
-        self.assertEqual(regress.ratio_values(p([2,4]),p([6,8]),'x'),[3,2])
-        self.assertEqual(regress.ratio_values(p([0,4]),p([6,8]),'x'),[])
-        self.assertEqual(regress.ratio_values(p([2,4]),p([6,8],'censored'),'x'),[])
-        self.assertEqual(regress.values(p([2,None]),'x'),[])
+    def test_independent_scaling_is_invariant_to_all_input_orders(self):
+        low=[2,3,5,7,11,13,17]; high=[3,5,7,11,13,17,19,23,29]
+        baseline=(low,high)
+        after=([v*.5 for v in low],[v*2 for v in high])
+        first=regress.scaling(baseline,after,baseline,baseline,draws=999)
+        reverse=lambda pair: tuple(list(reversed(a)) for a in pair)
+        second=regress.scaling(reverse(baseline),reverse(after),reverse(baseline),reverse(baseline),draws=999)
+        self.assertEqual(first,second)
+        self.assertEqual(first['before_n'],[7,9])
+        self.assertAlmostEqual(first['before_ratio'],sum(high)/len(high)/(sum(low)/len(low)))
+        self.assertEqual(first['operands']['before'],dict(low=low,high=high))
 
-    def test_scaling_worsening_can_be_detected_without_absolute_slowdown(self):
-        def p(a): return dict(status='completed',values=[{'x':v} for v in a])
-        low=p([10+i*.01 for i in range(9)]);high=p([20+i*.01 for i in range(9)])
-        baseline=regress.ratio_values(low,high,'x')
-        after=regress.ratio_values(p([1+i*.001 for i in range(9)]),p([10+i*.01 for i in range(9)]),'x')
-        finding=regress.evaluate(baseline,after,baseline,baseline)
-        regress.correct([finding])
-        self.assertEqual(finding['status'],'regression')
+    def test_ratio_undefined_does_not_drop_bootstrap_samples(self):
+        normal=([2]*9,[4]*9)
+        for invalid in (([],[4]*9),([0]*9,[4]*9),([0]*8+[1],[4]*9)):
+            f=regress.scaling(invalid,normal,normal,normal,draws=999)
+            self.assertEqual(f['status'],'unavailable')
+            self.assertNotIn('p_value',f)
+        sparse=regress.scaling(([2]*4,[4]*9),normal,normal,normal,draws=999)
+        self.assertEqual(sparse['status'],'insufficient_evidence')
+        zero_high=regress.scaling(normal,([2]*9,[0]*9),normal,normal,draws=999)
+        regress.correct([zero_high])
+        self.assertEqual(zero_high['status'],'improvement')
+        def p(a,status='completed'): return dict(status=status,values=[{'x':v} for v in a])
+        self.assertEqual(regress.values(p([2,None]),'x'),[])
+        self.assertEqual(regress.values(p([2,4],'censored'),'x'),[])
+
+    def test_proportional_cost_change_preserves_scaling(self):
+        baseline=([19,20,20,21,22,23]*2,[80,80,83,87,90]*3)
+        after=tuple([v*.3 for v in a] for a in baseline)
+        f=regress.scaling(baseline,after,baseline,baseline,draws=999)
+        regress.correct([f])
+        self.assertEqual(f['status'],'uncertain')
+        self.assertAlmostEqual(f['absolute_change'],0.)
+
+    def test_scaled_decimal_constants_are_numerically_equivalent(self):
+        baseline=([1.]*12,[3.]*12)
+        f=regress.scaling(baseline,([.1]*12,[.3]*12),baseline,baseline,draws=999)
+        regress.correct([f])
+        self.assertEqual(f['status'],'uncertain')
+
+    def test_small_distribution_change_must_qualify_shared_family(self):
+        a=[10]*12;b=[4]*6+[16]*6
+        f=regress.evaluate(a,b,a,a)
+        regress.correct([f])
+        self.assertEqual(f['status'],'uncertain')
+        self.assertGreater(f['distribution']['p_value'],f['distribution']['holm_threshold'])
+        self.assertEqual(f['distribution']['after_above_before_max'],6)
+
+    def test_scaling_worsening_despite_both_sizes_getting_faster(self):
+        baseline=([19,20,20,21,22,23]*2,[80,80,83,87,90]*3)
+        after=([v*.25 for v in baseline[0]],[v*.75 for v in baseline[1]])
+        f=regress.scaling(baseline,after,baseline,baseline,draws=1999)
+        regress.correct([f])
+        self.assertEqual(f['status'],'regression')
+        self.assertAlmostEqual(f['after_ratio']/f['before_ratio'],3.)
+        self.assertGreater(f['approximate_95_percent_interval'][0],0)
+
+    def test_control_outlier_is_retained_without_vetoing_shift(self):
+        for outlier in (150,10000):
+            control=[99,100,100,100,100,100,100,101,outlier]
+            f=regress.evaluate([100]*9,[125]*9,control,[100]*9)
+            regress.correct([f])
+            self.assertEqual(f['status'],'regression')
+            self.assertEqual(f['control_range'],[99,outlier])
+            self.assertEqual(f['noise_span'],outlier-99)
+            self.assertEqual(f['noise_resolution'],0)
+
+    def test_distribution_change_has_no_automatic_adverse_direction(self):
+        # Mean 10 on both sides; compare concentration to bimodality, both ways.
+        a=[10]*24;b=[4]*12+[16]*12
+        for before,after in ((a,b),(b,a)):
+            f=regress.evaluate(before,after,before,before)
+            regress.correct([f])
+            self.assertEqual(f['mean_status'],'uncertain')
+            self.assertEqual(f['status'],'distribution_change')
+            self.assertEqual(f['distribution']['status'],'distribution_change')
+            self.assertEqual(f['absolute_change'],0)
+
+    def test_single_extreme_is_visible_without_rare_event_certainty(self):
+        a=[10]*9;b=[10]*8+[10000]
+        f=regress.evaluate(a,b,a,a)
+        regress.correct([f])
+        self.assertEqual(f['status'],'uncertain')
+        self.assertEqual(f['distribution']['status'],'uncertain')
+        self.assertEqual(f['distribution']['after_above_before_max'],1)
+        self.assertEqual(f['distribution']['after_range'],[10,10000])
+
+    def test_distribution_permutation_ties_and_exact_small_case(self):
+        a=[0]*5;b=[1]*5
+        f=regress.distribution(a,b,a,a,999)
+        self.assertEqual(f['p_value'],2/math.comb(10,5))
+        self.assertEqual(f['statistic'],1)
+        tied=regress.distribution(a,a,a,a,999)
+        self.assertEqual(tied['p_value'],1)
+        self.assertEqual(tied['statistic'],0)
+
+    def test_mean_and_distribution_use_one_holm_family(self):
+        f=dict(status='uncertain',p_value=.02,noise_resolution=0,absolute_change=1,
+               method='monte_carlo',assignments=9999,
+               distribution=dict(status='uncertain',p_value=.04,noise_resolution=0,
+                                 statistic=1,method='monte_carlo',assignments=9999))
+        null=dict(status='uncertain',p_value=1,noise_resolution=0,absolute_change=0,
+                  method='independent_bootstrap',assignments=9999)
+        regress.correct([f,null])
+        self.assertEqual(f['status'],'uncertain')
+        self.assertAlmostEqual(f['holm_threshold'],.05/3)
+        self.assertEqual(f['distribution']['status'],'uncertain')
+
+    @staticmethod
+    def suite(low,high,status='completed'):
+        points={}
+        for size,rows in ((1,low),(2,high)):
+            key='x-'+str(size)
+            spec=dict(id=key,status=status,family='x',axis='size',value=size,workload=['rewrite',str(size)])
+            points[key]=dict(spec=spec,configuration={'case':'rewrite','size':size},values=rows,
+                             status=status,suite_status=status,campaign_status=status)
+        return dict(status=status),points
+
+    def test_full_compare_order_and_coupled_resource_cost_changes(self):
+        metric='workload.native_peak_rss_estimate_kib'
+        x=[10]*12+[30]*12
+        rows=lambda a:[{'cost':v,metric:v*100} for v in a]
+        before=self.suite(rows(x),rows([2*v for v in x]))
+        reordered=self.suite(rows(x[::-1]),rows([2*v for v in x[::-1]]))
+        with patch.object(regress,'read_suite',side_effect=[before,before,before,reordered]):
+            report=regress.compare('a','b','old','new',['cost',metric])
+        self.assertEqual(report['status'],'no_regression_detected')
+        for f in report['findings']:
+            self.assertEqual(f['status'],'uncertain')
+        # Different fresh case: costs halve while residency triples.
+        stable=self.suite([{'cost':10,metric:100}]*12,[{'cost':20,metric:200}]*12)
+        after=self.suite([{'cost':5,metric:300}]*12,[{'cost':10,metric:600}]*12)
+        with patch.object(regress,'read_suite',side_effect=[stable,stable,stable,after]):
+            report=regress.compare('a','b','old','new',['cost',metric])
+        self.assertEqual(report['status'],'regression')
+        self.assertEqual(report['regression_count'],2)
+        self.assertTrue(all(f['status']=='uncertain' for f in report['findings'] if f['kind']=='scaling'))
+
+    def test_completed_mean_preserving_changes_and_censoring_have_distinct_outcomes(self):
+        rows=lambda a:[{'cost':v} for v in a]
+        before=self.suite(rows([10]*24),rows([20]*24))
+        changed=self.suite(rows([4]*12+[16]*12),rows([8]*12+[32]*12))
+        with patch.object(regress,'read_suite',side_effect=[before,before,before,changed]):
+            report=regress.compare('a','b','old','new',['cost'])
+        self.assertEqual(report['status'],'distribution_change')
+        self.assertEqual(report['regression_count'],0)
+        censored=self.suite(rows([4]*12),rows([8]*12),'censored')
+        with patch.object(regress,'read_suite',side_effect=[before,before,before,censored]):
+            report=regress.compare('a','b','old','new',['cost'])
+        self.assertEqual(report['status'],'incomplete_evidence')
+        self.assertEqual(report['regression_count'],0)
+
 
 
 if __name__=='__main__': unittest.main()
