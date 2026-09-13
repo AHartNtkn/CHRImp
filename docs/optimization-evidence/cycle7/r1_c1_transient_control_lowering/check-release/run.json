@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "command": [
+    "cargo",
+    "+nightly",
+    "test",
+    "--offline",
+    "--release"
+  ],
+  "cwd": "/tmp/chr-cycle7-opt-transient-control-lowering",
+  "binary": "/home/ahart/.cargo/bin/rustup",
+  "host": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "status": "failed",
+  "returncode": 101,
+  "limit_reason": null,
+  "descendants_signaled_after_exit": false,
+  "descendant_pids": [],
+  "group_cleanup_complete": true,
+  "launch_parent_rss_kib": 12728,
+  "wall_seconds": 16.40420415601693,
+  "user_cpu_seconds": 208.272443,
+  "system_cpu_seconds": 6.18564,
+  "max_rss_kib": 662752,
+  "minor_faults": 2356362,
+  "major_faults": 381,
+  "voluntary_context_switches": 37308,
+  "involuntary_context_switches": 102194,
+  "filesystem_input_blocks": 0,
+  "filesystem_output_blocks": 270616,
+  "scope": "Managed original process group only, not containment for commands that change sessions/groups. Linux wait4 includes launcher/pre-exec work and leader plus waited descendants; max_rss is a high-water mark, not summed tree RSS; CPU includes harness/output/cleanup; block counts are kernel accounting, not byte or syscall counts",
+  "limits": {
+    "wall_seconds": 300.0,
+    "interrupt_grace_seconds": 1,
+    "group_cleanup_grace_seconds": 1,
+    "address_space_mib_per_process": 8192,
+    "file_mib_per_file": 256,
+    "cpu_soft_seconds_per_process": 300,
+    "cpu_hard_seconds_per_process": 301
+  }
+}

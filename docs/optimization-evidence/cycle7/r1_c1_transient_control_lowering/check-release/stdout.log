@@ -1,0 +1,155 @@
+
+running 91 tests
+test condition::archive_ownership_tests::overlapping_complemented_owners_release_in_any_order_with_a_suspended_reader ... ok
+test condition::direct_tests::direct_identities_match_truth_tables_and_leave_mixed_operands_resumable ... ok
+test condition::direct_tests::direct_checks_authority_before_false_or_identical_shortcuts ... ok
+test condition::direct_tests::direct_rejects_frozen_arena_for_simple_and_mixed_operands ... ok
+test condition::direct_tests::mixed_direct_fallback_resumes_and_discards_with_collection_each_tick ... ok
+test condition::direct_tests::order_metadata_is_collected_with_its_last_node ... ok
+test engine::body_direct_tests::acquired_body_uses_exact_identities_and_resumes_mixed_support ... ok
+test engine::cancel::tests::cancellation_does_not_wait_for_a_reserved_semantic_lane ... ok
+test engine::collection::frontier_tests::semantic_pruning_and_explicit_collection_preserve_retained_roots ... ok
+test engine::collection::frontier_tests::exact_frontier_boundary_and_explicit_region_requests_are_preserved ... ok
+test engine::collection::tests::collection_status_covers_waiting_for_a_history_writer ... ok
+test engine::coordinates::boundary_tests::cancellation_drains_an_inflight_transport_and_coordinate_log ... ok
+test engine::coordinates::boundary_tests::certificate_is_transported_before_current_active_intersection ... ok
+test engine::coordinates::boundary_tests::transport_survives_collection_at_every_restriction_tick ... ok
+test engine::collection::tests::an_unposted_body_local_keeps_its_identity_through_pruning ... ok
+test engine::coordinates::engine_tests::immutable_matcher_candidates_use_current_coordinates_before_commit ... ok
+test engine::coordinates::functional_image_tests::engine_collection_roots_functional_images_during_log_cleanup ... ok
+test engine::coordinates::functional_image_tests::retiring_a_partly_traced_epoch_resets_the_next_maps_child_cursor ... ok
+test engine::coordinates::functional_image_tests::functional_images_compose_across_epochs_with_gc_at_every_transport_tick ... ok
+test engine::coordinates::functional_image_tests::unstarted_transport_images_and_incremental_log_drain_are_roots ... ok
+test engine::coordinates::maintenance_tests::maintenance_spends_its_budget_draining_unowned_coordinate_records ... ok
+test engine::coordinates::rejected_reader_tests::false_pending_scope_discards_a_large_old_join_without_enumerating_it ... ok
+test condition::reorder_tests::path_prefix_collection_stays_linear_without_branching_pressure ... ok
+test condition::archive_ownership_tests::releasing_a_large_archive_reclaims_its_canonical_table_storage ... ok
+test condition::archive_ownership_tests::rotating_owner_work_is_independent_of_unchanged_boolean_closure ... ok
+test engine::coordinates::tests::log_retention_follows_reader_leases ... ok
+test engine::coordinates::tests::old_reader_crosses_multiple_publications_without_changing_target ... ok
+test engine::discovery::tests::direct_anchor_builds_one_binding_per_tick_without_pinning_graph ... ok
+test engine::discovery::tests::consumed_anchor_row_can_be_collected_before_commit ... ok
+test engine::discovery::tests::mixed_trigger_cutoff_includes_identity_sensitive_single_heads ... ok
+test engine::discovery::tests::direct_anchor_scope_survives_gc_and_transports_before_commit ... ok
+test engine::inspection::cutoff_tests::capture_order_bounds_cutoffs_through_collection_release_and_old_inspection_clones ... ok
+test engine::coordinates::progress_tests::old_finite_join_releases_broad_pending_scope_beside_divergence ... ok
+test engine::inspection::shared_restriction_lifetime_tests::cancellation_transfers_inflight_work_and_releases_all_cache_ownership ... ok
+test condition::reorder_tests::archived_closures_keep_exact_sift_references_and_rebuild_after_reordering ... ok
+test engine::collection::archive_cancel_tests::cancel_during_archive_registration_or_rebuild_preserves_views_until_release ... ok
+test engine::inspection::shared_restriction_lifetime_tests::invalid_and_canceled_partial_paths_release_without_executing_selection_jobs ... ok
+test engine::inspection::tests::continuing_admissions_cannot_overtake_a_waiting_cancellation ... ok
+test engine::inspection::shared_restriction_lifetime_tests::shared_selection_respects_each_snapshot_scope_and_future_cutoff ... ok
+test engine::obligations::tests::captures_freeze_syntax_but_certificate_roots_do_not_version_progress ... ok
+test engine::obligations::tests::functional_substitution_preserves_historical_descriptor_and_image_roots ... ok
+test condition::reorder_tests::scoped_sifting_respects_causal_bounds_without_retaining_scope_graphs ... ok
+test engine::obligations::tests::aliased_unposted_local_is_retained_by_an_inspection_alone ... ok
+test engine::obligations::substitution_work_tests::repeated_pending_support_is_transformed_once_per_pass ... ok
+test engine::inspection::shared_restriction_lifetime_tests::late_shorter_longer_and_identical_readers_survive_pruned_prefixes_and_gc ... ok
+test engine::obligations::tests::pending_substitution_preserves_old_roots_and_descriptors_through_every_gc_phase ... ok
+test engine::obligations::tests::pending_substitution_drains_last_assignment_owner_incrementally ... ok
+test engine::obligations::tests::pending_substitution_projects_current_and_historical_alternatives ... ok
+test engine::inspection::restriction_tests::live_successive_prefixes_execute_fewer_restriction_jobs ... ok
+test engine::obligations::tests::pending_substitution_reuses_unaffected_root ... ok
+test engine::step::coordinate_tests::step_pins_coordinates_through_done_until_selection_ownership_ends ... ok
+test gc::tests::occupied_discard_spends_the_tick_even_when_it_finishes ... ok
+test engine::parking_tail_tests::failed_acquires_park_and_fifo_handoffs_survive_collection ... ok
+test graph::prune::certificate_tests::certificate_seed_checks_freeze_and_owner_remain_enforced ... ok
+test graph::prune::certificate_tests::every_identity_namespace_defeats_certificate ... ok
+test graph::prune::certificate_tests::failed_support_cannot_retain_a_constructor_attachment ... ok
+test graph::tuple_index_tests::tuple_support_tracks_updates_pruning_and_reclamation_without_language_ports ... ok
+test graph::update_ownership_tests::empty_update_preserves_owner_and_collector_authority ... ok
+test graph::update_ownership_tests::staged_fact_or_owned_arguments_suffice_through_collection_each_tick ... ok
+test graph::update_ownership_tests::unique_changed_support_updates_all_indexes_without_copying ... ok
+test graph::pressure_checks::semantic_debt_counts_support_changes_independently_of_cow ... ok
+test notebook::owner_tests::busy_control_does_not_consume_its_command_and_owner_ids_never_wrap ... ok
+test notebook::owner_tests::engine_entry_without_published_owner_mapping_is_never_executable ... ok
+test commit::private_update_tests::multi_consume_gc_and_discard_preserve_coherent_base_and_sibling_support ... ok
+test notebook::owner_tests::independent_owners_and_reservation_do_not_wait_for_a_busy_owner ... ok
+test engine::producer::tests::split_snapshots_preserve_exact_pending_arms_after_progress_and_cancel ... ok
+test notebook::owner_tests::continuing_a_completed_step_preserves_its_boundary ... ok
+test condition::archive_ownership_tests::interrupted_owner_changes_resume_without_retaining_unowned_nodes ... ok
+test notebook::owner_tests::output_reads_never_drive_source_and_spool_flush_failure_is_reported ... ok
+test notebook::owner_tests::scheduler_executes_without_output_requests_and_retains_results ... ok
+test graph::prune::certificate_tests::certificate_probe_uses_bounded_key_paths ... ok
+test program::tuple_plan_tests::tuple_indexes_require_every_variable_from_other_heads ... ok
+test notebook::owner_tests::waiting_requests_defer_only_their_owners_maintenance ... ok
+test store::prefix_identity_tests::exact_prefix_witness_survives_other_updates_and_detects_unique_mutation ... ok
+test runtime::tests::fallible_sink_stops_source_execution_and_returns_original_error ... ok
+test engine::dispatch::tests::every_dispatch_phase_keeps_its_owner_through_collection_and_cancel ... ok
+test store::filter_tests::maximal_filter_stack_is_256_and_completion_releases_capacity ... ok
+test engine::producer::tests::every_rejection_phase_survives_collection_and_bounded_cancellation ... ok
+test store::release_block_tests::concurrent_root_drops_and_collection_keep_pinned_authority ... ok
+test engine::balanced_phase_tests::disjunction_ranges_survive_physical_gc_at_every_phase ... ok
+test store::release_block_tests::queue_preserves_lifo_and_frees_every_empty_overflow_block ... ok
+test notebook::owner_tests::retirement_and_start_are_fenced_under_the_same_owner_lock ... ok
+test notebook::owner_tests::receipts_and_reservation_storage_stay_bounded_and_do_not_pin_closed_runs ... ok
+test condition::reorder_tests::restarted_job_has_stable_order_until_completion_or_cancellation ... ok
+test engine::collection::tests::routine_pressure_preserves_fifo_and_emergency_or_explicit_gc_bounds_writer_growth ... ok
+test notebook::owner_tests::spool_retains_more_than_ram_capacity_and_pages_exactly ... ok
+test condition::reorder_tests::collection_reordering_can_be_interrupted_in_every_structural_phase ... ok
+test engine::collection::archive_work_tests::fixed_archive_collection_tracks_the_working_frontier ... ok
+test engine::inspection::shared_restriction_lifetime_tests::repeated_cancellation_at_every_selection_step_preserves_waiting_reader ... ok
+test engine::obligations::tests::ordinary_alias_churn_keeps_descriptor_storage_bounded ... ok
+test engine::collection::retained_work_tests::retained_history_does_not_make_each_semantic_pass_walk_the_archive ... ok
+
+test result: ok. 91 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+
+running 1 test
+test tests::cli_reclaims_execution_before_returning_on_success_or_output_error ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+running 5 tests
+test engine_and_owners_remain_send ... ok
+test aborted_epoch_does_not_stale_and_completed_epoch_cannot_revive ... ok
+test unique_updates_cow_pins_and_bounded_release ... ok
+test cached_interval_counts_follow_unique_and_shared_paths ... ok
+test physical_root_may_outlive_owner_without_recursive_destruction ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 4 tests
+test two_flat_choices_cross_product_and_common_work_are_preserved ... ok
+test nested_duplicate_failure_and_fresh_correlated_arms ... ok
+test conditional_identity_stays_correlated_with_selected_arms ... ok
+test flat_finite_siblings_are_fair_and_cancel_reclaims_each_prefix ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 6 tests
+test maintenance_is_collection_only_and_post_cancel_inspections_are_not_canceled ... ok
+test snapshots_survive_cancel_and_release_triggers_physical_reclamation ... ok
+test queued_scalar_survives_source_cancellation_without_finishing_projection ... ok
+test physical_collection_between_cancel_steps_keeps_staged_owners_valid ... ok
+test cancellation_at_task_and_gc_boundaries_never_resumes_source_or_leaks_scratch ... ok
+test wide_wake_and_matching_children_discard_incrementally_and_remain_traceable ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+
+running 4 tests
+test notebook_default_origin_is_stable_and_port_override_is_honored ... FAILED
+test native_query_diagnostics_are_opt_in_and_preserve_answers ... ok
+test program_files_run_as_a_language_and_stream_complete_graphs ... ok
+test full_source_cli_preserves_conditional_fields_and_terminal_consumers ... ok
+
+failures:
+
+---- notebook_default_origin_is_stable_and_port_override_is_honored stdout ----
+
+thread 'notebook_default_origin_is_stable_and_port_override_is_honored' (2567) panicked at tests/cli.rs:98:9:
+assertion `left == right` failed
+  left: ""
+ right: "Notebook: http://127.0.0.1:7878\n"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    notebook_default_origin_is_stable_and_port_override_is_honored
+
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

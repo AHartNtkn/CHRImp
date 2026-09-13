@@ -1,0 +1,9 @@
+   Compiling chr v0.1.0 (/tmp/chr-cycle7-opt-transient-control-lowering)
+    Finished `release` profile [optimized] target(s) in 16.01s
+     Running unittests src/lib.rs (target/release/deps/chr-b5b07d024a3c67e2)
+     Running unittests src/main.rs (target/release/deps/chr-c111d6749b03a23a)
+     Running tests/arc_ownership.rs (target/release/deps/arc_ownership-8e0666e6d46027da)
+     Running tests/balanced.rs (target/release/deps/balanced-90bdeba9eae94be5)
+     Running tests/cancel.rs (target/release/deps/cancel-bc549e42bc5ff7ec)
+     Running tests/cli.rs (target/release/deps/cli-a1ec6b78568a9305)
+error: test failed, to rerun pass `--test cli`

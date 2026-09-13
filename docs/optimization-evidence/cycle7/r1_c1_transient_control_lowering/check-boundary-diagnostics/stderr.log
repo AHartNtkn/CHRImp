@@ -1,0 +1,3 @@
+   Compiling chr v0.1.0 (/tmp/chr-cycle7-opt-transient-control-lowering)
+    Finished `release` profile [optimized] target(s) in 7.41s
+     Running tests/transient_control_boundary.rs (target/release/deps/transient_control_boundary-d53f51afeff9a2ec)

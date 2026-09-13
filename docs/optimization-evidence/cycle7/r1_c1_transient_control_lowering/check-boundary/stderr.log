@@ -1,0 +1,14 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling serde_core v1.0.229
+   Compiling zmij v1.0.23
+   Compiling serde_json v1.0.151
+   Compiling serde v1.0.229
+   Compiling itoa v1.0.18
+   Compiling memchr v2.8.3
+   Compiling syn v3.0.4
+   Compiling serde_derive v1.0.229
+   Compiling chr v0.1.0 (/tmp/chr-cycle7-opt-transient-control-lowering)
+    Finished `release` profile [optimized] target(s) in 9.14s
+     Running tests/transient_control_boundary.rs (target/release/deps/transient_control_boundary-6f98099a9f5b82c5)

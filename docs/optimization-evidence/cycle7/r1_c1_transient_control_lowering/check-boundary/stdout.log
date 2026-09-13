@@ -1,0 +1,10 @@
+
+running 2 tests
+held={"graph_nodes":11,"release_batches":0,"occurrences":1,"conditions":0,"history_nodes":0,"history_records":0,"pending_nodes":1,"obligation_descriptors":1,"choices":0,"coordinate_records":1,"snapshots":1,"inspections":0,"restriction_nodes":0}
+reclaimed={"graph_nodes":0,"release_batches":0,"occurrences":0,"conditions":0,"history_nodes":0,"history_records":0,"pending_nodes":0,"obligation_descriptors":0,"choices":0,"coordinate_records":1,"snapshots":0,"inspections":0,"restriction_nodes":0}
+test ordinary_control_is_committed_and_late_snapshot_survives_cancellation ... ok
+reclaimed={"graph_nodes":0,"release_batches":0,"occurrences":0,"conditions":0,"history_nodes":0,"history_records":0,"pending_nodes":0,"obligation_descriptors":0,"choices":0,"coordinate_records":1,"snapshots":0,"inspections":0,"restriction_nodes":0}
+test equal_control_tuples_keep_distinct_fresh_applications_and_late_steps ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
