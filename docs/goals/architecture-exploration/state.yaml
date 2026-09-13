@@ -63,7 +63,7 @@ visual_board:
     url: null
   reason: Use concise file state; a visual process surface does not advance this architectural
     decision.
-active_task: T002
+active_task: T003
 tasks:
   - id: T001
     type: pm
@@ -89,9 +89,9 @@ tasks:
       note: notes/T001-hypotheses.md
       harness: codex
   - id: T002
-    type: worker
+    type: pm
     assignee: PM
-    status: active
+    status: done
     objective: Measure whether whole-head reasoning can avoid substantial candidate
       scaling on the proposed witness; choose whether it merits a prototype.
     inputs:
@@ -108,7 +108,40 @@ tasks:
     stop_if:
       - Declared budget expires; record result and reassess instead of automatic extension.
       - The witness fails to establish the predicted avoidable scaling.
+    receipt:
+      result: done
+      summary: 35 completed observations validated exactly; empty-join 32-to-64 growth
+        raises median completion from 80.26 to 691.77 ms. Whole-head feasibility warrants
+        a prototype; no runtime code changed.
+      note: notes/T002-baseline.md
+      harness: codex
+      commands:
+        - cmd: Maintained supervise.run over generated CLI inputs; exact ordered multiset
+            validation
+          status: pass
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: active
+    objective: Implement a bounded source-driven comparison of whole-head feasibility
+      and on-demand query plans in an isolated prototype; test correctness before
+      timing.
+    inputs:
+      - notes/T002-baseline.md
+      - /tmp/chr-arch-whole-head
+    allowed_files:
+      - /tmp/chr-arch-whole-head/examples/arch_whole_head.rs
+    verify:
+      - cargo test --offline --release --example arch_whole_head
+      - cargo build --offline --release --example arch_whole_head
+      - Exact relational output comparison with baseline on supported program class
+    stop_if:
+      - '45-minute implementation budget expires: return concrete result/remaining
+        uncertainty, no automatic extension.'
+      - Supporting the hypothesis requires full engine integration; do not expand
+        prototype silently.
     receipt: null
+    agent_id: 01a09936-4ec2-79e3-bbb2-56c93f31bc24
   - id: T999
     type: pm
     assignee: PM
