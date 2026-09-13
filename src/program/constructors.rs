@@ -6,6 +6,7 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub(crate) struct ConstructorChoice {
     pub key: usize,
+    pub family: usize,
     pub arms: BTreeMap<usize, usize>,
     pub rejection: BTreeMap<usize, Vec<FailureConsumer>>,
 }
@@ -27,7 +28,7 @@ fn failure_consumers(
     code: &Prepared,
     terminal: &BTreeSet<usize>,
     atom: &super::Atom,
-    relations: &BTreeSet<usize>,
+    families: &BTreeMap<usize, usize>,
 ) -> Vec<FailureConsumer> {
     let mut out = vec![];
     for &rule in terminal {
@@ -58,7 +59,7 @@ fn failure_consumers(
                     .any(|marker| {
                         !key_port.is_some_and(|port| {
                             consumer.heads[..consumer.kept].iter().any(|kept| {
-                                relations.contains(&kept.relation)
+                                families.get(&kept.relation) == families.get(&atom.relation)
                                     && kept.relation != atom.relation
                                     && kept.args[0] == marker.args[port]
                             })
@@ -95,6 +96,7 @@ fn failure_consumers(
 #[derive(Clone, Debug)]
 pub(crate) struct Constructors {
     pub(crate) relations: BTreeSet<usize>,
+    pub(crate) families: BTreeMap<usize, usize>,
     pub(crate) rules: BTreeSet<usize>,
     pub(crate) terminal: BTreeSet<usize>,
     pub(crate) consistency: BTreeMap<usize, usize>,
@@ -183,8 +185,38 @@ impl Constructors {
                 rules.insert(i);
             }
         }
-        if clashes.len() != relations.len() * (relations.len() - 1) / 2 {
-            return Err("incomplete constructor clash coverage".into());
+        // Clash-connected components are exclusive families only when every
+        // pair has a source clash. Isolated consistency relations form their
+        // own families; identity sharing between families remains unrestricted.
+        let mut adjacency = vec![Vec::new(); code.signatures.len()];
+        for &(left, right) in clashes.keys() {
+            adjacency[left].push(right);
+            adjacency[right].push(left);
+        }
+        let mut families = BTreeMap::new();
+        for &relation in &relations {
+            if families.contains_key(&relation) {
+                continue;
+            }
+            let mut component = BTreeSet::from([relation]);
+            let mut pending = vec![relation];
+            while let Some(member) = pending.pop() {
+                for &neighbor in &adjacency[member] {
+                    if component.insert(neighbor) {
+                        pending.push(neighbor);
+                    }
+                }
+            }
+            for &left in &component {
+                for &right in
+                    component.range((std::ops::Bound::Excluded(left), std::ops::Bound::Unbounded))
+                {
+                    if !clashes.contains_key(&(left, right)) {
+                        return Err("incomplete constructor family clash coverage".into());
+                    }
+                }
+                families.insert(left, relation);
+            }
         }
         let mut terminal = BTreeSet::new();
         for (i, r) in code.rules.iter().enumerate() {
@@ -228,6 +260,7 @@ impl Constructors {
                 continue;
             }
             let mut key = None;
+            let mut family = None;
             let mut arms = BTreeMap::new();
             let mut rejection = BTreeMap::new();
             let supported = items.iter().all(|&arm| {
@@ -241,6 +274,11 @@ impl Constructors {
                 if !relations.contains(&atom.relation) {
                     return false;
                 }
+                let current_family = families[&atom.relation];
+                if family.is_some_and(|family| family != current_family) {
+                    return false;
+                }
+                family = Some(current_family);
                 let Some(&root) = atom.args.first() else {
                     return false;
                 };
@@ -248,7 +286,7 @@ impl Constructors {
                     return false;
                 }
                 key = Some(root);
-                let consumers = failure_consumers(code, &terminal, atom, &relations);
+                let consumers = failure_consumers(code, &terminal, atom, &families);
                 if !consumers.is_empty() {
                     rejection.insert(arm, consumers);
                 }
@@ -259,6 +297,7 @@ impl Constructors {
                     i,
                     Arc::new(ConstructorChoice {
                         key: key.unwrap(),
+                        family: family.unwrap(),
                         arms,
                         rejection,
                     }),
@@ -267,6 +306,7 @@ impl Constructors {
         }
         Ok(Self {
             relations,
+            families,
             rules,
             terminal,
             consistency: by_relation,

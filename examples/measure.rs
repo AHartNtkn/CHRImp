@@ -670,11 +670,11 @@ fn report_diagnostics(phase: &str, e: &Engine) {
         let allocation = allocation::snapshot();
         report::emit(
             "diagnostics",
-            serde_json::json!({"phase": phase, "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "allocation": allocation, "memory_counts": report::memory(memory(e))}),
+            serde_json::json!({"phase": phase, "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "normalization": e.normalization_stats(), "allocation": allocation, "memory_counts": report::memory(memory(e))}),
         );
         println!(
             "diagnostics={}",
-            serde_json::json!({"phase": phase, "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "allocation": allocation, "memory_counts": memory(e)})
+            serde_json::json!({"phase": phase, "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "normalization": e.normalization_stats(), "allocation": allocation, "memory_counts": memory(e)})
         );
     }
     #[cfg(not(feature = "diagnostics"))]

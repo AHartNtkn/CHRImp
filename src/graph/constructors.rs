@@ -1,4 +1,4 @@
-//! Direct conditional attachments, indexed by union-find representative.
+//! Direct conditional attachments, indexed by union-find representative and family.
 //! Rows remain ordinary occurrences; attachments select their surviving supports.
 use super::*;
 use crate::condition::{Arena, Job, Operation, poll};
@@ -13,6 +13,7 @@ pub(crate) enum AttachmentStatus {
 }
 pub(crate) struct Attach {
     representative: u64,
+    family: u64,
     occurrence: u64,
     remaining: Condition,
     cursor: store::Cursor,
@@ -26,17 +27,19 @@ impl Attach {
         g: &Graph,
         root: Root,
         representative: u64,
+        family: u64,
         occurrence: u64,
         scope: Condition,
     ) -> Self {
         Self {
             representative,
+            family,
             occurrence,
             remaining: scope,
             cursor: g.index.range(
                 root,
-                [ATTACHMENT, representative, 0, 0],
-                [ATTACHMENT, representative, u64::MAX, 0],
+                [ATTACHMENT, representative, family, 0],
+                [ATTACHMENT, representative, family, u64::MAX],
             ),
             other: 0,
             hit: Condition::FALSE,
@@ -51,13 +54,21 @@ impl Attach {
         match self.phase {
             0 => {
                 if let Some((key, c)) = self.cursor.next(&g.index) {
-                    self.other = key[2];
+                    self.other = key[3];
                     self.job = Some(a.start(Operation::And(self.remaining, c)));
                     self.phase = 1;
                 } else {
                     let old = g
                         .index
-                        .get(root, &[ATTACHMENT, self.representative, self.occurrence, 0])
+                        .get(
+                            root,
+                            &[
+                                ATTACHMENT,
+                                self.representative,
+                                self.family,
+                                self.occurrence,
+                            ],
+                        )
                         .unwrap_or(Condition::FALSE);
                     self.job = Some(a.start(Operation::Or(old, self.remaining)));
                     self.phase = 3;
@@ -83,7 +94,12 @@ impl Attach {
                 if let Some(c) = poll(&mut self.job, a) {
                     *root = g.write(
                         std::mem::take(root),
-                        [ATTACHMENT, self.representative, self.occurrence, 0],
+                        [
+                            ATTACHMENT,
+                            self.representative,
+                            self.family,
+                            self.occurrence,
+                        ],
                         c,
                     );
                     self.phase = 4;
@@ -111,6 +127,7 @@ impl Trace for Attach {
 
 pub(crate) struct Transfer {
     loser: u64,
+    family: u64,
     scope: Condition,
     cursor: store::Cursor,
     occurrence: u64,
@@ -123,11 +140,12 @@ impl Transfer {
     pub fn new(g: &Graph, root: Root, loser: u64, scope: Condition) -> Self {
         Self {
             loser,
+            family: 0,
             scope,
             cursor: g.index.range(
                 root,
                 [ATTACHMENT, loser, 0, 0],
-                [ATTACHMENT, loser, u64::MAX, 0],
+                [ATTACHMENT, loser, u64::MAX, u64::MAX],
             ),
             occurrence: 0,
             old: Condition::FALSE,
@@ -143,7 +161,8 @@ impl Transfer {
         match self.phase {
             0 => {
                 if let Some((key, c)) = self.cursor.next(&g.index) {
-                    self.occurrence = key[2];
+                    self.family = key[2];
+                    self.occurrence = key[3];
                     self.old = c;
                     self.job = Some(a.start(Operation::And(c, self.scope)));
                     self.phase = 1;
@@ -162,7 +181,7 @@ impl Transfer {
                 if let Some(c) = poll(&mut self.job, a) {
                     *root = g.write(
                         std::mem::take(root),
-                        [ATTACHMENT, self.loser, self.occurrence, 0],
+                        [ATTACHMENT, self.loser, self.family, self.occurrence],
                         c,
                     );
                     self.phase = 0;
@@ -193,11 +212,16 @@ impl Trace for Transfer {
 
 impl Graph {
     /// Symbolic descriptions at one representative; supports may be disjoint.
-    pub(crate) fn constructor_attachments(&self, root: Root, representative: u64) -> store::Cursor {
+    pub(crate) fn constructor_attachments(
+        &self,
+        root: Root,
+        representative: u64,
+        family: u64,
+    ) -> store::Cursor {
         self.index.range(
             root,
-            [ATTACHMENT, representative, 0, 0],
-            [ATTACHMENT, representative, u64::MAX, 0],
+            [ATTACHMENT, representative, family, 0],
+            [ATTACHMENT, representative, family, u64::MAX],
         )
     }
 }

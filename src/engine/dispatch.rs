@@ -83,7 +83,11 @@ impl Dispatch {
                 ResolveStatus::Pending => {}
                 ResolveStatus::Found { variable, support } => {
                     self.partition = support;
-                    self.cursor = Some(g.constructor_attachments(self.root.clone(), variable));
+                    self.cursor = Some(g.constructor_attachments(
+                        self.root.clone(),
+                        variable,
+                        self.plan.family as u64,
+                    ));
                     self.phase = Phase::Scan;
                 }
                 ResolveStatus::Done => {
@@ -94,7 +98,7 @@ impl Dispatch {
             },
             Phase::Scan => {
                 if let Some((key, support)) = self.cursor.as_mut().unwrap().next(&g.index) {
-                    self.occurrence = key[2];
+                    self.occurrence = key[3];
                     self.job = Some(a.start(Operation::And(self.partition, support)));
                     self.phase = Phase::Hit;
                 } else {

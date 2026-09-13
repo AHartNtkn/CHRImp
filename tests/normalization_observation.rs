@@ -317,3 +317,63 @@ fn prepared_plan_is_reused_by_normal_and_recording_engines() {
         release(&mut e);
     }
 }
+
+#[test]
+fn independent_family_steps_preserve_source_equalities_and_held_snapshots() {
+    let source = "first @ a(K,V) \\ a(K,W) <=> V=W. second @ b(K,V) \\ b(K,W) <=> V=W.";
+    for history in [false, true] {
+        let code = Arc::new(
+            prepare(
+                &parse_program(source).unwrap(),
+                &parse_query("a(K,A),b(K,B),a(K,C),b(K,D)").unwrap(),
+            )
+            .unwrap(),
+        );
+        let mut e = Engine::with_history(code, history);
+        step(&mut e);
+        assert_eq!(e.applications(), 1);
+        assert!(e.step_status().rule.is_some_and(|r| r < 2));
+        let held = e.capture_snapshot().unwrap();
+        let before = project(&mut e, held);
+        assert!(before.iter().any(|o| matches!(
+            o,
+            Output::Expression {
+                operator: chr::observe::ExpressionKind::Equal
+            }
+        )));
+        e.resume().unwrap();
+        let mut vars = vec![];
+        for _ in 0..200_000 {
+            e.advance(1);
+            if let Some(Output::Variable { variable, .. }) = e.take_output() {
+                vars.push(variable);
+            }
+            if e.delivery_done() {
+                break;
+            }
+        }
+        assert!(e.delivery_done());
+        assert_eq!(e.applications(), 2);
+        assert_eq!(e.normalization_stats().coalescences, 2);
+        assert_eq!(vars.len(), 5);
+        assert_eq!(vars[1], vars[3]);
+        assert_eq!(vars[2], vars[4]);
+        assert_ne!(vars[1], vars[2]);
+        if history {
+            let mut rules: Vec<_> = e
+                .snapshots()
+                .filter_map(|s| match s.kind {
+                    SnapshotKind::Application { rule, .. } => Some(rule),
+                    _ => None,
+                })
+                .collect();
+            rules.sort();
+            assert_eq!(rules, [0, 1]);
+        }
+        e.request_collection();
+        e.maintain(200_000);
+        let after = project(&mut e, held);
+        assert_eq!(&before[1..], &after[1..]);
+        release(&mut e);
+    }
+}

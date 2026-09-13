@@ -292,7 +292,12 @@ impl Normalizer {
             }
             Work::Attach(rep, id, scope, job) => {
                 if job.is_none() {
-                    *job = Some(Attach::new(g, self.root.clone(), *rep, *id, *scope));
+                    let relation = g
+                        .fact(self.root.clone(), *id)
+                        .expect("incoming constructor")
+                        .relation;
+                    let family = self.config.plan.families[&relation] as u64;
+                    *job = Some(Attach::new(g, self.root.clone(), *rep, family, *id, *scope));
                     return (false, None);
                 }
                 match job.as_mut().unwrap().tick(g, a, &mut self.root) {

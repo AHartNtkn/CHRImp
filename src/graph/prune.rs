@@ -343,7 +343,7 @@ mod certificate_tests {
         let mut g = Graph::new(&[]);
         let mut a = Arena::default();
         let (_, choice) = a.fresh_choice();
-        let key = [ATTACHMENT, 17, 23, 0];
+        let key = [ATTACHMENT, 17, 0, 23];
         let root = g.write(g.empty(), key, choice);
         let mut prune = g.prune(root, choice.not());
         let result = loop {

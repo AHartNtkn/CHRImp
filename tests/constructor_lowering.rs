@@ -780,3 +780,157 @@ fn selected_original_fields_can_still_make_the_known_arm_fail() {
 
     assert_eq!(e.normalization_stats().known_arm_admissions, 1);
 }
+
+#[test]
+fn independent_families_coalesce_at_shared_keys_and_after_conditional_merges() {
+    let p = parse_program("a(K,V) \\ a(K,W) <=> V=W. b(K,V) \\ b(K,W) <=> V=W.").unwrap();
+    for query in [
+        "a(K,A),b(K,B),a(K,C),b(K,D)",
+        "a(K,A),b(K,B),a(L,C),b(L,D),(K=L;true)",
+    ] {
+        let mut e = start(&p, query);
+        let all = answers(&mut e);
+        assert_eq!(all.len(), if query.contains(';') { 2 } else { 1 });
+        for a in all {
+            let v = |n| variable(&e, &a, n);
+            let merged = !query.contains(';') || v("K") == v("L");
+            assert_eq!(v("A") == v("C"), merged);
+            assert_eq!(v("B") == v("D"), merged);
+            assert_ne!(v("A"), v("B"));
+            assert_eq!(rows(&e, &a, "a").len(), if merged { 1 } else { 2 });
+            assert_eq!(rows(&e, &a, "b").len(), if merged { 1 } else { 2 });
+            assert_eq!(a.rows.len(), if merged { 2 } else { 4 });
+        }
+        assert_eq!(e.normalization_stats().coalescences, 2);
+    }
+}
+
+#[test]
+fn independent_family_choices_preserve_alternatives_and_local_exclusion() {
+    let p = parse_program(
+        "a(K) \\ a(K) <=> true. b(K) \\ b(K) <=> true. a(K),b(K) <=> fail. c(K) \\ c(K) <=> true.",
+    )
+    .unwrap();
+    for (query, count) in [
+        ("c(K),(a(K);b(K))", 2),
+        ("a(K),(a(K);c(K))", 2),
+        ("a(K),c(K),(a(K);b(K))", 1),
+        ("a(K),c(L),(K=L;true),(a(K);b(K))", 2),
+        ("c(K),(a(K);a(K))", 2),
+    ] {
+        let mut e = start(&p, query);
+        let all = answers(&mut e);
+        assert_eq!(all.len(), count, "{query}");
+        for answer in &all {
+            assert!(rows(&e, answer, "b").is_empty() || rows(&e, answer, "a").is_empty());
+            assert_eq!(rows(&e, answer, "a").len() + rows(&e, answer, "b").len(), 1);
+            assert!(answer.rows.len() <= 2);
+        }
+        assert!(e.normalization_stats().transactions > 0, "{query}");
+    }
+}
+
+#[test]
+fn incomplete_clash_component_does_not_make_compatible_tags_exclusive() {
+    let p = parse_program("a(K) \\ a(K) <=> true. b(K) \\ b(K) <=> true. c(K) \\ c(K) <=> true. a(K),b(K) <=> fail. b(K),c(K) <=> fail.").unwrap();
+    let mut e = start(&p, "a(K),c(K),c(K)");
+    let all = answers(&mut e);
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].rows.len(), 2);
+    assert_eq!(rows(&e, &all[0], "a").len(), 1);
+    assert_eq!(rows(&e, &all[0], "c").len(), 1);
+    assert_eq!(e.normalization_stats().transactions, 0);
+}
+
+#[test]
+fn independent_families_do_not_bypass_multiplicity_observers() {
+    let p = parse_program("a(K) \\ a(K) <=> true. b(K) \\ b(K) <=> true. a(K),b(K) ==> seen(K).")
+        .unwrap();
+    let mut e = start(&p, "a(K),b(K)");
+    let all = answers(&mut e);
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].rows.len(), 3);
+    assert_eq!(rows(&e, &all[0], "seen").len(), 1);
+    assert_eq!(e.normalization_stats().transactions, 0);
+}
+
+#[test]
+fn conditional_clashes_leave_independent_family_and_compatible_arms_live() {
+    let p = parse_program(
+        "a(K) \\ a(K) <=> true. b(K) \\ b(K) <=> true. a(K),b(K) <=> fail. c(K) \\ c(K) <=> true.",
+    )
+    .unwrap();
+    let mut e = start(&p, "(a(K);b(K)),a(L),c(K),c(L),(K=L;true)");
+    let all = answers(&mut e);
+    assert_eq!(all.len(), 3);
+    for answer in all {
+        let same = variable(&e, &answer, "K") == variable(&e, &answer, "L");
+        let mut expected = vec![
+            ("a", variable(&e, &answer, "L")),
+            ("c", variable(&e, &answer, "L")),
+        ];
+        if !same {
+            expected.push(("c", variable(&e, &answer, "K")));
+            expected.push((
+                if rows(&e, &answer, "b").is_empty() {
+                    "a"
+                } else {
+                    "b"
+                },
+                variable(&e, &answer, "K"),
+            ));
+        }
+        let mut actual: Vec<_> = answer
+            .rows
+            .iter()
+            .map(|r| {
+                assert_eq!(r.ports.len(), 1);
+                (
+                    e.program().signatures()[r.relation].name.as_str(),
+                    r.ports[0],
+                )
+            })
+            .collect();
+        expected.sort();
+        actual.sort();
+        assert_eq!(actual, expected);
+    }
+    assert!(e.normalization_stats().transactions > 0);
+}
+
+#[test]
+fn independent_family_normalization_preserves_finite_progress_and_release() {
+    let p =
+        parse_program("a(K,V) \\ a(K,W) <=> V=W. b(K,V) \\ b(K,W) <=> V=W. spin(X) <=> spin(X).")
+            .unwrap();
+    let mut e = start(&p, "(a(K,A),a(K,B),b(K,C),b(K,D),spin(K);a(F,V),b(F,W))");
+    let answer = support::finish(&mut e);
+    assert_eq!(answer.rows.len(), 2);
+    for name in ["a", "b"] {
+        let r = rows(&e, &answer, name);
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].ports[0], variable(&e, &answer, "F"));
+    }
+    assert_ne!(variable(&e, &answer, "V"), variable(&e, &answer, "W"));
+    assert!(!e.exhausted());
+    assert!(e.normalization_stats().transactions > 0);
+    e.cancel();
+    for _ in 0..200_000 {
+        e.advance(1);
+        if e.cancel_done() {
+            break;
+        }
+    }
+    assert!(e.cancel_done());
+    let m = e.memory();
+    assert_eq!(
+        (
+            m.occurrences,
+            m.graph_nodes,
+            m.conditions,
+            m.pending_nodes,
+            m.history_nodes
+        ),
+        (0, 0, 0, 0, 0)
+    );
+}

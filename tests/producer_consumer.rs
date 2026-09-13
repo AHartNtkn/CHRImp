@@ -345,3 +345,25 @@ fn conditional_rejection_survives_collection_with_retained_history() {
     cases.sort();
     assert_eq!(cases, [(false, 0, 1), (false, 1, 0), (true, 0, 1)]);
 }
+
+#[test]
+fn compatible_family_cannot_certify_marker_retirement_as_failure() {
+    let source = "other(X) \\ other(X) <=> true. copper(X,Y),crane(X) <=> fail. other(X) \\ crane(X) <=> true. route(X) <=> (copper(X,Y),velvet(Y);tide(X),orbit(X)).";
+    let mut e = engine(source, "crane(A),route(A)");
+    let out = answers(&mut e);
+    assert_eq!(out.len(), 1);
+    assert_eq!(count(&e, &out[0], "tide"), 1);
+    assert!(
+        e.snapshots()
+            .any(|s| matches!(s.kind, SnapshotKind::Choice))
+    );
+    let mut e = engine(source, "crane(A),other(A),route(A)");
+    let out = answers(&mut e);
+    assert_eq!(out.len(), 2);
+    assert_eq!(out.iter().map(|a| count(&e, a, "copper")).sum::<usize>(), 1);
+    for a in &out {
+        assert_eq!(count(&e, a, "other"), 1);
+        assert_eq!(count(&e, a, "crane"), 0);
+        assert_eq!(a.rows.len(), 3);
+    }
+}
