@@ -4,12 +4,13 @@ goal:
   slug: architecture-exploration
   kind: specific
   tranche: Comparative architectural exploration through a defensible recommendation
-  status: active
+  status: done
   oracle:
     signal: Working comparisons resolve major architectural hypotheses and consequential combinations.
     cadence: After decision-changing experiments and at completion.
-    final_proof: Comparative recommendation with gains, adverse regimes, semantic evidence
-      and remaining decision-relevant uncertainty.
+    final_proof: Measured compiler combination and separate static-join capability, exact
+      semantic controls, adverse censored outcomes, memory tradeoff and scoped recommendation
+      in decision.md.
   intake:
     original_request: Define the best exploration strategy, create a goal and follow it; avoid
       microoptimization and expanding obligations.
@@ -29,7 +30,7 @@ goal:
       - Sharing already exists; representation cost and repeated derivations are separate
         questions.
     existing_plan_facts:
-      - Five independent agents are running with different priorities and no supplied conversation
+      - Five independent investigations supplied different priorities without supplied conversation
         history.
 rules:
   pm_owns_state: true
@@ -62,7 +63,7 @@ visual_board:
     url: null
   reason: Use concise file state; a visual process surface does not advance this architectural
     decision.
-active_task: T007
+active_task: null
 tasks:
   - id: T001
     type: pm
@@ -271,7 +272,7 @@ tasks:
   - id: T007
     type: worker
     assignee: Worker
-    status: active
+    status: done
     objective: Implement and validate source-derived conditional dispatch that avoids doomed
       choice creation, with direct-normalization control.
     inputs:
@@ -297,17 +298,58 @@ tasks:
       - Requires a general boundary runtime; report missing responsibility instead of silently
         expanding.
     agent_id: 01a09935-dd83-7411-9e01-d83f1cbd9efa
-    receipt: null
+    receipt:
+      result: done
+      changed_files:
+        - /tmp/chr-arch-conditional-dispatch/examples/constructor_probe.rs
+        - /tmp/chr-arch-conditional-dispatch/src/engine.rs
+        - /tmp/chr-arch-conditional-dispatch/src/engine/cancel.rs
+        - /tmp/chr-arch-conditional-dispatch/src/engine/collection.rs
+        - /tmp/chr-arch-conditional-dispatch/src/engine/compact.rs
+        - /tmp/chr-arch-conditional-dispatch/src/engine/dispatch.rs
+        - /tmp/chr-arch-conditional-dispatch/src/engine/normalization.rs
+        - /tmp/chr-arch-conditional-dispatch/src/graph/constructors.rs
+        - /tmp/chr-arch-conditional-dispatch/src/program/constructors.rs
+        - /tmp/chr-arch-conditional-dispatch/tests/constructor_lowering.rs
+      summary: Dispatch adds 2.71x on known128 and 1.42x on paired identity; independent16-answer
+        control unchanged. Known128 has15.5%higher peak requested allocation. B/W source searches
+        remain censored; cleanup-only W replay verifies eventual release without source progress.
+      commands:
+        - cmd: 'Parent: cargo test --offline --release --test constructor_lowering (19 tests)'
+          status: pass
+        - cmd: 70 bounded observations:50 completed executions pass output/release checks;20
+            searches honestly censored
+          status: pass
+        - cmd: Four instrumented observations measure requested allocation and verify engine
+            storage release
+          status: pass
+        - cmd: Cleanup-only replay of dispatch W capped prefix; no source progress and eventual
+            zero engine storage, qualified heap reproduction
+          status: pass
+      note: notes/T007-comparison.md
+      commit: e5dcb37cd9c1f7df97cc02202c9d4260c805f069
+      harness: codex
   - id: T999
     type: pm
     assignee: PM
-    status: queued
+    status: done
     objective: Determine whether comparative evidence now supports the architectural recommendation.
     inputs:
       - Selected experiment results
     expected_output:
       - Recommendation and full_outcome_complete assessment.
-    receipt: null
+    receipt:
+      result: done
+      decision: complete
+      full_outcome_complete: true
+      summary: PM and targeted independent review agree the evidence supports a compiler-component
+        configuration and workload frontier. Consequential normalization/dispatch combination
+        measured; static feasibility has a separate domain. Memory tradeoff and hard-search/lifetime
+        uncertainty explicit. No unperformed comparison prevents this scoped recommendation;
+        no universal foundation claim.
+      note: decision.md
+      harness: codex
+      review_agent_id: 01a09936-4b61-7e60-a0a5-4b13b949cdc9
 investigations:
   - priority: cheap execution
     agent_id: 01a09935-dd83-7411-9e01-d83f1cbd9efa
