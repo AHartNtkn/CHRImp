@@ -115,6 +115,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let allocation_before_cleanup = allocation::snapshot();
     #[cfg(feature = "diagnostics")]
     let diagnostics = e.diagnostics().clone();
+    #[cfg(feature = "diagnostics")]
+    let shared_restrictions = e.restriction_diagnostics();
     let cleanup = Instant::now();
     e.cancel();
     for _ in 0..1_000_000 {
@@ -131,6 +133,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         result["allocations_before_cleanup"] = serde_json::to_value(allocation_before_cleanup)?;
         result["allocations_after_cleanup"] = serde_json::to_value(allocation::snapshot())?;
         result["engine_diagnostics"] = serde_json::to_value(diagnostics)?;
+        result["shared_restrictions_before_cleanup"] = serde_json::to_value(shared_restrictions)?;
+        result["shared_restrictions_after_cleanup"] =
+            serde_json::to_value(e.restriction_diagnostics())?;
     }
     result["total_seconds"] = serde_json::json!(start.elapsed().as_secs_f64());
     eprintln!("{}", serde_json::to_string(&result)?);

@@ -52,6 +52,7 @@ enum Lookup {
 }
 
 enum SourceKind {
+    Shared(crate::graph::restriction::Subscriber),
     One {
         occurrence: Option<u64>,
         relation: usize,
@@ -152,6 +153,16 @@ impl Source {
             return SourceStatus::Pending;
         }
         let next = match &mut self.kind {
+            SourceKind::Shared(subscriber) => match subscriber.tick(g) {
+                crate::graph::restriction::Status::Pending => return SourceStatus::Pending,
+                crate::graph::restriction::Status::Done => return SourceStatus::Done,
+                crate::graph::restriction::Status::Found(id) => {
+                    let fact = g
+                        .fact(self.root.clone(), id)
+                        .expect("unchanged restriction bucket");
+                    Some((id, self.scope, fact.support))
+                }
+            },
             SourceKind::One {
                 occurrence,
                 relation,
@@ -364,7 +375,18 @@ impl Matches {
             Lookup::Port { port, .. } => Some(port),
             _ => None,
         };
-        let source = Source::new(g, self.root.clone(), atom.relation, scope, lookup, anchor);
+        let mut source = Source::new(g, self.root.clone(), atom.relation, scope, lookup, anchor);
+        if anchor.is_none() && atom.args.len() <= crate::graph::restriction::MAX_PORTS {
+            if let Lookup::Port { port, .. } = lookup {
+                let mut bound = [None; crate::graph::restriction::MAX_PORTS];
+                for (i, &slot) in atom.args.iter().enumerate() {
+                    bound[i] = self.bindings[slot];
+                }
+                if let Some(subscriber) = g.restriction(&self.root, atom.relation, port, bound) {
+                    source.kind = SourceKind::Shared(subscriber);
+                }
+            }
+        }
         self.frames.push(Frame {
             head,
             source,

@@ -2,7 +2,10 @@
 
 pub(crate) mod constructors;
 mod prune;
+pub(crate) mod restriction;
 pub use prune::Prune;
+#[cfg(feature = "diagnostics")]
+pub use restriction::RestrictionDiagnostics;
 
 use crate::condition::Condition;
 use crate::identity::{CHILD, PARENT};
@@ -61,6 +64,7 @@ pub struct Fact<'a> {
 /// Immutable occurrence payloads and a persistent supported index. The executor
 /// owns the current root; updates return a new root for atomic publication.
 pub struct Graph {
+    pub(crate) shared_restrictions: restriction::Cache,
     semantic_debt: usize,
     pub(crate) index: Store<Condition>,
     rows: BTreeMap<u64, Row>,
@@ -109,6 +113,7 @@ impl Graph {
             })
             .collect();
         Self {
+            shared_restrictions: restriction::Cache::default(),
             semantic_debt: 0,
             index: Store::default(),
             rows: BTreeMap::new(),
@@ -418,6 +423,7 @@ impl Graph {
         archived: Vec<Root>,
         mut reset: bool,
     ) -> Collector<I> {
+        self.shared_restrictions.clear();
         self.index.assert_mutable();
         let epoch = self
             .epoch

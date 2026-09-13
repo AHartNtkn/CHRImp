@@ -180,6 +180,30 @@ impl<V: Value> Root<V> {
         self.node.is_none()
     }
 }
+/// Non-owning identity witness. Weak ownership prevents in-place mutation of
+/// the witnessed node, without retaining its payload or descendants.
+pub(crate) struct WeakRoot<V: Value = Condition> {
+    owner: u32,
+    node: Option<Weak<Record<V>>>,
+}
+impl<V: Value> WeakRoot<V> {
+    pub(crate) fn matches(&self, root: &Root<V>) -> bool {
+        self.owner == root.owner
+            && match (&self.node, &root.node) {
+                (None, None) => true,
+                (Some(a), Some(b)) => a.as_ptr() == Arc::as_ptr(b),
+                _ => false,
+            }
+    }
+}
+impl<V: Value> Root<V> {
+    pub(crate) fn downgrade(&self) -> WeakRoot<V> {
+        WeakRoot {
+            owner: self.owner,
+            node: self.node.as_ref().map(Arc::downgrade),
+        }
+    }
+}
 impl<V: Value> Default for Root<V> {
     fn default() -> Self {
         Self::empty()
@@ -474,6 +498,35 @@ impl<V: Value> Store<V> {
         }
         Self::refresh(&mut root);
         root
+    }
+    /// Exact subtree for a whole-word key prefix (at most 256 path steps).
+    /// Unrelated prefix updates preserve its identity even when the root changes.
+    pub(crate) fn prefix_root(&self, root: &Root<V>, prefix: Key, words: usize) -> Root<V> {
+        assert!(words <= 4 && self.contains(root));
+        let mut node = root;
+        while !node.is_empty() {
+            let (key, bit) = match &self.record(node).node {
+                Node::Leaf { key, .. } => (*key, 256),
+                Node::Branch { prefix, bit, .. } => (*prefix, *bit as usize),
+            };
+            if difference(&key, &prefix).is_some_and(|d| (d as usize) < bit.min(words * 64)) {
+                return self.empty();
+            }
+            if bit >= words * 64 {
+                return node.clone();
+            }
+            let Node::Branch {
+                bit,
+                left,
+                right: rgt,
+                ..
+            } = &self.record(node).node
+            else {
+                unreachable!()
+            };
+            node = if right(&prefix, *bit) { rgt } else { left };
+        }
+        self.empty()
     }
     pub fn range(&self, root: Root<V>, low: Key, high: Key) -> Cursor<V> {
         assert!(self.contains(&root), "stale or foreign index root");
@@ -903,5 +956,34 @@ mod release_block_tests {
         }
         assert_eq!(store.node_count(), 0);
         assert!(store.queue.state.lock().unwrap().overflow.is_none());
+    }
+}
+
+#[cfg(test)]
+mod prefix_identity_tests {
+    use super::*;
+    #[test]
+    fn exact_prefix_witness_survives_other_updates_and_detects_unique_mutation() {
+        let mut store = Store::default();
+        let mut root = store.empty();
+        for i in 0..16 {
+            root = store.insert(root, [2, 3, 4, i], i);
+        }
+        let witness = store.prefix_root(&root, [2, 3, 4, 0], 3).downgrade();
+        // No owning subtree/snapshot reference remains: only the weak witness.
+        root = store.insert(root, [2, 3, 5, 0], 99);
+        root = store.insert(root, [1, 0, 0, 0], 100);
+        assert!(witness.matches(&store.prefix_root(&root, [2, 3, 4, 0], 3)));
+        assert!(store.prefix_root(&root, [2, 3, 6, 0], 3).is_empty());
+        root = store.insert(root, [2, 3, 4, 7], 777);
+        assert!(!witness.matches(&store.prefix_root(&root, [2, 3, 4, 0], 3)));
+        assert_eq!(store.get(&root, &[2, 3, 4, 7]), Some(777));
+        drop(root);
+        while !store.release_tick() {}
+        assert_eq!(
+            store.node_count(),
+            0,
+            "weak witness must not retain payloads"
+        );
     }
 }

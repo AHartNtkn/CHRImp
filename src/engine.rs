@@ -420,6 +420,11 @@ impl Engine {
     pub fn diagnostics(&self) -> &Diagnostics {
         &self.diagnostics
     }
+    /// Shared restriction work is charged separately from matcher candidate visits.
+    #[cfg(feature = "diagnostics")]
+    pub fn restriction_diagnostics(&self) -> crate::graph::RestrictionDiagnostics {
+        self.graph.restriction_diagnostics()
+    }
     pub fn applications(&self) -> u64 {
         self.applications
     }
