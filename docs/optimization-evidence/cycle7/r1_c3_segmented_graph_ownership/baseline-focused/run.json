@@ -1,0 +1,33 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--offline",
+    "--release",
+    "--features",
+    "diagnostics",
+    "--test",
+    "store",
+    "--test",
+    "graph",
+    "--test",
+    "graph_prune",
+    "--test",
+    "arc_ownership",
+    "--test",
+    "inspection",
+    "--test",
+    "history",
+    "--test",
+    "cancel",
+    "--test",
+    "matching",
+    "--test",
+    "collection_work"
+  ],
+  "cwd": "/tmp/chr-cycle7-opt-segmented-graph-ownership",
+  "timestamp": "2026-09-13T23:19:02.750363+00:00",
+  "source": "16e55baddf9bbd72cf315dd85e7a47221c814bd4",
+  "dirty": " M examples/measure.rs\n M src/engine.rs\n M src/store.rs\n?? docs/optimization-evidence/cycle7/r1_c3_segmented_graph_ownership/\n",
+  "exit_code": 0
+}

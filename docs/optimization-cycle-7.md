@@ -20,4 +20,14 @@ The slice added counters for fact-support accesses, secondary support writes, an
 
 Evidence is preserved under [candidate 2 evidence](optimization-evidence/cycle7/r1_c2_central_occurrence_support/). The diagnostic branch/commit is `codex/opt/central-occurrence-support` / `523d3a4`; it remains unintegrated. The hypothesis is unresolved because pruning, coordinate substitution, pinned versions, and dead-posting reclamation still need an implementation-level comparison.
 
-The final round-1 candidate is the materially different `segmented_graph_ownership` hypothesis: test whether region-level graph ownership can eliminate per-node release traversal and collection bookkeeping without survivor-copy, cross-region, or retained-reader costs replacing it.
+The final round-1 candidate was the materially different `segmented_graph_ownership` hypothesis: test whether region-level graph ownership can eliminate per-node release traversal and collection bookkeeping without survivor-copy, cross-region, or retained-reader costs replacing it.
+
+## Round 1, candidate 3: segmented graph ownership
+
+**Status:** BLOCKED. The worker reached a committed instrumentation and experiment declaration, but no executable segmented-ownership mechanism or candidate comparison was completed.
+
+The baseline instrumentation covered ownership operations, allocation, retention, collection and reclamation, and the preserved baseline passed 72 focused release/diagnostics tests across store, graph, pruning, ownership, inspection, history, cancellation, matching and collection. The partial `Region`/`NodeRef` conversion in `src/store.rs` remained uncommitted and was never built or measured. Therefore there is no evidence yet for either avoided per-node release work or introduced survivor-copy, cross-region, or retained-reader cost; no timing or timeout was used as a verdict.
+
+Evidence is preserved under [candidate 3 evidence](optimization-evidence/cycle7/r1_c3_segmented_graph_ownership/). The worker branch/commit was `codex/opt/segmented-graph-ownership` / `5f91f1e`; the uncommitted partial implementation was discarded with the isolated worktree. The ownership hypothesis remains unresolved, but this round does not justify another ownership variant without a materially different mechanism or a better-bounded implementation plan.
+
+Round 1 is complete with three blocked candidates and no integration winner. Candidates addressed the diagnosed fresh-contract graph/store insertion, collection and release costs, but the first two stopped at semantic/diagnostic boundaries and the third at implementation integration. The next round must prioritize a fresh architectural direction—such as compiler-derived query specialization, factored expression execution, or shared producer/control work—with explicit evidence of avoided work and all preparation, execution, observation and cleanup costs before implementation begins.

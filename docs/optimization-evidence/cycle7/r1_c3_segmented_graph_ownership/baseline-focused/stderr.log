@@ -1,0 +1,11 @@
+   Compiling chr v0.1.0 (/tmp/chr-cycle7-opt-segmented-graph-ownership)
+    Finished `release` profile [optimized] target(s) in 3.38s
+     Running tests/arc_ownership.rs (target/release/deps/arc_ownership-630eb2524e89d520)
+     Running tests/cancel.rs (target/release/deps/cancel-3ddb314427f89e16)
+     Running tests/collection_work.rs (target/release/deps/collection_work-f4bf09a421b74674)
+     Running tests/graph.rs (target/release/deps/graph-1fa5303be2669686)
+     Running tests/graph_prune.rs (target/release/deps/graph_prune-0387a170f845256f)
+     Running tests/history.rs (target/release/deps/history-37eeafaf64a29a6e)
+     Running tests/inspection.rs (target/release/deps/inspection-0085a985cd3b52ab)
+     Running tests/matching.rs (target/release/deps/matching-bc5843329a6c829b)
+     Running tests/store.rs (target/release/deps/store-d6d7ac112ea38c60)
