@@ -43,6 +43,8 @@ This is a credible research direction rather than a promised speedup: [multi-sta
 
 ### 3. Execute a factored expression of possible stores
 
+**Existing capability:** the current engine already executes common rewrites once across independent alternatives and starts output without materializing their Cartesian product. `tests/semantics.rs:203` exercises twelve binary choices with a 24-rule common chain and checks exactly 24 applications. `tests/observe.rs:277` checks early output across twenty binary choices. This proposal is an alternative representation of that sharing, not a proposal to introduce it.
+
 Represent execution as an expression with explicit alternatives and coexisting relational fragments. Rewrite the expression itself. A common transformation executes once at its shared location; a choice spreads into other fragments only when an interaction requires it.
 
 For example, after two independent explicit choices, retain the internal expression:
@@ -55,7 +57,7 @@ Together(Choice(c1, left(A), right(A)),
 
 If the program rewrites `work(C)` through a long chain to `done(C)`, execute that chain once. Enumerate the four answers only when requested. A later consuming rule involving a chosen fact and `done(C)` distributes the affected occurrence into the relevant alternatives. Coexistence does not assert independence: arbitrary multihead rules, including heads without shared variables, can cross these fragments.
 
-**Work avoided:** premature Cartesian expansion and repeated execution of already shared computation. This benefits common work without requiring recurrent equivalent contexts.
+**Potential improvement over the current engine:** expressing existing computational sharing through local choice structure may reduce global condition-management and coordinate-transport work. The example establishes a required existing capability, not an advantage over the current implementation. A performance advantage remains unmeasured.
 
 **Replacement cost/risk:** circuit-aware matching, local distribution and occurrence bookkeeping. Choice-dependent equality and consuming joins can force extensive distribution. Settled alternatives must be emitted without waiting for divergent siblings. Choice correlation, per-world freshness and propagation eligibility must survive sharing.
 
@@ -101,7 +103,7 @@ For example, a clash dependent on three choices among many could exclude their c
 |---|---|---|
 | Theory-derived machine | Required theory operations become native representation operations | Weak inferable invariants; interfering consumers |
 | Query specialization | Interpretation and intermediate derivations disappear | Mostly unknown inputs; specialization explosion |
-| Factored rewrite expression | Shared work runs once before alternatives interact | Entangled consuming joins and equality |
+| Factored rewrite expression | Potentially cheaper representation of existing computational sharing | Entangled consuming joins and equality |
 | Shared producers | Recurrent computations run once across different paths | Broad mutable context; low recurrence |
 | Branch machine | Operations no longer maintain global symbolic support | Wide frontier; duplicated suffix computation |
 | Explanatory learning | Proven failing families need not be explored | Expensive explanations; context-sensitive failures |
@@ -114,7 +116,7 @@ Make **compiler-derived execution** the primary bet: compile the rule-defined re
 
 Compare two genuine runtime foundations: factored expression rewriting for work shared across large families, and compiled branch-local execution for inexpensive individual operations. Use context-based producer sharing where it can obtain genuinely small, sufficient boundaries. Do not make either unconditional BDD sharing or unconditional branch expansion the default architectural axiom.
 
-My strongest architectural experiment is whether the compiler can turn a relational structural theory plus a consumer into direct graph operations, preserving a legal source execution. The strongest runtime discriminator is a common long derivation beside many choices, followed by progressively entangled equality and consumption. A producer experiment should separately vary irrelevant surroundings, relevant aliases and consuming competitors. These are proposed discriminators, not new completion obligations.
+My strongest architectural experiment is whether the compiler can turn a relational structural theory plus a consumer into direct graph operations, preserving a legal source execution. A common long derivation beside many choices is an existing sharing check that every replacement must satisfy. The runtime discriminator is total time and memory as progressively entangled equality and consumption increase, compared with the current shared engine. A producer experiment should separately vary irrelevant surroundings, relevant aliases and consuming competitors. These are proposed discriminators, not new completion obligations.
 
 Judge alternatives by semantic behavior, answer latency and throughput, live/peak memory, compilation cost and reclamation under continued use. Current condition-job counts or coordinate-maintenance counters have no authority over replacement designs.
 
