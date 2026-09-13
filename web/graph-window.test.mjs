@@ -26,6 +26,7 @@ assert.ok(movedNode.x+movedNode.width<=alternative.x+alternative.width);
 assert.ok(movedNode.y+movedNode.height<=alternative.y+alternative.height);
 for(const delta of [{x:300,y:200},{x:-100,y:-150}]) {
   const changed=layoutScene(scene,new Map([[JSON.stringify(port.path),delta]]));
+  assert.equal(changed.routingError,null,'Moved nodes retain room for outward connections');
   const box=changed.items.find(n=>n.type==='boundary'&&n.kind==='or');
   const parts=changed.items.filter(n=>n.type==='boundary'&&n.kind==='branch');
   assert.ok(parts.every(p=>p.x===box.x&&p.width===box.width));

@@ -886,7 +886,7 @@ function mountNotebook() {
       readonly:disabled,label,key:layoutKey(root),selection:root[0]===path[0]&&(root[0]==='query'||root[2]===path[2])?(selection.length?selection:selected?[selected]:[]):[],positions:notebookDoc.layouts[layoutKey(root)]??[],onLayout:positions=>updateLayouts(root,positions),
       onSelection:items=>{path=root;selection=items;selected=items[0]??null;renderWorkspace();},
       onSelect:value=>{path=root;select(value);},
-      onConnect:variable=>safe(()=>{check(selected?.port!==undefined,'Select a numbered port first.');return edit({type:'set-port',path:selected.path,index:selected.port,variable});}),
+      onConnect:variable=>safe(()=>{check(selected?.port!==undefined,'Select a rim port first.');return edit({type:'set-port',path:selected.path,index:selected.port,variable});}),
       onWire:(port,variable)=>safe(()=>edit({type:'set-port',path:port.path,index:port.port,variable})),
     });
     for(const [index,card] of ruleCards)if(index>=model.program.rules.length){ruleObserver.unobserve(card.element);disposeGraph(card.svg);card.element.remove();ruleCards.delete(index);}
@@ -924,7 +924,7 @@ function mountNotebook() {
   function renderInspector() {
     $('selection-panel').hidden = !selected;
     const panel = $('selection'); panel.replaceChildren();
-    if (!selected) { panel.append(el('p', 'Select a relation, group or numbered port.')); return; }
+    if (!selected) { panel.append(el('p', 'Select a relation, group or rim port. Ports run clockwise from the solid dot. Hover or focus a port for its number.')); return; }
     if(selection.length>1){panel.append(el('h3',`${selection.length} selected`),el('p','Drag to move together. Copy, cut, duplicate or delete with the editing controls.'));return;}
     let node;
     try { node = at(model, selected.path); } catch { selected = null; $('selection-panel').hidden=true; return; }

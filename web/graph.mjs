@@ -168,7 +168,17 @@ function connectedOrder(children) {
   }
   return order;
 }
+function segmentHitsBox(a,b,r) {
+  let lo=0,hi=1;
+  for(const [origin,delta,min,max] of [[a[0],b[0]-a[0],r.x,r.x+r.width],[a[1],b[1]-a[1],r.y,r.y+r.height]]) {
+    if(!delta){if(origin<min||origin>max)return false;}
+    else {const t1=(min-origin)/delta,t2=(max-origin)/delta;lo=Math.max(lo,Math.min(t1,t2));hi=Math.min(hi,Math.max(t1,t2));}
+  }
+  return lo<=hi;
+}
+const headingBoxes=items=>items.filter(i=>i.type==='boundary'&&i.kind!=='rule').map(n=>({x:n.x+6,y:n.y+1,width:n.label.length*7+20,height:32}));
 export function layoutScene(scene, positions = new Map()) {
+  const headerSpace=56; // Heading, outward port escape, and wire clearance.
   function measure(node) {
     if(node.kind==='and'&&!node.label)node={...node,compact:true};
     let children=(node.children??[]).map(child=>measure(node.kind==='or'&&child.kind==='and'?{...child,compact:true}:child));
@@ -176,27 +186,36 @@ export function layoutScene(scene, positions = new Map()) {
     children.forEach(c=>c.names.forEach(n=>names.add(n)));
     if(node.kind==='and')children=connectedOrder(children);
     if(node.kind==='true'&&!node.label)return {...node,names,children:[],compact:true,width:0,height:0};
-    if(!node.children)return {...node,names,width:Math.max(node.kind==='atom'?166:92,(node.args?.length??0)*28+24,(node.relation?.length??0)*9+48),height:86};
+    if(!node.children) {
+      const label=node.kind==='atom'?node.relation:node.kind==='equal'?'=':node.kind;
+      const lines=[];
+      for(let rest=label;rest;) {
+        const split=rest.length<=12?rest.length:rest.lastIndexOf('_',12)>0?rest.lastIndexOf('_',12)+1:12;
+        lines.push(rest.slice(0,split));rest=rest.slice(split);
+      }
+      const radius=4*Math.ceil(Math.max(26,Math.hypot(Math.max(...lines.map(s=>s.length))*3.9,lines.length*8)+10,(node.args?.length??0)*24/(2*Math.PI))/4);
+      return {...node,names,lines,radius,width:radius*2,height:radius*2};
+    }
     if(node.kind==='or') {
       const width=children.reduce((width,child)=>Math.max(width,child.width+48),190);let y=38;
-      children=children.map((child,i)=>{child.dx=24;child.dy=32;const section={kind:'branch',path:child.path,label:`Alternative ${i+1}`,names:child.names,children:[child],dx:0,dy:y,width,height:child.height+54};y+=section.height;return section;});
+      children=children.map((child,i)=>{child.dx=24;child.dy=headerSpace;const section={kind:'branch',path:child.path,label:`Alternative ${i+1}`,names:child.names,children:[child],dx:0,dy:y,width,height:child.height+84};y+=section.height;return section;});
       return {...node,children,names,width,height:y};
     }
-    const columns=node.kind==='rule'?3:Math.min(4,Math.max(1,children.length));
+    const columns=node.kind==='rule'?3:Math.min(4,Math.max(1,children.length<=3?children.length:Math.ceil(Math.sqrt(children.length))));
     if(node.kind==='rule') {
       let x=0;children.forEach(child=>{child.dx=x;child.dy=0;x+=child.width+34;});
       return {...node,children,names,width:x-34,height:Math.max(...children.map(c=>c.height))};
     }
     const widths=Array(columns).fill(0), heights=[];
     children.forEach((c,i)=>{widths[i%columns]=Math.max(widths[i%columns],c.width);heights[Math.floor(i/columns)]=Math.max(heights[Math.floor(i/columns)]??0,c.height);});
-    const padding=node.compact?0:node.label?14:24,top=node.compact?0:node.label?38:40;
+    const padding=node.compact?0:node.label?28:24,top=node.compact?0:node.label?headerSpace:40;
     let y=top;
     children.forEach((c,i)=>{
       const row=Math.floor(i/columns),col=i%columns;
-      if(col===0&&row)y+=heights[row-1]+52;
-      c.dx=padding+widths.slice(0,col).reduce((sum,w)=>sum+w+44,0);c.dy=y;
+      if(col===0&&row)y+=heights[row-1]+64;
+      c.dx=padding+widths.slice(0,col).reduce((sum,w)=>sum+w+64,0);c.dy=y;
     });
-    return {...node,children,names,width:Math.max(166,(node.label?.length??0)*9+28,2*padding+widths.reduce((s,w)=>s+w,0)+44*(columns-1)),height:Math.max(86,y+(heights.at(-1)??0)+(node.compact?0:22))};
+    return {...node,children,names,width:Math.max(104,(node.label?.length??0)*9+28,2*padding+widths.reduce((s,w)=>s+w,0)+64*(columns-1)),height:Math.max(86,y+(heights.at(-1)??0)+(node.compact?0:26))};
   }
   const root=measure(scene),items=[],ports=new Map();
   const add=item=>{item.order=items.length;items.push(item);return item;};
@@ -227,17 +246,48 @@ export function layoutScene(scene, positions = new Map()) {
       } else node.children.forEach(c=>place(c,x+c.dx,y+c.dy,depth+1,[...ancestors,boundary]));
       return;
     }
-    for(const boundary of ancestors){if(!positions.size)continue;const right=Math.max(boundary.x+boundary.width,x+node.width+28),bottom=Math.max(boundary.y+boundary.height,y+node.height+28);boundary.x=Math.min(boundary.x,x-28);boundary.y=Math.min(boundary.y,y-48);boundary.width=right-boundary.x;boundary.height=bottom-boundary.y;}
-    const label=node.kind==='atom'?`${node.relation} / ${node.args.length}`:node.kind==='equal'?'=':node.kind;
-    add({type:'node',...node,id,x,y,width:node.width,height:62,label});
+    for(const boundary of ancestors){if(!positions.size)continue;const right=Math.max(boundary.x+boundary.width,x+node.width+28),bottom=Math.max(boundary.y+boundary.height,y+node.height+28);boundary.x=Math.min(boundary.x,x-28);boundary.y=Math.min(boundary.y,y-headerSpace);boundary.width=right-boundary.x;boundary.height=bottom-boundary.y;}
+    const label=node.kind==='atom'?node.relation:node.kind==='equal'?'=':node.kind;
+    add({type:'node',...node,id,x,y,width:node.width,height:node.height,label});
     (node.args??[]).forEach((name,port)=>{
-      const item=add({type:'port',name,relation:node.relation,path:node.path,id:`${id}:${port}`,port,x:x+20+28*port-10,y:y+62-10,width:20,height:20});
+      const item=add({type:'port',name,relation:node.relation,path:node.path,id:`${id}:${port}`,port,x:x+node.radius-10,y:y+node.radius-10,width:20,height:20});
       if(!ports.has(name))ports.set(name,[]);ports.get(name).push(item);
     });
   }
   place(root,28,28);
+  // Rotate the ordered rim as a whole; argument identity never follows geometry.
+  const nodes=new Map(items.filter(i=>i.type==='node').map(n=>[n.id,n]));
+  const headings=headingBoxes(items);
+  const centers=new Map([...ports].map(([name,ends])=>[name,ends.reduce((c,p)=>({x:c.x+p.x+10,y:c.y+p.y+10}),{x:0,y:0})]));
+  for(const n of nodes.values()) {
+    let cosine=0,sine=0;
+    (n.args??[]).forEach((name,i)=>{
+      const ends=ports.get(name),center=centers.get(name);
+      const dx=center.x/ends.length-n.x-n.radius,dy=center.y/ends.length-n.y-n.radius;
+      const length=Math.hypot(dx,dy);if(length<1e-6)return;
+      const base=i*2*Math.PI/n.args.length;
+      cosine+=(dx*Math.cos(base)+dy*Math.sin(base))/length;
+      sine+=(dy*Math.cos(base)-dx*Math.sin(base))/length;
+    });
+    const preferred=Math.hypot(cosine,sine)>1e-6?Math.atan2(sine,cosine):-Math.PI/2;
+    n.angle=preferred;
+    for(let turn=0;turn<24;turn++) {
+      const angle=preferred+(turn%2?1:-1)*Math.ceil(turn/2)*Math.PI/12;
+      const clear=(n.args??[]).every((_,i)=>{
+        const a=angle+i*2*Math.PI/n.args.length,dx=Math.cos(a),dy=Math.sin(a);
+        const start=[n.x+n.radius+n.radius*dx,n.y+n.radius+n.radius*dy],end=[start[0]+dx*24,start[1]+dy*24];
+        return !headings.some(box=>segmentHitsBox(start,end,box));
+      });
+      if(clear){n.angle=angle;break;}
+    }
+  }
+  for(const ends of ports.values())for(const p of ends) {
+    const n=nodes.get(keyOf(p.path)),angle=n.angle+p.port*2*Math.PI/n.args.length;
+    p.nx=Math.abs(Math.cos(angle))<1e-9?0:Math.cos(angle);p.ny=Math.abs(Math.sin(angle))<1e-9?0:Math.sin(angle);
+    p.x=n.x+n.radius+n.radius*p.nx-10;p.y=n.y+n.radius+n.radius*p.ny-10;
+  }
   let routingError=null;const routes=[];
-  try{routeTrees(items,ports,item=>routes.push(item));routes.forEach(add);}
+  try{routeTrees(items,ports,item=>routes.push(item));relaxRoutes(items,routes);routes.forEach(add);}
   catch(error){if(!error.routing)throw error;routingError=error.message;}
   // A balanced bounding-volume tree makes repaint proportional to visible geometry.
   function index(objects,depth=0) {
@@ -267,19 +317,19 @@ export function visibleItems(layout,view) {
 function routeTrees(items, ports, add) {
   const step=4,key=(x,y)=>`${x},${y}`,point=k=>k.split(',').map(Number);
   const obstacles=new Map(),occupied=new Map(),usedEdges=new Set(),reserved=new Map();
-  const anchor=p=>({port:p,x:Math.round((p.x+10)/step)*step,y:Math.ceil((p.y+28)/step)*step});
+  const anchor=p=>({port:p,x:Math.round((p.x+10+p.nx*20)/step)*step,y:Math.round((p.y+10+p.ny*20)/step)*step});
   for(const [name,ends] of ports)for(const p of ends){const a=anchor(p);reserved.set(key(a.x,a.y),name);}
   const edgeKey=(a,b)=>a<b?`${a}|${b}`:`${b}|${a}`;
   const bucket=(x,y)=>key(Math.floor(x/64),Math.floor(y/64));
-  const boxes=items.filter(i=>i.type==='node').map(i=>({...i,bottomClearance:18}));
+  const boxes=items.filter(i=>i.type==='node').map(i=>({...i,bottomClearance:6}));
   for(const item of items)if(item.type==='boundary'&&item.kind!=='rule')boxes.push({x:item.x+12,y:item.y+7,width:item.label.length*7+8,height:18,bottomClearance:6});
   for(const box of boxes) {
-    for(let x=Math.floor((box.x-6)/64);x<=Math.floor((box.x+box.width+6)/64);x++)
-      for(let y=Math.floor((box.y-6)/64);y<=Math.floor((box.y+box.height+box.bottomClearance)/64);y++) {
+    for(let x=Math.floor((box.x-8)/64);x<=Math.floor((box.x+box.width+8)/64);x++)
+      for(let y=Math.floor((box.y-8)/64);y<=Math.floor((box.y+box.height+Math.max(8,box.bottomClearance))/64);y++) {
         const k=key(x,y);if(!obstacles.has(k))obstacles.set(k,[]);obstacles.get(k).push(box);
       }
   }
-  const blocked=(x,y)=> (obstacles.get(bucket(x,y))??[]).some(b=>x>b.x-6&&x<b.x+b.width+6&&y>b.y-6&&y<b.y+b.height+b.bottomClearance);
+  const blocked=(x,y)=> (obstacles.get(bucket(x,y))??[]).some(b=>b.type==='node'?Math.hypot(x-b.x-b.radius,y-b.y-b.radius)<b.radius+8:x>b.x-6&&x<b.x+b.width+6&&y>b.y-6&&y<b.y+b.height+b.bottomClearance);
   const margin=40+step*[...ports.values()].filter(ends=>ends.length>1).length;
   const bounds=items.reduce((b,i)=>({left:Math.min(b.left,i.x-margin),top:Math.min(b.top,i.y-margin),right:Math.max(b.right,i.x+i.width+margin),bottom:Math.max(b.bottom,i.y+i.height+margin)}),{left:0,top:0,right:0,bottom:0});
   for(const [name,ends] of ports) {
@@ -287,6 +337,11 @@ function routeTrees(items, ports, add) {
     const tree=new Map(),terminals=new Map();
     const connect=(a,b)=>{if(a===b)return;for(const [u,v] of [[a,b],[b,a]]){if(!tree.has(u))tree.set(u,new Set());tree.get(u).add(v);}};
     const anchors=ends.map(anchor);
+    for(const p of ends) {
+      const x=p.x+10,y=p.y+10;
+      if((obstacles.get(bucket(x,y))??[]).some(b=>b.type==='node'&&b.id!==keyOf(p.path)&&Math.hypot(x-b.x-b.radius,y-b.y-b.radius)<=b.radius+1))
+        throw Object.assign(new Error(`Connections unavailable for ${name}. Move relations apart or use Arrange.`),{routing:true});
+    }
     const cells=new Set([key(anchors[0].x,anchors[0].y)]);
     let minX=anchors[0].x,maxX=minX,minY=anchors[0].y,maxY=minY;
     for(const terminal of anchors.slice(1)) {
@@ -295,7 +350,7 @@ function routeTrees(items, ports, add) {
       const queue=[],distance=new Map(),parents=new Map();let serial=0;
       const push=value=>{queue.push(value);let i=queue.length-1;while(i){const p=(i-1)>>1;if(queue[p].score<value.score||(queue[p].score===value.score&&queue[p].serial<value.serial))break;queue[i]=queue[p];i=p;}queue[i]=value;};
       const pop=()=>{const first=queue[0],last=queue.pop();if(queue.length){let i=0;while(i*2+1<queue.length){let c=i*2+1;if(c+1<queue.length&&(queue[c+1].score<queue[c].score||(queue[c+1].score===queue[c].score&&queue[c+1].serial<queue[c].serial)))c++;if(last.score<queue[c].score||(last.score===queue[c].score&&last.serial<queue[c].serial))break;queue[i]=queue[c];i=c;}queue[i]=last;}return first;};
-      const initial={x:terminal.x,y:terminal.y,axis:2,cost:0,id:`${start}:2`,score:heuristic(terminal.x,terminal.y),serial:serial++};
+      const initial={x:terminal.x,y:terminal.y,axis:0,cost:0,id:`${start}:0`,score:heuristic(terminal.x,terminal.y),serial:serial++};
       push(initial);distance.set(initial.id,0);let found;
       while(queue.length) {
         const current=pop();if(current.cost!==distance.get(current.id))continue;
@@ -322,8 +377,8 @@ function routeTrees(items, ports, add) {
       }
     }
     for(const {port,x,y} of anchors) {
-      const tip=key(port.x+10,port.y+10),exit=key(port.x+10,port.y+24),aligned=key(x,port.y+24),anchor=key(x,y);
-      terminals.set(tip,port.id);connect(tip,exit);connect(exit,aligned);connect(aligned,anchor);
+      const tip=key(port.x+10,port.y+10),exit=key(port.x+10+port.nx*14,port.y+10+port.ny*14),anchor=key(x,y);
+      terminals.set(tip,port.id);connect(tip,exit);connect(exit,anchor);
     }
     for(const [a,neighbors] of tree) {
       if(cells.has(a)) {
@@ -344,14 +399,55 @@ function routeTrees(items, ports, add) {
           if(tree.get(current).size!==2||terminals.has(current))break;
           const next=[...tree.get(current)].find(k=>k!==previous);previous=current;current=next;
         }
-        const bends=points.filter((p,i)=>!i||i===points.length-1||!((points[i-1][0]===p[0]&&p[0]===points[i+1][0])||(points[i-1][1]===p[1]&&p[1]===points[i+1][1])));
+        const bends=points.filter((p,i)=>!i||i===points.length-1||(i===1&&terminals.has(a))||(i===points.length-2&&terminals.has(current))||!((points[i-1][0]===p[0]&&p[0]===points[i+1][0])||(points[i-1][1]===p[1]&&p[1]===points[i+1][1])));
         const box=points.reduce((r,[x,y])=>({x:Math.min(r.x,x),y:Math.min(r.y,y),right:Math.max(r.right,x),bottom:Math.max(r.bottom,y)}),{x:Infinity,y:Infinity,right:-Infinity,bottom:-Infinity});
         add({type:'wire',name,from:terminals.get(a)??'',to:terminals.get(current)??'',points:bends,x:box.x-3,y:box.y-3,width:box.right-box.x+6,height:box.bottom-box.y+6,d:wirePath(bends)});
       }
     }
   }
 }
-const wirePath=points=>points.map(([x,y],i)=>`${i?'L':'M'}${x},${y}`).join(' ');
+// Straighten clear spans while retaining the routed tree and radial port exits.
+function relaxRoutes(items,routes) {
+  const distance=(a,b,p)=>{
+    const dx=b[0]-a[0],dy=b[1]-a[1],t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy||1)));
+    return Math.hypot(a[0]+t*dx-p[0],a[1]+t*dy-p[1]);
+  };
+  const discs=items.filter(i=>i.type==='node').map(n=>({point:[n.x+n.radius,n.y+n.radius],radius:n.radius+8}));
+  const labels=headingBoxes(items);
+  const terminals=[...items.filter(i=>i.type==='port').map(p=>({name:p.name,point:[p.x+10,p.y+10]})),...routes.filter(i=>i.type==='junction').map(j=>({name:j.name,point:[j.x+24,j.y+12]}))];
+  for(const wire of routes) {
+    if(wire.type!=='wire')continue;
+    const clear=(a,b)=>{
+      if(discs.some(d=>distance(a,b,d.point)<d.radius))return false;
+      if(terminals.some(t=>t.name!==wire.name&&distance(a,b,t.point)<10))return false;
+      if(labels.some(r=>segmentHitsBox(a,b,r)))return false;
+      // A shortcut may cross another net, but cannot run along it.
+      for(const other of routes)if(other.type==='wire'&&other.name!==wire.name)for(let i=1;i<other.points.length;i++) {
+        const c=other.points[i-1],d=other.points[i],cross=(b[0]-a[0])*(d[1]-c[1])-(b[1]-a[1])*(d[0]-c[0]);
+        if(Math.abs(cross)<1e-6&&Math.min(distance(a,b,c),distance(a,b,d),distance(c,d,a),distance(c,d,b))<4)return false;
+      }
+      return true;
+    };
+    const points=wire.points,result=[points[0]];
+    let i=wire.from?1:0;if(i)result.push(points[i]);
+    const end=points.length-1-(wire.to?1:0);
+    while(i<end) {
+      let j=end;while(j>i+1&&!clear(points[i],points[j]))j--;
+      result.push(points[j]);i=j;
+    }
+    if(wire.to)result.push(points.at(-1));
+    wire.points=result;wire.d=wirePath(result);
+  }
+}
+const wirePath=points=>{
+  let d=`M${points[0].join(',')}`;
+  for(let i=1;i<points.length-1;i++) {
+    const a=points[i-1],b=points[i],c=points[i+1],ab=Math.hypot(b[0]-a[0],b[1]-a[1]),bc=Math.hypot(c[0]-b[0],c[1]-b[1]);
+    const r=Math.min(6,ab/2,bc/2);
+    d+=` L${b[0]+(a[0]-b[0])*r/ab},${b[1]+(a[1]-b[1])*r/ab} Q${b.join(',')} ${b[0]+(c[0]-b[0])*r/bc},${b[1]+(c[1]-b[1])*r/bc}`;
+  }
+  return `${d} L${points.at(-1).join(',')}`;
+};
 const NS='http://www.w3.org/2000/svg';
 function svgNode(tag,attrs={},text) {
   const node=document.createElementNS(NS,tag);
@@ -537,13 +633,16 @@ function drawScene(svg,state,exportView=null) {
       }
       if(item.type==='node') {
         group.setAttribute('class',`relation-node ${relationColor(item.relation??'equal')}${selected?' selected':''}`);
-        group.append(svgNode('rect',{x,y,width,height,rx:6}),svgNode('text',{x:x+12,y:y+28,class:'node-name'},item.label));
+        const label=svgNode('text',{'text-anchor':'middle',class:'node-name'});
+        item.lines.forEach((line,i)=>label.append(svgNode('tspan',{x:x+width/2,y:y+height/2+(i-(item.lines.length-1)/2)*16+4.5},line)));
+        group.append(svgNode('circle',{cx:x+width/2,cy:y+height/2,r:item.radius,class:'node-rim'}),label);
+        group.append(svgNode('title',{},`${item.label} · ${item.args?.length??0} ports. Ports run clockwise from the solid marker.`));
         if(item.kind==='equal')group.append(svgNode('title',{},`${item.args[0]} = ${item.args[1]}`));
         if(item.occurrence!==undefined)group.append(svgNode('title',{},`Occurrence ${item.occurrence}`));
         if(!options.readonly)interactive(group,`Select ${item.label}`,event=>select({path:item.path},event));
       } else if(item.type==='port') {
         group.setAttribute('class',`port ${relationColor(item.relation??'equal')}${selected&&state.selection?.some(value=>keyOf(value.path)===keyOf(item.path)&&value.port===item.port)?' selected':''}`);
-        group.append(svgNode('circle',{cx:x+10,cy:y+10,r:10}),svgNode('text',{x:x+10,y:y+13.5,'text-anchor':'middle'},item.port+1));
+        group.append(svgNode('circle',{cx:x+10,cy:y+10,r:10,class:'port-hit'}),svgNode('circle',{cx:x+10,cy:y+10,r:item.port===0?5:3.5,class:`port-dot${item.port===0?' first':''}`}),svgNode('text',{x:x+10-item.nx*13,y:y+13-item.ny*13,'text-anchor':'middle'},item.port+1));
         if(!options.readonly)interactive(group,`Select port ${item.port+1} of ${item.relation??'equality'}, connected to ${item.name}`,event=>select({path:item.path,port:item.port},event));
       } else {
         group.setAttribute('class','junction');group.append(svgNode('rect',{x,y,width,height,fill:'transparent'}),svgNode('circle',{cx:x+24,cy:y+12,r:5}));

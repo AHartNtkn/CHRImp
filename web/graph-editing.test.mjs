@@ -37,6 +37,9 @@ export async function browserChecks() {
   svg.setPointerCapture=()=>{};
   try {
     const state=graph.renderGraph(svg,model,['query'],options);await ready();
+    check(node(0).querySelector('.node-rim')?.tagName==='circle','Relations render as discs');
+    const label=node(0).querySelector('.node-name').getBBox(),rim=node(0).querySelector('.node-rim');
+    check(label.width<Number(rim.getAttribute('r'))*2,'Label fits the disc');
     click(0);click(1,true);
     equal(selection.map(s=>s.path),[path(0),path(1)],'Shift-click adds a second node');
     check(node(0).classList.contains('selected')&&node(1).classList.contains('selected'),'Both nodes are highlighted');
@@ -119,6 +122,8 @@ export async function browserChecks() {
     await new Promise(r=>setTimeout(r,0));junction.dispatchEvent(new MouseEvent('click',{bubbles:true}));
     equal(connection,'X','Selection-array ports retain junction connection semantics');
     const port=i=>[...svg.querySelectorAll('[data-type="port"]')].find(element=>element.dataset.item===`${id(i)}:0`);
+    port(0).focus();
+    check(getComputedStyle(port(0).querySelector('text')).opacity==='1','A focused port reveals its argument number');
     port(0).dispatchEvent(new MouseEvent('click',{bubbles:true}));
     equal(singleSelection,{path:path(0),port:0},'Single onSelect preserves numbered port payload');
     const from=port(0).getBoundingClientRect(),to=port(1).getBoundingClientRect();
@@ -148,7 +153,7 @@ export async function answerExportBrowserChecks() {
   const exported=new DOMParser().parseFromString(svgText,'image/svg+xml');
   check(!exported.querySelector('parsererror'),'Answer export is well-formed SVG');
   const text=[...exported.querySelectorAll('text')].map(node=>node.textContent).join('\n');
-  for(const value of ['Completion 18446744073709551615','Alternative 19','Last <binding> & name = V29','Pending event 51','Pending event 52','Pending event 18446744073709551615','pending_only / 2','true','fail'])check(text.includes(value),`Export includes ${value}`);
+  for(const value of ['Completion 18446744073709551615','Alternative 19','Last <binding> & name = V29','Pending event 51','Pending event 52','Pending event 18446744073709551615','pending_only','true','fail'])check(text.includes(value),`Export includes ${value}`);
   check(exported.querySelectorAll('.port').length===304,'Every fact and pending port is exported');
   equal([...exported.querySelectorAll('.port')].slice(0,300).map(n=>n.querySelector('text').textContent),args.map((_,i)=>String(i+1)),'Fact ports retain their order');
   check(exported.querySelectorAll('.diagram-boundary.branch').length===3,'All pending alternatives are present');
@@ -156,11 +161,14 @@ export async function answerExportBrowserChecks() {
   equal(JSON.parse(exported.querySelector('metadata').textContent),answer,'SVG retains complete answer metadata');
   check(exported.querySelector('.node-name').style.fontSize,'Styles are embedded');
   const box=exported.documentElement.getAttribute('viewBox').split(' ').map(Number);
-  check(box[2]>8000&&box[3]>600,'Export bounds include wide facts and the binding header');
   equal(JSON.stringify(answer),before,'Export does not mutate the answer');
   equal(document.body.childElementCount,children,'Temporary export elements are cleaned up');
   const rendered=document.importNode(exported.documentElement,true);document.body.append(rendered);
   try {
+    for(const element of rendered.querySelectorAll('.node-rim,.port-hit,.bindings text')) {
+      const b=element.getBBox();
+      check(b.x>=box[0]&&b.y>=box[1]&&b.x+b.width<=box[0]+box[2]&&b.y+b.height<=box[1]+box[3],'Export view contains all nodes, port targets and bindings');
+    }
     for(const region of rendered.querySelectorAll('.diagram-boundary.region')) {
       const label=region.querySelector('.boundary-label'),rect=region.querySelector('rect');
       check(label.getBBox().width<=Number(rect.getAttribute('width'))-28,`Section width includes ${label.textContent}: ${label.getBBox().width} within ${rect.getAttribute('width')}`);

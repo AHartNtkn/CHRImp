@@ -48,6 +48,7 @@
         <div class="graph-toolbar" aria-label="Selection editing"><button id="copy-selection">Copy</button><button id="cut-selection">Cut</button><button id="paste-selection">Paste</button><button id="duplicate-selection">Duplicate</button><button id="delete-selection">Delete</button><button id="export-diagram">Export SVG</button></div>
         </fieldset>
             <div class="graph-scroll"><svg id="editor-graph" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Query"></svg></div>
+            <p class="hint graph-legend">Ports run clockwise from the solid dot. Hover or focus a port for its number.</p>
             <div class="canvas-tools" aria-label="Query navigation"><button data-diagram="editor-graph" data-action="out">−</button><button data-diagram="editor-graph" data-action="in">+</button><button data-diagram="editor-graph" data-action="fit">Fit</button><button data-diagram="editor-graph" data-action="layout">Arrange</button><button data-diagram="editor-graph" data-action="expand">Expand</button></div>
           </div>
         </section>
@@ -57,12 +58,12 @@
         <textarea id="program" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="source-help" placeholder="join @ p(X), q(X) &lt;=&gt; r(X)."></textarea>
         <label for="query">Query</label>
         <textarea id="query" spellcheck="false" autocapitalize="off" autocomplete="off">true</textarea>
-        <p id="source-help" class="hint">Relations use ordered ports. Shared variable names connect them.<br><code>,</code> And &nbsp; <code>;</code> Or &nbsp; <code>=</code> equality</p>
+        <p id="source-help" class="hint">Ports run clockwise from the solid dot. Hover or focus a port for its number. Shared variable names connect them.<br><code>,</code> And &nbsp; <code>;</code> Or &nbsp; <code>=</code> equality</p>
       </details>
       </div>
       <aside class="inspector-panel" id="selection-panel" hidden>
         <div class="section-heading"><h2>Selection</h2><button id="close-selection" aria-label="Close selection">×</button></div>
-        <fieldset id="inspector"><legend class="sr-only">Selected graph item</legend><div id="selection"><p>Select a relation, group or numbered port.</p></div></fieldset>
+        <fieldset id="inspector"><legend class="sr-only">Selected graph item</legend><div id="selection"><p>Select a relation, group or rim port. Ports run clockwise from the solid dot.</p></div></fieldset>
       </aside>
     </section>
     <details class="results" id="observations">

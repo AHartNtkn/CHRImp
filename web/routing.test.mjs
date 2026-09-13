@@ -8,11 +8,10 @@ function verify(layout) {
   const wires=layout.items.filter(i=>i.type==='wire'),nodes=layout.items.filter(i=>i.type==='node');
   const segments=wires.flatMap(w=>w.points.slice(1).map((p,i)=>({a:w.points[i],b:p,name:w.name})));
   for(const {a,b} of segments) {
-    assert.ok(a[0]===b[0]||a[1]===b[1],'Orthogonal route');
     for(const n of nodes) {
-      const crosses=a[0]===b[0]?a[0]>n.x&&a[0]<n.x+n.width&&Math.max(a[1],b[1])>n.y&&Math.min(a[1],b[1])<n.y+n.height:
-        a[1]>n.y&&a[1]<n.y+n.height&&Math.max(a[0],b[0])>n.x&&Math.min(a[0],b[0])<n.x+n.width;
-      assert.ok(!crosses,'Wire avoids relation interior');
+      const cx=n.x+n.width/2,cy=n.y+n.height/2,dx=b[0]-a[0],dy=b[1]-a[1];
+      const t=Math.max(0,Math.min(1,((cx-a[0])*dx+(cy-a[1])*dy)/(dx*dx+dy*dy||1)));
+      assert.ok(Math.hypot(a[0]+t*dx-cx,a[1]+t*dy-cy)>=n.radius-1e-6,'Wire avoids the visible disc interior');
     }
   }
   for(let i=0;i<segments.length;i++)for(const s of segments.slice(i+1)) {
@@ -50,7 +49,7 @@ verify(layoutScene(scene(Array.from({length:20},()=>atom('wide',...Array.from({l
 verify(layoutScene(scene([atom('repeated',...Array(30).fill('X'))])));
 console.log('Connected acyclic trees, direct pairs, obstacle avoidance, distinct nets and moved nodes passed.');
 
-const blocked=layoutScene(scene([atom('a','X'),atom('b','X')]),new Map([[JSON.stringify(['query','items',1]),{x:-200,y:30}]]));
+const blocked=layoutScene(scene([atom('a','X'),atom('b','X')]),new Map([[JSON.stringify(['query','items',1]),{x:-116,y:0}]]));
 assert.match(blocked.routingError,/Connections unavailable/);
 assert.equal(blocked.items.filter(i=>i.type==='node').length,2,'Relations remain available for repairing an obstructed layout');
 assert.equal(blocked.items.filter(i=>i.type==='wire').length,0,'A routing failure never presents a partial tree as a valid graph');
