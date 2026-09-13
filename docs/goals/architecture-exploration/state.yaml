@@ -1,0 +1,105 @@
+version: 2
+goal:
+  title: Identify the strongest CHR architecture
+  slug: architecture-exploration
+  kind: specific
+  tranche: Comparative architectural exploration through a defensible recommendation
+  status: active
+  oracle:
+    signal: Working comparisons resolve major architectural hypotheses and consequential
+      combinations.
+    cadence: After decision-changing experiments and at completion.
+    final_proof: Comparative recommendation with gains, adverse regimes, semantic
+      evidence and remaining decision-relevant uncertainty.
+  intake:
+    original_request: Define the best exploration strategy, create a goal and follow
+      it; avoid microoptimization and expanding obligations.
+    interpreted_outcome: Identify the strongest supported architectural configuration
+      or tradeoff frontier through bounded experiments.
+    input_shape: specific
+    audience: Language owner
+    authority: requested
+    proof_type: decision
+    completion_proof: Executable evidence supports the leading architectural claims
+      and the recommendation.
+    likely_misfire: Accumulating small improvements, research artifacts or mandatory
+      candidates instead of resolving architectural choices.
+    blind_spots_considered:
+      - Interactions can reverse individual gains.
+      - Unknown mathematical workloads exceed supplied synthesis examples.
+      - Sharing already exists; representation cost and repeated derivations are separate
+        questions.
+    existing_plan_facts:
+      - Five independent agents are running with different priorities and no supplied
+        conversation history.
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+  continuous_until_full_outcome: true
+  missing_input_or_credentials_do_not_stop_goal: true
+  exact_human_approval_can_terminal_wait: true
+  preserve_and_validate_existing_plan: true
+  intake_misfire_must_be_audited: true
+  goal_pressure_requires_oracle: true
+  no_completion_on_weak_proof: true
+  slice_policy:
+    max_consecutive_tiny_tasks: 2
+    prefer_vertical_slices: true
+    judge_picks_largest_safe_slice: true
+    worker_completes_whole_slice: true
+agents:
+  scout: bundled_not_installed
+  worker: bundled_not_installed
+  judge: bundled_not_installed
+visual_board:
+  selected: none
+  local:
+    status: not_requested
+    url: null
+  reason: Use concise file state; a visual process surface does not advance this architectural
+    decision.
+active_task: T001
+tasks:
+  - id: T001
+    type: pm
+    assignee: PM
+    status: active
+    objective: Synthesize independent priority investigations into distinct hypotheses
+      and select the first decision-changing experiment.
+    inputs:
+      - Five running independent research agents
+      - ../../behavior-synthesis-performance.md
+      - Source and semantic tests
+    constraints:
+      - Control-file edits only.
+      - Do not turn all candidates into implementation tasks.
+    expected_output:
+      - Leading configurations, comparative rationale and one bounded experiment specification.
+    receipt: null
+  - id: T999
+    type: pm
+    assignee: PM
+    status: queued
+    objective: Determine whether comparative evidence now supports the architectural
+      recommendation.
+    inputs:
+      - Selected experiment results
+    expected_output:
+      - Recommendation and full_outcome_complete assessment.
+    receipt: null
+investigations:
+  - priority: cheap execution
+    agent_id: 01a09935-dd83-7411-9e01-d83f1cbd9efa
+  - priority: computational sharing
+    agent_id: 01a09936-4d1f-76e3-90b8-4723b34cdbf6
+  - priority: search reduction
+    agent_id: 01a09936-4c01-7422-93a1-d4abac1ba285
+  - priority: compilation
+    agent_id: 01a09936-4ec2-79e3-bbb2-56c93f31bc24
+  - priority: adverse workloads
+    agent_id: 01a09936-4b61-7e60-a0a5-4b13b949cdc9
