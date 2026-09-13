@@ -40,6 +40,7 @@ pub mod diagnostics;
 #[cfg(feature = "diagnostics")]
 pub use diagnostics::Diagnostics;
 mod discovery;
+mod dispatch;
 mod normalization;
 use normalization::Normalizer;
 pub use normalization::{NormalizationMode, NormalizationStats};
@@ -134,6 +135,8 @@ enum BodyPhase {
 }
 struct Body {
     normalizer: Option<Box<Normalizer>>,
+    dispatch: Option<Box<dispatch::Dispatch>>,
+    dispatch_checked: bool,
     terminal_state: Option<StateRoot>,
     event: u64,
     instruction: usize,
@@ -153,6 +156,8 @@ impl Body {
     fn new(event: u64, instruction: usize, variables: Arc<Vec<u64>>, scope: Condition) -> Self {
         Self {
             normalizer: None,
+            dispatch: None,
+            dispatch_checked: false,
             terminal_state: None,
             event,
             instruction,
@@ -908,6 +913,9 @@ impl Engine {
         if b.normalizer.is_some() {
             return self.normalization_tick(id, b);
         }
+        if b.dispatch.is_some() {
+            return self.dispatch_tick(id, b);
+        }
         if b.scope == Condition::FALSE {
             return true;
         }
@@ -982,11 +990,12 @@ impl Engine {
                         b.variables[*y],
                         b.scope,
                     ));
-                    if self
-                        .normalization
-                        .as_ref()
-                        .is_some_and(|c| c.mode == NormalizationMode::Direct)
-                    {
+                    if self.normalization.as_ref().is_some_and(|c| {
+                        matches!(
+                            c.mode,
+                            NormalizationMode::Direct | NormalizationMode::Dispatch
+                        )
+                    }) {
                         b.merge = b.merge.take().map(Merge::with_links);
                     }
                     b.phase = BodyPhase::Merge;
@@ -999,6 +1008,23 @@ impl Engine {
                     b.phase = BodyPhase::Fail;
                 }
                 Instruction::Or(_) => {
+                    if !b.dispatch_checked && b.end.is_none() {
+                        if let Some(config) = &self.normalization {
+                            if config.mode == NormalizationMode::Dispatch {
+                                if let Some(plan) = config.plan.choices.get(&b.instruction) {
+                                    b.dispatch = Some(Box::new(dispatch::Dispatch::new(
+                                        &self.graph,
+                                        self.state.graph.clone(),
+                                        b.variables[plan.key],
+                                        b.scope,
+                                        plan.clone(),
+                                    )));
+                                    self.normalization_stats.conditional_dispatches += 1;
+                                    return false;
+                                }
+                            }
+                        }
+                    }
                     b.phase = BodyPhase::Choice;
                 }
                 _ => unreachable!(),

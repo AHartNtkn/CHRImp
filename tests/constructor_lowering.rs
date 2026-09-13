@@ -40,6 +40,7 @@ fn conditional_field_merges_enable_real_consumers() {
         NormalizationMode::Baseline,
         NormalizationMode::Priority,
         NormalizationMode::Direct,
+        NormalizationMode::Dispatch,
     ] {
         let mut e = start(&behavior(), q, mode);
         let a = answers(&mut e);
@@ -158,6 +159,7 @@ fn pm_partition_oracles_preserve_support_and_identity() {
         NormalizationMode::Baseline,
         NormalizationMode::Priority,
         NormalizationMode::Direct,
+        NormalizationMode::Dispatch,
     ] {
         for (q, count, case) in [
             ("(app(R,A,B);app(R,C,D))", 2, 0),
@@ -243,18 +245,39 @@ fn recognition_is_invariant_under_source_renaming_and_order() {
         }
         body(&mut r.body);
     }
-    for mode in [NormalizationMode::Priority, NormalizationMode::Direct] {
+    for mode in [
+        NormalizationMode::Priority,
+        NormalizationMode::Direct,
+        NormalizationMode::Dispatch,
+    ] {
         let mut e = start(&p, "renamed_app(R,A,B),renamed_app(R,C,D)", mode);
         let a = answers(&mut e);
         assert_eq!(a.len(), 1);
         assert_eq!(variable(&e, &a[0], "A"), variable(&e, &a[0], "C"));
         assert_eq!(variable(&e, &a[0], "B"), variable(&e, &a[0], "D"));
         assert_eq!(a[0].rows.len(), 1);
+        let mut e = start(
+            &p,
+            "renamed_nil(Sp),renamed_k(T),renamed_eval(T,Sp,O)",
+            mode,
+        );
+        let a = answers(&mut e);
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0].rows.len(), 3);
+        assert_ne!(variable(&e, &a[0], "T"), variable(&e, &a[0], "O"));
+        assert_eq!(rows(&e, &a[0], "renamed_k").len(), 2);
+        if mode == NormalizationMode::Dispatch {
+            assert!(e.normalization_stats().known_arm_admissions > 0);
+        }
     }
 }
 #[test]
 fn source_normalization_is_shared_across_independent_choices() {
-    for mode in [NormalizationMode::Priority, NormalizationMode::Direct] {
+    for mode in [
+        NormalizationMode::Priority,
+        NormalizationMode::Direct,
+        NormalizationMode::Dispatch,
+    ] {
         let mut e = start(
             &behavior(),
             "(true;true),(true;true),app(R,A,B),app(R,C,D)",
@@ -264,7 +287,10 @@ fn source_normalization_is_shared_across_independent_choices() {
         assert_eq!(a.len(), 4);
         assert_eq!(e.normalization_stats().applications, 1);
         assert_eq!(e.normalization_stats().field_equalities, 2);
-        if mode == NormalizationMode::Direct {
+        if matches!(
+            mode,
+            NormalizationMode::Direct | NormalizationMode::Dispatch
+        ) {
             assert_eq!(e.normalization_stats().generic_matching_ticks, 0);
             assert_eq!(e.normalization_stats().generic_commit_ticks, 0);
             assert_eq!(e.normalization_stats().coalescences, 1);
@@ -276,7 +302,11 @@ fn source_normalization_is_shared_across_independent_choices() {
 }
 #[test]
 fn terminal_consumer_failure_does_not_escape_its_arm() {
-    for mode in [NormalizationMode::Priority, NormalizationMode::Direct] {
+    for mode in [
+        NormalizationMode::Priority,
+        NormalizationMode::Direct,
+        NormalizationMode::Dispatch,
+    ] {
         let mut e = start(
             &behavior(),
             "(constant(R,C),no_c(R);app(R,A,B)),(R=S;true),app(S,D,E)",
@@ -294,7 +324,11 @@ fn terminal_consumer_failure_does_not_escape_its_arm() {
 }
 #[test]
 fn finite_sibling_progresses_beside_actual_divergent_evaluator() {
-    for mode in [NormalizationMode::Priority, NormalizationMode::Direct] {
+    for mode in [
+        NormalizationMode::Priority,
+        NormalizationMode::Direct,
+        NormalizationMode::Dispatch,
+    ] {
         let mut e = start(&behavior(), "(app(T,T,X),eval(T,S,O),nil(S);k(K))", mode);
         let a = support::finish(&mut e);
         assert_eq!(support::facts(&e, &a), ["k"]);
@@ -313,7 +347,11 @@ fn finite_sibling_progresses_beside_actual_divergent_evaluator() {
 #[test]
 fn suspended_normalization_survives_collection_and_cancellation() {
     let q = "app(R,A,B),app(S,C,D),((R=X,R=Y,R=S);(S=U,S=V,R=S)),(true;true)";
-    for mode in [NormalizationMode::Priority, NormalizationMode::Direct] {
+    for mode in [
+        NormalizationMode::Priority,
+        NormalizationMode::Direct,
+        NormalizationMode::Dispatch,
+    ] {
         let mut e = start(&behavior(), q, mode);
         let mut reader = Reader::default();
         let mut out = vec![];
@@ -390,7 +428,11 @@ fn constructor_attachments_follow_active_support_through_compaction() {
             .unwrap()
             .rules,
     );
-    for mode in [NormalizationMode::Priority, NormalizationMode::Direct] {
+    for mode in [
+        NormalizationMode::Priority,
+        NormalizationMode::Direct,
+        NormalizationMode::Dispatch,
+    ] {
         let mut e = start(&p, "loop(R)", mode);
         let mut next_gc = 61;
         for step in 0..200_000 {
@@ -457,7 +499,11 @@ fn repeated_conditional_and_cyclic_unions_agree_with_source_execution() {
             .map(|a| canonical(&reference, a))
             .collect();
         expected.sort();
-        for mode in [NormalizationMode::Priority, NormalizationMode::Direct] {
+        for mode in [
+            NormalizationMode::Priority,
+            NormalizationMode::Direct,
+            NormalizationMode::Dispatch,
+        ] {
             let mut e = start(&behavior(), q, mode);
             let mut actual: Vec<_> = answers(&mut e)
                 .into_iter()
@@ -524,7 +570,11 @@ fn unrestricted_identity_synthesis_runs_the_actual_evaluator() {
     let doc: serde_json::Value =
         serde_json::from_str(include_str!("../examples/behavior-synthesis.chrnb")).unwrap();
     let q: chr::syntax::Body = serde_json::from_value(doc["queries"][0]["body"].clone()).unwrap();
-    for mode in [NormalizationMode::Priority, NormalizationMode::Direct] {
+    for mode in [
+        NormalizationMode::Priority,
+        NormalizationMode::Direct,
+        NormalizationMode::Dispatch,
+    ] {
         let mut e =
             Engine::with_normalization(Arc::new(prepare(&behavior(), &q).unwrap()), mode).unwrap();
         let mut reader = Reader::default();
@@ -555,5 +605,261 @@ fn unrestricted_identity_synthesis_runs_the_actual_evaluator() {
             }
         }
         assert!(e.cancel_done());
+    }
+}
+
+#[test]
+fn known_dispatch_keeps_the_original_leading_post() {
+    let mut p = behavior();
+    p.rules.extend(
+        parse_program("k(T) \\ choose(T) <=> (k(T),left(T);s(T),right(T)).")
+            .unwrap()
+            .rules,
+    );
+    for mode in [NormalizationMode::Direct, NormalizationMode::Dispatch] {
+        let mut e = start(&p, "k(T),choose(T)", mode);
+        let all = answers(&mut e);
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].rows.len(), 2);
+        assert_eq!(rows(&e, &all[0], "left").len(), 1);
+        assert_eq!(
+            e.normalization_stats().coalescences,
+            1,
+            "selected prefix must still post"
+        );
+        #[cfg(feature = "diagnostics")]
+        assert_eq!(
+            e.diagnostics().choice_births,
+            if mode == NormalizationMode::Dispatch {
+                0
+            } else {
+                1
+            }
+        );
+    }
+}
+
+fn chain_query(prefix: &str, n: usize) -> String {
+    let steps: Vec<_> = (0..n).map(|i| format!("step(H{i},H{})", i + 1)).collect();
+    format!("{prefix}run(H0,R),{},end(H{n})", steps.join(","))
+}
+fn assert_chain(e: &Engine, a: &Answer, n: usize) {
+    assert_eq!(
+        a.variables
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        a.variables.len()
+    );
+    assert_eq!(rows(e, a, "step").len(), n);
+    for i in 0..n {
+        let ports = [
+            variable(e, a, &format!("H{i}")),
+            variable(e, a, &format!("H{}", i + 1)),
+        ];
+        assert!(rows(e, a, "step").iter().any(|r| r.ports == ports));
+    }
+    assert_eq!(rows(e, a, "end").len(), 1);
+    assert_eq!(
+        rows(e, a, "end")[0].ports,
+        [variable(e, a, &format!("H{n}"))]
+    );
+    assert_eq!(rows(e, a, "done").len(), 1);
+    assert_eq!(rows(e, a, "done")[0].ports, [variable(e, a, "R")]);
+}
+#[test]
+fn dispatch_runtime_chain_matches_parent_partition_oracles() {
+    let mut p = behavior();
+    p.rules.extend(parse_program("step(H,T) \\ run(H,R) <=> (k(R),run(T,R);s(R),run(T,R)). end(H) \\ run(H,R) <=> done(R).").unwrap().rules);
+    for mode in [NormalizationMode::Direct, NormalizationMode::Dispatch] {
+        for (prefix, n, expected) in [
+            ("(k(R);s(R)),", 8, vec![("k", false), ("s", false)]),
+            (
+                "(k(R);mark(R)),",
+                2,
+                vec![("k", false), ("k", true), ("s", true)],
+            ),
+            ("", 1, vec![("k", false), ("s", false)]),
+        ] {
+            let mut e = start(&p, &chain_query(prefix, n), mode);
+            let all = answers(&mut e);
+            let mut patterns = vec![];
+            for a in &all {
+                assert_chain(&e, a, n);
+                let k = rows(&e, a, "k");
+                let s = rows(&e, a, "s");
+                assert_eq!(k.len() + s.len(), 1);
+                let tag = if k.is_empty() { "s" } else { "k" };
+                assert_eq!(rows(&e, a, tag)[0].ports, [variable(&e, a, "R")]);
+                let mark = rows(&e, a, "mark");
+                assert!(mark.len() <= 1);
+                if !mark.is_empty() {
+                    assert_eq!(mark[0].ports, [variable(&e, a, "R")]);
+                }
+                assert_eq!(a.rows.len(), n + 3 + mark.len());
+                patterns.push((tag, !mark.is_empty()));
+            }
+            patterns.sort();
+            assert_eq!(patterns, expected);
+            if mode == NormalizationMode::Dispatch && n == 8 {
+                assert!(e.normalization_stats().known_arm_admissions >= 8);
+                #[cfg(feature = "diagnostics")]
+                assert_eq!(e.diagnostics().choice_births, 1);
+            }
+        }
+    }
+}
+#[test]
+fn dispatch_preserves_independent_fresh_choice_products() {
+    let mut p = behavior();
+    p.rules.extend(
+        parse_program(
+            "step(H,T) \\ run(H,R) <=> (k(D);s(D)),run(T,R). end(H) \\ run(H,R) <=> done(R).",
+        )
+        .unwrap()
+        .rules,
+    );
+    for mode in [NormalizationMode::Direct, NormalizationMode::Dispatch] {
+        let mut e = start(&p, &chain_query("", 4), mode);
+        let all = answers(&mut e);
+        assert_eq!(all.len(), 16);
+        let mut counts = [0; 5];
+        for a in &all {
+            assert_chain(&e, a, 4);
+            assert_eq!(a.rows.len(), 10);
+            let roots: std::collections::BTreeSet<_> = rows(&e, a, "k")
+                .into_iter()
+                .chain(rows(&e, a, "s"))
+                .map(|r| r.ports[0])
+                .collect();
+            assert_eq!(roots.len(), 4);
+            assert!(roots.iter().all(|v| !a.variables.contains(v)));
+            counts[rows(&e, a, "k").len()] += 1;
+        }
+        assert_eq!(counts, [1, 4, 6, 4, 1]);
+        #[cfg(feature = "diagnostics")]
+        assert_eq!(e.diagnostics().choice_births, 4);
+    }
+}
+#[test]
+fn dispatch_preserves_duplicate_arms_and_rejects_only_supported_clashes() {
+    for body in [
+        "(k(T),left(T);k(T),right(T))",
+        "(k(T);k(T))",
+        "(k(T);s(U))",
+        "(mark(T),k(T);s(T))",
+    ] {
+        let mut p = behavior();
+        p.rules.extend(
+            parse_program(&format!("k(T) \\ choose(T) <=> {body}."))
+                .unwrap()
+                .rules,
+        );
+        for mode in [NormalizationMode::Direct, NormalizationMode::Dispatch] {
+            let mut e = start(&p, "k(T),choose(T)", mode);
+            let all = answers(&mut e);
+            assert_eq!(all.len(), if body.contains("mark") { 1 } else { 2 });
+            if mode == NormalizationMode::Dispatch {
+                assert_eq!(e.normalization_stats().conditional_dispatches, 0);
+            }
+        }
+    }
+    let mut p = behavior();
+    p.rules.extend(
+        parse_program("nil(T) \\ choose(T) <=> (k(T);s(T)).")
+            .unwrap()
+            .rules,
+    );
+    let mut e = start(&p, "nil(T),choose(T)", NormalizationMode::Dispatch);
+    assert!(answers(&mut e).is_empty());
+    assert_eq!(e.normalization_stats().known_arm_admissions, 0);
+    assert_eq!(e.normalization_stats().generative_dispatches, 0);
+    #[cfg(feature = "diagnostics")]
+    assert_eq!(e.diagnostics().choice_births, 0);
+}
+
+#[test]
+fn dispatch_retains_conditional_field_equalities_without_cross_partition_merges() {
+    let mut p = behavior();
+    p.rules.extend(
+        parse_program("route(T) <=> (app(T,A,B),seen(A,B);k(T),leaf(T)).")
+            .unwrap()
+            .rules,
+    );
+    for mode in [NormalizationMode::Direct, NormalizationMode::Dispatch] {
+        let mut e = start(&p, "app(R,X,Y),app(S,Z,W),(T=R;T=S),route(T)", mode);
+        let all = answers(&mut e);
+        assert_eq!(all.len(), 2);
+        let mut sides = vec![];
+        for a in &all {
+            assert_eq!(a.rows.len(), 3);
+            let v = |name| variable(&e, a, name);
+            let independent: std::collections::BTreeSet<_> =
+                ["R", "S", "X", "Y", "Z", "W"].map(v).into_iter().collect();
+            assert_eq!(independent.len(), 6);
+            assert_eq!(rows(&e, a, "app").len(), 2);
+            assert!(
+                rows(&e, a, "app")
+                    .iter()
+                    .any(|r| r.ports == [v("R"), v("X"), v("Y")])
+            );
+            assert!(
+                rows(&e, a, "app")
+                    .iter()
+                    .any(|r| r.ports == [v("S"), v("Z"), v("W")])
+            );
+            let left = v("T") == v("R");
+            sides.push(left);
+            assert_eq!(v("T"), if left { v("R") } else { v("S") });
+            assert_eq!(rows(&e, a, "seen").len(), 1);
+            assert_eq!(
+                rows(&e, a, "seen")[0].ports,
+                if left {
+                    vec![v("X"), v("Y")]
+                } else {
+                    vec![v("Z"), v("W")]
+                }
+            );
+        }
+        sides.sort();
+        assert_eq!(sides, [false, true]);
+    }
+}
+#[test]
+fn dispatch_preserves_terminal_no_c_consumer_failure() {
+    let mut p = behavior();
+    p.rules.extend(
+        parse_program("route(T) <=> (constant(T,C),left(C);k(T),right(T)).")
+            .unwrap()
+            .rules,
+    );
+    for mode in [NormalizationMode::Direct, NormalizationMode::Dispatch] {
+        let mut e = start(&p, "no_c(T),(constant(T,D);k(T)),route(T)", mode);
+        let all = answers(&mut e);
+        assert_eq!(all.len(), 1);
+        let a = &all[0];
+        assert_eq!(a.rows.len(), 2);
+        assert_eq!(rows(&e, a, "k").len(), 1);
+        assert_eq!(rows(&e, a, "right").len(), 1);
+        assert_eq!(rows(&e, a, "right")[0].ports, [variable(&e, a, "T")]);
+        assert_ne!(variable(&e, a, "T"), variable(&e, a, "D"));
+    }
+}
+
+#[test]
+fn selected_original_fields_can_still_make_the_known_arm_fail() {
+    let mut p = behavior();
+    p.rules.extend(
+        parse_program("route(T) <=> (app(T,A,A),left(T);k(T),right(T)).")
+            .unwrap()
+            .rules,
+    );
+    for mode in [NormalizationMode::Direct, NormalizationMode::Dispatch] {
+        let mut e = start(&p, "app(T,X,Y),k(X),s(Y),route(T)", mode);
+        assert!(answers(&mut e).is_empty());
+        assert!(e.normalization_stats().field_equalities > 0);
+        if mode == NormalizationMode::Dispatch {
+            assert_eq!(e.normalization_stats().known_arm_admissions, 1);
+        }
     }
 }

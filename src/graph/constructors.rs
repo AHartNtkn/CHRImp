@@ -203,3 +203,14 @@ impl Trace for Transfer {
         }
     }
 }
+
+impl Graph {
+    /// Symbolic descriptions at one representative; supports may be disjoint.
+    pub(crate) fn constructor_attachments(&self, root: Root, representative: u64) -> store::Cursor {
+        self.index.range(
+            root,
+            [ATTACHMENT, representative, 0, 0],
+            [ATTACHMENT, representative, u64::MAX, 0],
+        )
+    }
+}

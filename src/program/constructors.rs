@@ -1,12 +1,20 @@
 //! Experimental whole-program derivation of constructor consistency.
 use super::{Instruction, Prepared, RulePlan};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
+
+#[derive(Debug)]
+pub(crate) struct ConstructorChoice {
+    pub key: usize,
+    pub arms: BTreeMap<usize, usize>,
+}
 
 #[derive(Clone, Debug)]
 pub struct Constructors {
     pub(crate) relations: BTreeSet<usize>,
     pub(crate) rules: BTreeSet<usize>,
     pub(crate) terminal: BTreeSet<usize>,
+    pub(crate) choices: BTreeMap<usize, Arc<ConstructorChoice>>,
 }
 fn equalities(code: &Prepared, i: usize, out: &mut Vec<(usize, usize)>) -> bool {
     match &code.instructions[i] {
@@ -121,10 +129,56 @@ impl Constructors {
                 }
             }
         }
+        // Distinct leading tags at one syntactic key have at most one viable
+        // arm on known support. The admitted clash rules justify finite failure
+        // of the others. Keep each complete source arm: its fields can impose
+        // additional equalities/failure, and its occurrence must still be posted.
+        // Unsupported shapes (including repeated tags) stay ordinary disjunctions.
+        let mut choices = BTreeMap::new();
+        for (i, instruction) in code.instructions.iter().enumerate() {
+            let Instruction::Or(items) = instruction else {
+                continue;
+            };
+            if items.len() < 2 {
+                continue;
+            }
+            let mut key = None;
+            let mut arms = BTreeMap::new();
+            let supported = items.iter().all(|&arm| {
+                let leading = match &code.instructions[arm] {
+                    Instruction::And(items) => items.first().copied().unwrap_or(arm),
+                    _ => arm,
+                };
+                let Instruction::Post(atom) = &code.instructions[leading] else {
+                    return false;
+                };
+                if !relations.contains(&atom.relation) {
+                    return false;
+                }
+                let Some(&root) = atom.args.first() else {
+                    return false;
+                };
+                if key.is_some_and(|key| key != root) {
+                    return false;
+                }
+                key = Some(root);
+                arms.insert(atom.relation, arm).is_none()
+            });
+            if supported {
+                choices.insert(
+                    i,
+                    Arc::new(ConstructorChoice {
+                        key: key.unwrap(),
+                        arms,
+                    }),
+                );
+            }
+        }
         Ok(Self {
             relations,
             rules,
             terminal,
+            choices,
         })
     }
     pub fn rule_count(&self) -> usize {

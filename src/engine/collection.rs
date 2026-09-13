@@ -362,6 +362,9 @@ impl Engine {
                                         }
                                     }
                                 }
+                                if let Some(dispatch) = &b.dispatch {
+                                    c.graph_roots.push(dispatch.root());
+                                }
                                 if let Some(state) = &b.terminal_state {
                                     c.graph_roots.push(state.graph.clone());
                                     c.history_roots.push(state.history.clone());
@@ -737,6 +740,7 @@ impl Trace for Body {
             1 => c.optional(self.job.as_ref()),
             2 => c.optional(self.merge.as_ref()),
             3 => c.optional(self.normalizer.as_deref()),
+            4 => c.optional(self.dispatch.as_deref()),
             _ => Step::Done,
         }
     }

@@ -10,9 +10,15 @@ pub enum NormalizationMode {
     Baseline,
     Priority,
     Direct,
+    /// Direct normalization plus selection of original constructor-led arms.
+    Dispatch,
 }
 #[derive(Default, Clone, Debug, serde::Serialize)]
 pub struct NormalizationStats {
+    /// Symbolic classification starts, not concrete histories or CPU work.
+    pub conditional_dispatches: u64,
+    pub known_arm_admissions: u64,
+    pub generative_dispatches: u64,
     pub transactions: u64,
     pub steps: u64,
     pub attachment_overlaps: u64,
@@ -26,6 +32,9 @@ pub struct NormalizationStats {
 }
 impl NormalizationStats {
     fn add(&mut self, s: &Self) {
+        self.conditional_dispatches += s.conditional_dispatches;
+        self.known_arm_admissions += s.known_arm_admissions;
+        self.generative_dispatches += s.generative_dispatches;
         self.transactions += s.transactions;
         self.steps += s.steps;
         self.attachment_overlaps += s.attachment_overlaps;
@@ -47,7 +56,7 @@ pub(super) struct Configuration {
 impl Engine {
     /// Experimental source execution, output and cancellation. Historical per-rule
     /// stepping through fused normalization transactions is not supported.
-    /// Priority and Direct admit only the whole-program subsystem checked by
+    /// Non-baseline modes admit only the whole-program subsystem checked by
     /// `Constructors::recognize`; Baseline uses ordinary execution.
     pub fn with_normalization(
         code: Arc<Prepared>,
@@ -199,7 +208,10 @@ impl Normalizer {
         }
     }
     fn direct(&self) -> bool {
-        self.config.mode == NormalizationMode::Direct
+        matches!(
+            self.config.mode,
+            NormalizationMode::Direct | NormalizationMode::Dispatch
+        )
     }
     fn merged_work(&mut self, g: &Graph, merge: &mut Merge) {
         // Root-paired wakes also feed the generic priority control. They are never rebased.

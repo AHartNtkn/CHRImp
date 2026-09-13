@@ -1,6 +1,7 @@
-//! A/B/C structural-normalization experiment; ordinary source graph events on stdout.
-//! Usage: constructor_probe baseline|priority|direct --behavior-i [--first] [--steps N] [--seconds S]
+//! Structural normalization and conditional dispatch controls; source graph events on stdout.
+//! Usage: constructor_probe baseline|priority|direct|dispatch --behavior-i [--first] [--steps N] [--seconds S]
 //!    or: constructor_probe MODE PROGRAM.chr --query 'BODY' [same limits]
+//! Dispatch retains each selected original arm, including its leading post.
 //! Historical source stepping is outside this experiment. No production default changes.
 use chr::{
     engine::{Engine, NormalizationMode},
@@ -21,10 +22,12 @@ use allocation::{Phase, during};
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let mut args = std::env::args().skip(1);
-    let mode_name = args.next().ok_or("expected baseline|priority|direct")?;
+    let mode_name = args
+        .next()
+        .ok_or("expected baseline|priority|direct|dispatch")?;
     if mode_name == "--help" {
         println!(
-            "constructor_probe baseline|priority|direct (--behavior-i | PROGRAM.chr --query 'BODY') [--first] [--steps N] [--seconds S]\nStreams source answer events to stdout; result and work/memory evidence to stderr. --seconds limits source execution, followed by bounded cancellation. Historical rule stepping is unsupported. Build with --features diagnostics for existing allocation/engine counters."
+            "constructor_probe baseline|priority|direct|dispatch (--behavior-i | PROGRAM.chr --query 'BODY') [--first] [--steps N] [--seconds S]\nStreams source answer events to stdout; result and work/memory evidence to stderr. --seconds limits source execution, followed by bounded cancellation. Historical rule stepping is unsupported. Build with --features diagnostics for existing allocation/engine counters."
         );
         return Ok(());
     }
@@ -32,7 +35,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "baseline" => NormalizationMode::Baseline,
         "priority" => NormalizationMode::Priority,
         "direct" => NormalizationMode::Direct,
-        _ => return Err("expected baseline|priority|direct".into()),
+        "dispatch" => NormalizationMode::Dispatch,
+        _ => return Err("expected baseline|priority|direct|dispatch".into()),
     };
     let input = args.next().ok_or("expected --behavior-i or PROGRAM.chr")?;
     let (p, q): (Program, Body) =
