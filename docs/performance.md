@@ -143,3 +143,17 @@ An increase/decrease is statistical change evidence, not a material regression v
 The native result includes `native_peak_rss_estimate_kib`, read once at final-result emission from Linux `/proc/self/status` VmHWM. This covers the native harness address space through that point, including parsing, validation, allocator overhead and reporting so far; it excludes the launcher address space before exec. It remains null when unavailable. [Linux documents VmHWM as approximate](https://man7.org/linux/man-pages/man5/proc_pid_status.5.html); the estimate can move slightly downward as accounting updates. A subprocess calibration touches 32 MiB and verifies both held and released observations expose at least 30 MiB above baseline. This tests a material signal, not exact byte accuracy. Wait4 RSS remains separate launcher-inclusive evidence. Requested-allocation peaks provide a different, precisely defined measurement under diagnostics.
 
 Two unchanged seven-sample `rewrite 512` campaigns gave native peak medians 6,936 and 6,932 KiB, with ranges 6,888–7,084 and 6,816–7,084 KiB. No default metric showed a statistically qualified change; source-delivery medians were 24.84 and 25.68 ms. This is one local benign control, not full false-positive calibration or a universal noise bound.
+
+## Preparation shape, reuse and direct destruction
+
+```sh
+python3 examples/perf.py --out /tmp/prep-reuse --repeat 5 --seconds 5 --total-seconds 40 -- prepare-reuse 64 5000000 5 --heads 4 --arity 4 --repeats 4 --width 16 --depth 8 --uses 8
+python3 examples/perf.py --out /tmp/prep-independent --repeat 5 --seconds 5 --total-seconds 40 -- prepare-independent 64 5000000 5 --heads 4 --arity 4 --repeats 4 --width 16 --depth 8 --uses 8
+python3 examples/perf_compare.py /tmp/prep-before /tmp/prep-after --out /tmp/prep-change.json --metric workload.parse_program_ms --metric workload.prepare_ms.0 --metric workload.uses.0.engine_init_ms --metric workload.elapsed_ms
+```
+
+`SIZE` is inactive rule count; zero is a control. Independently vary heads per rule, arity, extra repeated uses of one head variable, body width, nested conjunction depth and sequential engine uses. Defaults are 1/1/0/1/0/1. The generated inactive relations have no query occurrences. Every use still executes and validates `start(A)` rewriting to exactly `p(A)`; `--empty` instead validates one empty answer. Body nesting, including the width container, respects the parser's 128-container limit. Preparation-specific options apply only to these two cases.
+
+Both cases generate/parse once. Reuse prepares once and uses the same prepared object for fresh engines; independent prepares from the same AST before every fresh engine. Typed records separate source generation, program/query parsing, preparation, engine initialization, execution/delivery/validation, direct engine destruction, final prepared-object destruction and syntax/source destruction. Sequential uses stay ordered within a process and are not independent timing repetitions. Every completed run checks all uses and prepared ownership release; the aggregate tick and wall budgets cover all uses and destruction. External supervision bounds calls that cannot be interrupted internally.
+
+Select the relevant `workload.*` phase metric for comparisons; the core source-delivery default is unavailable for these cases. Three measured runs of each 64-rule shape above completed with all eight results validated. This supplies runnable preparation/reuse evidence; calibrated shape/size growth detection remains part of routine/deep campaign work.

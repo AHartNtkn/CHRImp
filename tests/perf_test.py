@@ -97,6 +97,24 @@ class NativeRecordTests(unittest.TestCase):
                 self.assertEqual(sample['status'],'completed')
                 self.assertTrue((out/f'{index}.stdout').is_file())
 
+    def test_preparation_modes_have_validated_uses_and_censored_outcomes(self):
+        binary=Path(__file__).parents[1]/'target/release/examples/measure'
+        for case in ['prepare-reuse','prepare-independent']:
+            completed=subprocess.run([str(binary),case,'0','5000000','5','--uses','3','--heads','2','--arity','3','--repeats','2','--width','4','--depth','3'],capture_output=True,text=True,timeout=10)
+            self.assertEqual(completed.returncode,0,completed.stderr)
+            events=perf.records(completed.stdout)
+            self.assertEqual(perf.classify(process(),events,case),'completed')
+            result=next(e['data'] for e in events if e['kind']=='result')
+            self.assertEqual([u['answers'] for u in result['uses']],[1,1,1])
+            self.assertEqual([u['applications'] for u in result['uses']],[1,1,1])
+            self.assertEqual(len(result['prepare_ms']),1 if case=='prepare-reuse' else 3)
+            self.assertIn('workload.uses.0.engine_drop_ms',perf.sample_values(dict(process=process(),records=events)))
+            result['uses'][1]['complete']=False
+            self.assertEqual(perf.classify(process(),events,case),'report_error')
+            censored=subprocess.run([str(binary),case,'1','1','5'],capture_output=True,text=True,timeout=10)
+            self.assertEqual(censored.returncode,2,censored.stderr)
+            self.assertEqual(perf.classify(process(2),perf.records(censored.stdout),case),'censored')
+
     def test_exhausted_aggregate_budget_does_not_claim_success(self):
         with tempfile.TemporaryDirectory() as directory:
             out=Path(directory)/'run'

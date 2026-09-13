@@ -25,6 +25,8 @@ mod lifecycle;
 mod notebooks;
 #[path = "measure/observation.rs"]
 mod observation;
+#[path = "measure/preparation.rs"]
+mod preparation;
 #[path = "measure/report.rs"]
 mod report;
 use allocation::{Phase, during};
@@ -678,6 +680,10 @@ fn main() -> ExitCode {
     let args = env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() || args == ["--help"] || args == ["--list"] {
         println!(
+            "Preparation: {}; SIZE inactive rules (zero allowed); --heads N --arity N --repeats N --width N --depth N --uses N --empty. Repeated ports, body structure and sequential engine uses vary independently. Defaults 1/1/0/1/0/1, with a one-step query; --empty uses true.",
+            preparation::CASES
+        );
+        println!(
             "Lifecycle interactions: life-held-output, life-archive-fixed, life-archive-rotate, life-inspections; SIZE counts siblings/snapshots/inspections; --rows sets residual width, --work continued applications (default 32), --cadence applications between rotations (default 1). Generated cases: {}. Options: --seed N --shape chain|ring|star|diamond|dense|random. SIZE is vertex/copy/distractor count; --rows is edge multiplicity, constraints per edge, duplicate groups or probe count. graph-bits has an exhaustive oracle limited to 16 vertices; proof-dag rejects cyclic shapes. Seed 0 is canonical order, other seeds reproducibly vary inputs and order.",
             generated::CASES
         );
@@ -697,6 +703,11 @@ fn main() -> ExitCode {
         let (mut max_ticks, mut seconds, mut rows, mut prefix) =
             (50_000_000u64, 30u64, 1usize, None);
         let (mut seed, mut shape) = (0u64, "chain".to_string());
+        let is_preparation = preparation::CASES
+            .split_whitespace()
+            .any(|case| case == args[0]);
+        let mut prep = preparation::Options::default();
+        let mut preparation_options = false;
         let mut generated_options = false;
         let mut detailed = false;
         let (mut work, mut cadence) = (32u64, 1u64);
@@ -706,6 +717,29 @@ fn main() -> ExitCode {
         while i < args.len() {
             match args[i].as_str() {
                 "--detail" => detailed = true,
+                "--empty" => {
+                    preparation_options = true;
+                    prep.empty = true;
+                }
+                "--heads" | "--arity" | "--repeats" | "--width" | "--depth" | "--uses" => {
+                    preparation_options = true;
+                    let flag = &args[i];
+                    i += 1;
+                    let value = args
+                        .get(i)
+                        .ok_or("missing preparation option")?
+                        .parse::<usize>()
+                        .map_err(|_| "invalid preparation option")?;
+                    match flag.as_str() {
+                        "--heads" => prep.heads = value,
+                        "--arity" => prep.arity = value,
+                        "--repeats" => prep.repeats = value,
+                        "--width" => prep.width = value,
+                        "--depth" => prep.depth = value,
+                        "--uses" => prep.uses = value,
+                        _ => unreachable!(),
+                    }
+                }
                 "--work" | "--cadence" => {
                     interaction_options = true;
                     let flag = &args[i];
@@ -763,7 +797,7 @@ fn main() -> ExitCode {
             }
             i += 1;
         }
-        if n == 0
+        if (n == 0 && !is_preparation)
             || max_ticks == 0
             || seconds == 0
             || prefix == Some(0)
@@ -784,16 +818,33 @@ fn main() -> ExitCode {
         if interaction_options && !interaction {
             return Err("--work/--cadence require lifecycle interaction cases".into());
         }
+        if preparation_options && !is_preparation {
+            return Err("preparation options require prepare-reuse or prepare-independent".into());
+        }
+        if is_preparation
+            && (generated_options || interaction_options || prefix.is_some() || rows != 1)
+        {
+            return Err("preparation cases use their shape/use options, not rows/prefix/generated/lifecycle options".into());
+        }
         observation::configure(detailed);
         report::emit(
             "configuration",
-            serde_json::json!({"case": args[0], "size": n, "rows": rows, "prefix": prefix, "seed": seed, "shape": shape, "detailed": detailed, "diagnostics_feature": cfg!(feature = "diagnostics"), "max_ticks": max_ticks, "timeout_seconds": seconds, "continued_work": interaction.then_some(work), "rotation_cadence": interaction.then_some(cadence)}),
+            serde_json::json!({"case": args[0], "size": n, "rows": rows, "prefix": prefix, "seed": seed, "shape": shape, "detailed": detailed, "diagnostics_feature": cfg!(feature = "diagnostics"), "max_ticks": max_ticks, "timeout_seconds": seconds, "continued_work": interaction.then_some(work), "rotation_cadence": interaction.then_some(cadence), "preparation": is_preparation.then_some(prep)}),
         );
         println!(
             "measurement_mode={} diagnostics_feature={}",
             if detailed { "detailed" } else { "baseline" },
             cfg!(feature = "diagnostics")
         );
+        if is_preparation {
+            let measurement =
+                preparation::run(&args[0], n, prep, max_ticks, Duration::from_secs(seconds))?;
+            report::emit("result", serde_json::json!(measurement));
+            if let Some(error) = measurement.error {
+                return Err(error);
+            }
+            return Ok(measurement.status == "COMPLETE");
+        }
         if generated::CASES
             .split_whitespace()
             .any(|name| name == args[0])

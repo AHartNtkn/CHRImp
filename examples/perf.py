@@ -53,7 +53,7 @@ def classify(process, events, case):
     if len(results) != 1 or len(configs) != 1:
         return 'report_error'
     result, config = results[0], configs[0]
-    if result.get('case') != case or config.get('case') != case or result.get('size') != config.get('size') or type(config.get('size')) is not int or config['size'] <= 0:
+    if result.get('case') != case or config.get('case') != case or result.get('size') != config.get('size') or type(config.get('size')) is not int or config['size'] < (0 if case in ('prepare-reuse','prepare-independent') else 1):
         return 'report_error'
     if not isinstance(config.get('detailed'),bool) or not isinstance(config.get('diagnostics_feature'),bool):
         return 'report_error'
@@ -64,7 +64,16 @@ def classify(process, events, case):
         return 'censored' if status == 'INCOMPLETE' else 'report_error'
     if status not in ('COMPLETE','PREFIX_COMPLETE'):
         return 'report_error'
-    if case.startswith('life-') or case == 'runtime':
+    if case in ('prepare-reuse','prepare-independent'):
+        options=config.get('preparation')
+        if not isinstance(options,dict) or result.get('options')!=options: return 'report_error'
+        uses=result.get('uses',[])
+        if result.get('censored') is not False or result.get('prepared_released') is not True: return 'report_error'
+        if len(uses)!=options.get('uses') or not uses: return 'report_error'
+        if any(u.get('complete') is not True or u.get('answers')!=1 or u.get('applications')!=int(not options.get('empty')) or u.get('prepared_owners_after_engine_drop')!=1 for u in uses): return 'report_error'
+        preparations=1 if case=='prepare-reuse' else len(uses)
+        if len(result.get('prepare_ms',[]))!=preparations or len(result.get('prepared_drop_ms',[]))!=preparations: return 'report_error'
+    elif case.startswith('life-') or case == 'runtime':
         if result.get('censored') is not False: return 'report_error'
     else:
         if any(result.get(key) is not True for key in ('source_goal_reached','cleanup_done','cleanup_in_time')):
@@ -112,7 +121,7 @@ def deadline_signal(*_):
 
 def sample_values(sample):
     result = next(e['data'] for e in sample['records'] if e['kind'] == 'result')
-    values = {'process': {k:v for k,v in sample['process'].items() if k not in ('limits', 'returncode', 'descendant_pids')}, 'workload':{k:result[k] for k in ('times_ms','work','memory_counts','first_event','first_answer','source_exhausted','native_peak_rss_estimate_kib') if k in result}}
+    values = {'process': {k:v for k,v in sample['process'].items() if k not in ('limits', 'returncode', 'descendant_pids')}, 'workload':{k:result[k] for k in ('times_ms','work','memory_counts','first_event','first_answer','source_exhausted','native_peak_rss_estimate_kib','program_bytes','query_bytes','generation_ms','parse_program_ms','parse_query_ms','prepare_ms','uses','prepared_drop_ms','syntax_source_drop_ms','elapsed_ms') if k in result}}
     for kind in ('phase','diagnostics'):
         occurrences=Counter()
         grouped={}

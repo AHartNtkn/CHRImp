@@ -143,12 +143,11 @@ tasks:
       - An external environment constraint prevents required evidence after safe alternatives are evaluated; record
         the exact unblock.
     write_scopes:
-      PM: All allowed files except examples/measure/preparation.rs
-      Mendel: examples/measure/preparation.rs (preparation shape, reuse and destruction workloads)
+      PM: *id001
     progress: Typed core/notebook/lifecycle results and bounded repeated measurements now use commands, build settings,
       limits and raw results. Four independently parameterized retention/concurrency workloads check held output,
-      fixed/rotating archives and concurrent unread inspections. Remaining work includes preparation/fresh-production
-      interactions, session churn/replay, representation/ownership and allocation-stack attribution, routine/deep
+      fixed/rotating archives and concurrent unread inspections. Preparation shape/reuse/direct destruction now has bounded native cases and independent result/work/ownership
+      oracles. Remaining work includes fresh-production interactions, session churn/replay, representation/ownership and allocation-stack attribution, routine/deep
       scaling selection, calibrated regression decisions and independent challenges.
     evidence:
       - 'cargo test --release --example measure: 23 passed, including generated end-to-end cases across shapes and
@@ -218,6 +217,14 @@ tasks:
         emission with approximate kernel accounting. Two unchanged seven-sample rewrite512 campaigns showed no
         qualified default-metric changes; native peak medians 6936/6932KiB. This is a benign control, not full
         materiality/scaling or false-positive calibration. Records at /tmp/chrimp-native-rss-{a,b}.
+      - prepare-reuse/prepare-independent separate inactive rule count, head width/arity/repetition, body width/depth,
+        and sequential uses. Zero-rule/empty controls, exact residual/application and Prepared ownership checks;
+        generation/parse/prepare/use/direct destruction phases are separately measured. Three-run campaigns at
+        64 rules, 4 heads, arity4, repeats4, width16, depth8 and8uses completed; /tmp/chrimp-preparation-{reuse,independent}.
+      - Independent review corrected zero-rule generation cost, missing application oracle and phase admission
+        after deadline. Six focused preparation tests pass in release and diagnostics modes; eight runner tests,
+        seven comparator tests, clippy and fmt pass. Full default harness previously passed29 tests before three
+        focused review tests were added. Full suite calibration and prospective coverage remain incomplete.
   - id: T003
     type: worker
     assignee: Worker
