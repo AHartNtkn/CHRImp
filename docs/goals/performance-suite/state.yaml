@@ -1,0 +1,194 @@
+version: 2
+goal:
+  title: Complete the CHR performance suite
+  slug: performance-suite
+  kind: recovery
+  tranche: Implement the full prospective performance-risk coverage, maintained measurements, bounded regression
+    detection and independent adversarial validation.
+  status: active
+  oracle:
+    signal: Maintained native commands expose plausible unobserved performance failures across the source-backed
+      risk model and correctly detect independently chosen time, memory, scaling, progress and lifecycle regressions.
+    cadence: After coherent implementation packages and independent challenges.
+    final_proof: 'All six completion-oracle clauses in goal.md have runnable reviewed evidence; no required suite
+      gaps remain; final reviewer records full_outcome_complete: true.'
+  intake:
+    original_request: Create a FULL /goal which would COMPLETE the perf suite. Use brainstorming.
+    interpreted_outcome: Anticipate future performance failures and build a validated practical suite that exposes
+      them and detects regressions as the language/runtime evolve.
+    input_shape: recovery
+    audience: CHR users and developers
+    authority: requested
+    proof_type: test
+    completion_proof: Independent challenges demonstrate prospective coverage, truthful measurement and actionable
+      detection through maintained bounded commands.
+    likely_misfire: Explaining the current slowdown, adding cases, or implementing audit counters stands in for
+      anticipating unobserved failures.
+    blind_spots_considered:
+      - Previously unobserved risks derived from semantics, algorithms, ownership and interactions
+      - Poor sensitivity and false alarms in regression detection
+      - Legal variations beyond named workloads and calibration cases
+      - Instrument distortion, censoring, external resource limits and reproducibility
+    existing_plan_facts:
+      - The user explicitly requires anticipating future failures, not organizing the goal around the current incident.
+      - Use brainstorming.
+      - Do not rerun rwLog.
+      - Avoid administrative scope growth and open-ended optimization loops.
+      - Broad mathematical uses must be considered without requiring user-supplied examples.
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+  continuous_until_full_outcome: true
+  missing_input_or_credentials_do_not_stop_goal: true
+  exact_human_approval_can_terminal_wait: true
+  preserve_and_validate_existing_plan: true
+  intake_misfire_must_be_audited: true
+  goal_pressure_requires_oracle: true
+  no_completion_on_weak_proof: true
+  slice_policy:
+    max_consecutive_tiny_tasks: 2
+    prefer_vertical_slices: true
+    judge_picks_largest_safe_slice: true
+    worker_completes_whole_slice: true
+agents:
+  scout: bundled_not_installed
+  worker: bundled_not_installed
+  judge: bundled_not_installed
+visual_board:
+  selected: none
+  local:
+    status: not_requested
+    url: null
+    command: ''
+  reason: Use the native goal and compact files; a separate interface is outside the requested performance-suite
+    outcome.
+active_task: T001
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: active
+    objective: Discover prospective performance risks from supported semantics, current implementation responsibilities
+      and interactions; establish detection questions and gap coverage beyond historical failures.
+    inputs:
+      - goal.md
+      - notes/brainstorm.md
+      - examples/measure.rs
+      - examples/measure/
+      - src/
+      - tests/
+    constraints:
+      - Follow the full goal.md outcome; no rwLog runs or unrelated engine optimization.
+      - Read-only; use independent brainstorming to challenge the risk model rather than treating existing cases
+        as the scope.
+    expected_output:
+      - Compact source-backed prospective risk-to-evidence map and independent challenge findings.
+      - Concrete bounded implementation package definitions, required verification and measurement-validity checks.
+    receipt: null
+  - id: T002
+    type: worker
+    assignee: Worker
+    status: queued
+    objective: Implement the missing general workload strategy, semantic oracles and calibrated measurements that
+      expose prospective risks through maintained native paths.
+    inputs:
+      - goal.md
+      - T001 evidence
+      - examples/measure.rs
+      - examples/measure/
+      - src/
+      - tests/
+    constraints:
+      - Follow the full goal.md outcome; no rwLog runs or unrelated engine optimization.
+      - Lead narrows concrete write/verification scope before activation; required in-scope fixes do not require
+        new user approval.
+    expected_output:
+      - Runnable discriminating controls, generators, scale/interaction/lifecycle witnesses and truthful diagnostics.
+      - Independent measurement checks and observer-effect evidence.
+    receipt: null
+    allowed_files:
+      - src/**
+      - examples/**
+      - tests/**
+      - Cargo.toml
+      - Cargo.lock
+      - docs/validation.md
+      - docs/performance.md
+    verify:
+      - cargo test --offline --all-targets
+      - cargo clippy --offline --all-targets -- -D warnings
+      - cargo fmt --check
+      - Run the maintained bounded performance acceptance commands established by T001-T003; record exact commands
+        and results in the receipt.
+    stop_if:
+      - A genuine semantic/product decision cannot be established from user instructions or local evidence; continue
+        unaffected work.
+      - An external environment constraint prevents required evidence after safe alternatives are evaluated; record
+        the exact unblock.
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: queued
+    objective: Implement and validate bounded routine/deep runs, actionable regression detection, reproducible comparisons
+      and the practical coverage extension path.
+    inputs:
+      - goal.md
+      - T001 evidence
+      - T002 implementation
+    constraints:
+      - Follow the full goal.md outcome; no rwLog runs or unrelated engine optimization.
+      - Lead narrows concrete write/verification scope before activation; required in-scope fixes do not require
+        new user approval.
+    expected_output:
+      - Bounded native commands, machine-readable results, meaningful failure/censoring/noise classification.
+      - Demonstrated detection sensitivity and control-case stability with compact usage/evidence.
+    receipt: null
+    allowed_files:
+      - src/**
+      - examples/**
+      - tests/**
+      - Cargo.toml
+      - Cargo.lock
+      - docs/validation.md
+      - docs/performance.md
+    verify:
+      - cargo test --offline --all-targets
+      - cargo clippy --offline --all-targets -- -D warnings
+      - cargo fmt --check
+      - Run the maintained bounded performance acceptance commands established by T001-T003; record exact commands
+        and results in the receipt.
+    stop_if:
+      - A genuine semantic/product decision cannot be established from user instructions or local evidence; continue
+        unaffected work.
+      - An external environment constraint prevents required evidence after safe alternatives are evaluated; record
+        the exact unblock.
+  - id: T004
+    type: judge
+    assignee: Judge
+    status: queued
+    objective: Independently challenge prospective coverage with unobserved hazards and review the full outcome
+      against executable evidence.
+    inputs:
+      - goal.md
+      - T001-T003 evidence
+      - Current maintained suite and changed code
+    constraints:
+      - Follow the full goal.md outcome; no rwLog runs or unrelated engine optimization.
+      - Read-only review; may run bounded checks in temporary output directories; do not implement fixes or optimize
+        the engine.
+    expected_output:
+      - Independent adversarial cases and measured regression-detection outcomes across the required risk categories.
+      - 'complete | not_complete; full_outcome_complete: true | false; exact remaining gaps.'
+      - If gaps remain, lead reactivates the relevant implementation package, repairs it and obtains fresh review.
+    receipt: null
+checks:
+  dirty_fingerprint: Goal preparation only; implementation starts from commit 16d2f53.
+  last_verification:
+    result: unknown
+    task: null
+    commands: []
