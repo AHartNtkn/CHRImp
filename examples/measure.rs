@@ -23,6 +23,8 @@ mod generated;
 mod lifecycle;
 #[path = "measure/notebooks.rs"]
 mod notebooks;
+#[path = "measure/observation.rs"]
+mod observation;
 use allocation::{Phase, during};
 use families::{Goal, Workload};
 
@@ -407,6 +409,7 @@ fn run_workload(
     let start = Instant::now();
     let mut e = during(Phase::Setup, || Engine::new(code.clone()));
     let init_time = start.elapsed();
+    let detailed = observation::detailed();
     let mut reader = Reader::default();
     let start = Instant::now();
     let mut validator = Duration::ZERO;
@@ -422,19 +425,23 @@ fn run_workload(
     let (mut last_apps, mut last_ticks, mut last_collection) = (0, 0, 0);
     let mut windows = Vec::new();
     while ticks < max_ticks && !e.delivery_done() {
-        let collecting = e.collecting();
-        let tick_start = Instant::now();
+        let collecting = detailed && e.collecting();
+        let tick_start = observation::start(detailed);
         during(Phase::Engine, || e.advance(1));
-        max_tick = max_tick.max(tick_start.elapsed());
+        max_tick = max_tick.max(observation::elapsed(tick_start));
         ticks += 1;
-        collection_ticks += u64::from(collecting || e.collecting());
+        collection_ticks += u64::from(detailed && (collecting || e.collecting()));
         if let Some(output) = during(Phase::Delivery, || e.take_output()) {
-            let event_time = start.elapsed();
-            first_event.get_or_insert((ticks, event_time));
             let end = matches!(output, Output::End);
-            let check = Instant::now();
+            let event_time = if first_event.is_none() || (end && first_answer.is_none()) {
+                start.elapsed()
+            } else {
+                Duration::ZERO
+            };
+            first_event.get_or_insert((ticks, event_time));
+            let check = observation::start(detailed);
             let result = during(Phase::Validator, || reader.push(output, &e, &mut w));
-            validator += check.elapsed();
+            validator += observation::elapsed(check);
             if let Err(problem) = result {
                 error = Some(problem);
                 break;
@@ -443,7 +450,7 @@ fn run_workload(
                 first_answer.get_or_insert((ticks, event_time));
             }
         }
-        if e.exhausted() {
+        if exhausted.is_none() && e.exhausted() {
             exhausted.get_or_insert((ticks, start.elapsed()));
         }
         if matches!(w.goal, Goal::Applications(_)) && e.applications() >= next_window {
@@ -514,6 +521,7 @@ fn run_workload(
         }
     }
     let cleanup_time = cleanup_start.elapsed();
+    let cleanup_in_time = cleanup_time < timeout;
     let after = memory(&e);
     let cleanup_done = e.cancel_done();
     // Coordinates retains the current epoch even after all execution roots are released.
@@ -551,7 +559,7 @@ fn run_workload(
     let drop_start = Instant::now();
     during(Phase::Cleanup, || drop(code));
     let prepared_drop = drop_start.elapsed();
-    let success = reached && !timed_out && cleanup_done && error.is_none();
+    let success = reached && !timed_out && cleanup_done && cleanup_in_time && error.is_none();
     let status = if error.is_some() {
         "INVALID"
     } else if success {
@@ -575,11 +583,11 @@ fn run_workload(
         ms(init_time)
     );
     println!(
-        "source_delivery_ms={:.3} validator_ms={:.3} source_delivery_without_validator_ms={:.3} max_advance1_ms={:.3}",
+        "source_delivery_ms={:.3} validator_ms={} source_delivery_without_validator_ms={} max_advance1_ms={}",
         ms(elapsed),
-        ms(validator),
-        ms(elapsed.saturating_sub(validator)),
-        ms(max_tick)
+        observation::milliseconds(detailed, validator),
+        observation::milliseconds(detailed, elapsed.saturating_sub(validator)),
+        observation::milliseconds(detailed, max_tick)
     );
     println!(
         "first_event_ticks={:?} first_event_ms={:?} first_answer_ticks={:?} first_answer_ms={:?} source_exhausted_ticks={:?} source_exhausted_ms={:?}",
@@ -591,14 +599,20 @@ fn run_workload(
         exhausted.map(|x| ms(x.1))
     );
     println!(
-        "advance1_ticks={ticks} collection_ticks={collection_ticks} collections={collections} applications={apps} expected_applications={:?} answers={} expected_answers={:?} facts={} ports={} scalars={}",
-        w.apps, reader.answers, w.answers, reader.facts, reader.ports, reader.scalars
+        "advance1_ticks={ticks} collection_ticks={} collections={collections} applications={apps} expected_applications={:?} answers={} expected_answers={:?} facts={} ports={} scalars={}",
+        observation::count(detailed, collection_ticks),
+        w.apps,
+        reader.answers,
+        w.answers,
+        reader.facts,
+        reader.ports,
+        reader.scalars
     );
     println!(
         "memory_counts [graph,occurrences,conditions,history_nodes,history_records,pending_nodes,descriptors,choices,coordinates,snapshots,inspections,tasks,release_batches] sampled_peak={peak:?} before_cleanup={before:?} after_cleanup={after:?} reclaimed={reclaimed:?}"
     );
     println!(
-        "cleanup_ticks={cleanup_ticks} cleanup_ms={:.3} engine_drop_ms={:.3} prepared_drop_ms={:.3} validator_peak_bindings={} validator_peak_rows={} validator_answer_ids={}",
+        "cleanup_ticks={cleanup_ticks} cleanup_in_time={cleanup_in_time} cleanup_ms={:.3} engine_drop_ms={:.3} prepared_drop_ms={:.3} validator_peak_bindings={} validator_peak_rows={} validator_answer_ids={}",
         ms(cleanup_time),
         ms(engine_drop),
         ms(prepared_drop),
@@ -608,7 +622,8 @@ fn run_workload(
     );
     for (index, (apps, ticks, gc, memory)) in windows.iter().enumerate() {
         println!(
-            "app_window={index} applications={apps} ticks={ticks} collection_ticks={gc} memory={memory:?}"
+            "app_window={index} applications={apps} ticks={ticks} collection_ticks={} memory={memory:?}",
+            observation::count(detailed, *gc)
         );
     }
     if let Some(error) = error {
@@ -636,7 +651,7 @@ fn main() -> ExitCode {
             generated::CASES
         );
         println!(
-            "Usage: measure CASE SIZE [MAX_TICKS] [TIMEOUT_SECONDS] [--rows N] [--prefix N]\nCases: {CASES} {} {} {}\nDefaults: MAX_TICKS=50000000 TIMEOUT_SECONDS=30 rows=1. SIZE positive; rows may be zero.\nanswers: SIZE alternatives, --rows residual rows (zero gives empty answers).\nbits-chain/star[-delayed]: SIZE bits; delayed constraints have an 8*SIZE+1 application gate.\nalias-consume: SIZE conditional merges plus one unmerged arm.\nfair-loop/grow: SIZE continuing siblings, --rows finite-chain length; stops at first complete answer.\nstream-fail: SIZE application prefix, four approximately equal application windows.\nrejected3: SIZE rows per head, no hits. multiport[-hit|-probes-first]: SIZE rows per bucket, --rows probes.\nsimpagation: SIZE copies, --rows depth. repeated-alias: SIZE aliases, --rows probes; raw-probes: same probes without aliases.\nreach-chain: SIZE edges. prepare: SIZE irrelevant rules; fanout: SIZE enabled propagation rules.\nlife-*: SIZE initial application milestone; windows continue through 8*SIZE. life-archive: SIZE retained snapshots, then 2048 additional applications.\nruntime: SIZE alternatives, each with SIZE residual rows.\nnotebook-arithmetic-*: SIZE arithmetic magnitude. notebook-type/behavior-*: SIZE answer-prefix count.\nnotebook-lambda: SIZE nested identity count; stops at its first validated answer.\n--prefix N stops finite core cases after N validated answers; never claims exhaustion.\nNo history or retained views in core cases. Wall times include instrumentation; validator time separately charged.\nFirst-answer time is at End, before its validation. Collection ticks sample collecting before OR after advance.\nMemory counts sampled every 2048 ticks and at exit, not bytes or exact peaks. Validator retains one answer plus IDs.\nSource and cleanup each get the supplied tick/time limits; timeout cannot preempt a tick or drop.",
+            "Usage: measure CASE SIZE [MAX_TICKS] [TIMEOUT_SECONDS] [--rows N] [--prefix N] [--detail]\nCases: {CASES} {} {} {}\nDefaults: MAX_TICKS=50000000 TIMEOUT_SECONDS=30 rows=1. SIZE positive; rows may be zero.\nanswers: SIZE alternatives, --rows residual rows (zero gives empty answers).\nbits-chain/star[-delayed]: SIZE bits; delayed constraints have an 8*SIZE+1 application gate.\nalias-consume: SIZE conditional merges plus one unmerged arm.\nfair-loop/grow: SIZE continuing siblings, --rows finite-chain length; stops at first complete answer.\nstream-fail: SIZE application prefix, four approximately equal application windows.\nrejected3: SIZE rows per head, no hits. multiport[-hit|-probes-first]: SIZE rows per bucket, --rows probes.\nsimpagation: SIZE copies, --rows depth. repeated-alias: SIZE aliases, --rows probes; raw-probes: same probes without aliases.\nreach-chain: SIZE edges. prepare: SIZE irrelevant rules; fanout: SIZE enabled propagation rules.\nlife-*: SIZE initial application milestone; windows continue through 8*SIZE. life-archive: SIZE retained snapshots, then 2048 additional applications.\nruntime: SIZE alternatives, each with SIZE residual rows.\nnotebook-arithmetic-*: SIZE arithmetic magnitude. notebook-type/behavior-*: SIZE answer-prefix count.\nnotebook-lambda: SIZE nested identity count; stops at its first validated answer.\n--prefix N stops finite core cases after N validated answers; never claims exhaustion.\nNo history or retained views in core cases. Baseline clocks phase boundaries and first events, with periodic budgets/memory checks; --detail adds per-tick latency, collection-status and validator timing. Unobserved fields are null. Validation runs in both modes.\nFirst-answer time is at End, before its validation. Collection ticks sample collecting before OR after advance.\nMemory counts sampled every 2048 ticks and at exit, not bytes or exact peaks. Validator retains one answer plus IDs.\nSource and cleanup each get the supplied tick/time limits; timeout cannot preempt a tick or drop.",
             families::CASES,
             notebooks::CASES,
             lifecycle::CASES
@@ -652,10 +667,12 @@ fn main() -> ExitCode {
             (50_000_000u64, 30u64, 1usize, None);
         let (mut seed, mut shape) = (0u64, "chain".to_string());
         let mut generated_options = false;
+        let mut detailed = false;
         let mut positional = 0;
         let mut i = 2;
         while i < args.len() {
             match args[i].as_str() {
+                "--detail" => detailed = true,
                 "--seed" | "--shape" => {
                     generated_options = true;
                     let flag = &args[i];
@@ -709,6 +726,12 @@ fn main() -> ExitCode {
                 "positive size/limits/prefix required; dimensions must not overflow".into(),
             );
         }
+        observation::configure(detailed);
+        println!(
+            "measurement_mode={} diagnostics_feature={}",
+            if detailed { "detailed" } else { "baseline" },
+            cfg!(feature = "diagnostics")
+        );
         if generated::CASES
             .split_whitespace()
             .any(|name| name == args[0])

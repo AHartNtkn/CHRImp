@@ -144,12 +144,12 @@ tasks:
         the exact unblock.
     write_scopes:
       PM: *id001
-    progress: Six seeded generated families and native CPU flamegraphs are implemented. Feature-gated per-engine
-      work diagnostics and process allocation accounting now feed core/notebook and lifecycle measurements. Calibrated
-      counters, allocator registration, live/peak accounting and report conservation pass; independent review fixes
-      are applied. Remaining T002 work includes expanded lifetime/preparation interactions, representation and ownership
-      attribution, allocation stacks, minimally observed timing and stronger observer-effect evidence. T003 runner/detection
-      and T004 independent challenges remain required.
+    progress: Generated families, native CPU flamegraphs, per-engine work diagnostics and scoped requested-allocation
+      accounting are implemented. Baseline/detailed observation now shares execution and validation, with explicit
+      unavailable fields, phase deadline checks and mode-equivalence controls. Remaining T002 work includes expanded
+      lifetime/preparation interactions, representation/ownership attribution, allocation stacks and broader calibration.
+      T003 machine-readable supervised routine/deep comparisons and detectors and T004 independent challenges remain
+      required.
     evidence:
       - 'cargo test --release --example measure: 23 passed, including generated end-to-end cases across shapes and
         seeds.'
@@ -172,6 +172,21 @@ tasks:
         calibration.'
       - Independent allocation/integration review found cancellation timer contamination and inadequate global-allocator
         calibration; corrected and tested. Concurrent snapshot limitation documented explicitly.
+      - 'Baseline/--detail introduced with optional per-tick/validator clocks and collection-status observation.
+        cargo test --example measure: 23 passed; diagnostics measure: 24 passed; clippy and fmt pass.'
+      - 'python3 -m unittest discover -s tests -p measure_observation_test.py: 2 tests pass across eight real workload
+        pairs plus tick-censoring controls, preserving every repeated field and comparing complete diagnostic work
+        records.'
+      - '/tmp/chrimp-observer-counter-variation.json: four behavior-I runs differ only in collection dispatches;
+        total advance differences exactly equal collection differences. Shared-variable address ordering followed
+        by sequential Boolean pruning is a source-backed possible mechanism, not a proven cause. Material collector
+        growth detection remains outstanding.'
+      - '/tmp/chrimp-observation-overhead.json: default release binary, alternating baseline/detail, one warmup
+        and seven retained pairs. Source medians 5.896/8.222 ms rewrite128; 1.770/2.446 ms partial-join32; 132.700/146.688
+        ms behavior I. Raw ranges retained; this establishes workload-specific observer effects, not universal thresholds.'
+      - Independent review found cleanup final-time classification and cancellation report contamination plus repeated-field
+        parser loss. Fixed and mode/regression checks rerun. Adversarial wall-deadline perturbation checks remain
+        part of supervisor validation.
   - id: T003
     type: worker
     assignee: Worker
@@ -234,8 +249,9 @@ checks:
     result: pass
     task: T002
     commands:
+      - cargo test --offline --example measure
       - cargo test --offline --features diagnostics --example measure
-      - cargo test --offline --features diagnostics --test diagnostics
+      - cargo build --offline --release --features diagnostics --example measure
+      - python3 -m unittest discover -s tests -p measure_observation_test.py
       - cargo clippy --offline --features diagnostics --example measure -- -D warnings
-      - cargo clippy --offline --example measure -- -D warnings
       - cargo fmt --check

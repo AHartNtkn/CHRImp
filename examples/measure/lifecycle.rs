@@ -1,5 +1,6 @@
 //! Lifecycle probes use application milestones; runtime probes use the real API and scheduler.
 use crate::allocation::{Phase, during};
+use crate::observation;
 use chr::{
     engine::{Engine, InspectionError, Memory, ViewId},
     notebook::Runtime,
@@ -32,6 +33,7 @@ struct Budget {
     collection_ticks: u64,
     validator: Duration,
     phase: Phase,
+    detailed: bool,
 }
 impl Budget {
     fn new(limit: u64, timeout: Duration) -> Self {
@@ -44,19 +46,24 @@ impl Budget {
             collection_ticks: 0,
             validator: Duration::ZERO,
             phase: Phase::Engine,
+            detailed: observation::detailed(),
         }
     }
+    fn in_time(&self) -> bool {
+        self.start.elapsed() < self.timeout
+    }
     fn available(&self) -> bool {
-        self.ticks < self.limit && self.start.elapsed() < self.timeout
+        self.ticks < self.limit
+            && (!self.ticks.is_multiple_of(2048) || self.start.elapsed() < self.timeout)
     }
     fn step(&mut self, e: &mut Engine) -> bool {
         if !self.available() {
             return false;
         }
-        self.collection_ticks += u64::from(e.collecting());
-        let t = Instant::now();
+        self.collection_ticks += u64::from(self.detailed && e.collecting());
+        let t = observation::start(self.detailed);
         during(self.phase, || e.advance(1));
-        self.maximum = self.maximum.max(t.elapsed());
+        self.maximum = self.maximum.max(observation::elapsed(t));
         self.ticks += 1;
         true
     }
@@ -64,9 +71,9 @@ impl Budget {
         if !self.available() {
             return false;
         }
-        let t = Instant::now();
+        let t = observation::start(self.detailed);
         during(self.phase, || r.tick());
-        self.maximum = self.maximum.max(t.elapsed());
+        self.maximum = self.maximum.max(observation::elapsed(t));
         self.ticks += 1;
         true
     }
@@ -204,18 +211,20 @@ fn cancel(e: &mut Engine, limit: u64, timeout: Duration) -> bool {
     let request = t.elapsed();
     let apps = e.applications();
     while !e.cancel_done() && b.step(e) {}
+    let elapsed = b.start.elapsed();
+    let done = e.cancel_done() && elapsed < timeout;
     assert_eq!(e.applications(), apps, "application after cancel");
     println!(
-        "cancel_request_ms={:.3} cancel_ms={:.3} cancel_ticks={} cancel_max_step_ms={:.3} cancel_done={} retained={:?}",
+        "cancel_request_ms={:.3} cancel_ms={:.3} cancel_ticks={} cancel_max_step_ms={} cancel_done={} retained={:?}",
         ms(request),
-        ms(b.start.elapsed()),
+        ms(elapsed),
         b.ticks,
-        ms(b.maximum),
-        e.cancel_done(),
+        observation::milliseconds(b.detailed, b.maximum),
+        done,
         e.memory()
     );
     crate::report_diagnostics("after_cancel", e);
-    e.cancel_done()
+    done
 }
 fn release(e: &mut Engine, limit: u64, timeout: Duration) -> Result<bool, String> {
     let mut b = Budget::new(limit, timeout);
@@ -242,12 +251,12 @@ fn release(e: &mut Engine, limit: u64, timeout: Duration) -> Result<bool, String
         }
     }
     while !e.cancel_done() && b.step(e) {}
-    let done = e.cancel_done();
+    let done = e.cancel_done() && b.in_time();
     println!(
-        "release_ms={:.3} release_work={} release_max_step_ms={:.3} release_done={} reclaimed={:?}",
+        "release_ms={:.3} release_work={} release_max_step_ms={} release_done={} reclaimed={:?}",
         ms(b.start.elapsed()),
         b.ticks,
-        ms(b.maximum),
+        observation::milliseconds(b.detailed, b.maximum),
         done,
         e.memory()
     );
@@ -302,13 +311,14 @@ fn inspect(
         "retained snapshot changed after cancel",
     )?;
     e.release_inspection(id).map_err(|e| e.to_string())?;
+    let in_time = b.in_time();
     println!(
         "retained_inspection_ms={:.3} inspection_ticks={} answers={}",
         ms(b.start.elapsed()),
         b.ticks,
         r.answers
     );
-    Ok(true)
+    Ok(in_time)
 }
 
 fn stream(case: &str, n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
@@ -358,12 +368,12 @@ fn stream(case: &str, n: usize, limit: u64, timeout: Duration) -> Result<bool, S
             break;
         }
         if let Some(o) = e.take_output() {
-            first_event.get_or_insert(b.start.elapsed());
-            let t = Instant::now();
+            first_event.get_or_insert_with(|| b.start.elapsed());
+            let t = observation::start(b.detailed);
             let end = reader.push(o, e.program().signatures(), &["done"], 1)?;
-            b.validator += t.elapsed();
+            b.validator += observation::elapsed(t);
             if end {
-                first_answer.get_or_insert(b.start.elapsed());
+                first_answer.get_or_insert_with(|| b.start.elapsed());
                 first_answer_tick.get_or_insert(b.ticks);
             }
             check(
@@ -371,17 +381,20 @@ fn stream(case: &str, n: usize, limit: u64, timeout: Duration) -> Result<bool, S
                 "unexpected continuing-stream answer",
             )?;
         }
-        let m = e.memory();
-        for (p, v) in peak.iter_mut().zip([
-            m.graph_nodes,
-            m.occurrences,
-            m.history_records,
-            m.choices,
-            m.coordinate_records,
-            m.snapshots,
-            m.release_batches,
-        ]) {
-            *p = (*p).max(v);
+        let milestone = e.applications() >= target;
+        let sample = (b.detailed || b.ticks.is_multiple_of(2048) || milestone).then(|| e.memory());
+        if let Some(m) = sample {
+            for (p, v) in peak.iter_mut().zip([
+                m.graph_nodes,
+                m.occurrences,
+                m.history_records,
+                m.choices,
+                m.coordinate_records,
+                m.snapshots,
+                m.release_batches,
+            ]) {
+                *p = (*p).max(v);
+            }
         }
         if retained && held.is_none() && e.applications() >= n as u64 {
             let relation = e
@@ -402,7 +415,8 @@ fn stream(case: &str, n: usize, limit: u64, timeout: Duration) -> Result<bool, S
                 }
             }
         }
-        if e.applications() >= target {
+        if milestone {
+            let m = sample.expect("milestone sampled");
             let elapsed = b.start.elapsed();
             println!(
                 "window_apps={}..{} window_ticks={} window_ms={:.3} window_collection_ticks={} memory={m:?}",
@@ -410,7 +424,7 @@ fn stream(case: &str, n: usize, limit: u64, timeout: Duration) -> Result<bool, S
                 e.applications(),
                 b.ticks - previous.1,
                 ms(elapsed - previous.2),
-                b.collection_ticks - previous.3
+                observation::count(b.detailed, b.collection_ticks - previous.3)
             );
             previous = (e.applications(), b.ticks, elapsed, b.collection_ticks);
             target = target.saturating_mul(2);
@@ -425,7 +439,8 @@ fn stream(case: &str, n: usize, limit: u64, timeout: Duration) -> Result<bool, S
             break;
         }
     }
-    let complete = e.applications() >= last
+    let complete = b.in_time()
+        && e.applications() >= last
         && !e.exhausted()
         && (if retained {
             held.is_some()
@@ -433,20 +448,21 @@ fn stream(case: &str, n: usize, limit: u64, timeout: Duration) -> Result<bool, S
             reader.answers == 1 && !reader.open
         });
     println!(
-        "source_status={} apps={} ticks={} elapsed_ms={:.3} validator_ms={:.3} first_event_ms={:?} first_answer_ms={:?} max_step_ms={:.3} collection_ticks={} collections={} peak_graph_occurrences_history_choices_coordinates_snapshots_release={peak:?}",
+        "source_status={} apps={} answers={} ticks={} elapsed_ms={:.3} validator_ms={} first_event_ms={:?} first_answer_ms={:?} max_step_ms={} collection_ticks={} collections={} peak_graph_occurrences_history_choices_coordinates_snapshots_release={peak:?}",
         if complete {
             "PREFIX_COMPLETE"
         } else {
             "INCOMPLETE"
         },
         e.applications(),
+        reader.answers,
         b.ticks,
         ms(b.start.elapsed()),
-        ms(b.validator),
+        observation::milliseconds(b.detailed, b.validator),
         first_event.map(ms),
         first_answer.map(ms),
-        ms(b.maximum),
-        b.collection_ticks,
+        observation::milliseconds(b.detailed, b.maximum),
+        observation::count(b.detailed, b.collection_ticks),
         e.collections()
     );
     println!("first_answer_tick={first_answer_tick:?}");
@@ -455,7 +471,7 @@ fn stream(case: &str, n: usize, limit: u64, timeout: Duration) -> Result<bool, S
         let mut gc = Budget::new(limit, timeout);
         e.request_collection();
         while e.collecting() && gc.step(&mut e) {}
-        checkpoint_done = !e.collecting();
+        checkpoint_done = !e.collecting() && gc.in_time();
         println!(
             "checkpoint_collection_done={checkpoint_done} checkpoint_collection_ticks={} checkpoint_collection_ms={:.3} checkpoint_memory={:?}",
             gc.ticks,
@@ -531,7 +547,7 @@ fn archive(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
             }
         }
     }
-    let admitted = views.len() == n;
+    let admitted = views.len() == n && setup.in_time();
     println!(
         "case=life-archive size={n} setup_done={admitted} setup_apps={} setup_ticks={} setup_ms={:.3} retained_snapshots={}",
         e.applications(),
@@ -547,7 +563,7 @@ fn archive(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
             "continuing archive source emitted an answer",
         )?;
     }
-    let complete = admitted && e.applications() - initial == 2048;
+    let complete = admitted && e.applications() - initial == 2048 && b.in_time();
     check(
         e.snapshots().count() == views.len(),
         "fixed archive changed size",
@@ -562,7 +578,7 @@ fn archive(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
         e.applications() - initial,
         b.ticks,
         ms(b.start.elapsed()),
-        b.collection_ticks,
+        observation::count(b.detailed, b.collection_ticks),
         e.memory()
     );
     let mut clean = cancel(&mut e, limit, timeout);
@@ -680,14 +696,14 @@ fn runtime(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
         if tiny_latency.is_none() {
             let out = request(&r, "/api/output", &tiny_req)?;
             tiny_req["ack"] = out["sequence"].clone();
-            let t = Instant::now();
+            let t = observation::start(b.detailed);
             for v in out["events"].as_array().ok_or("missing events")? {
                 if tiny_reader.push(event(v)?, &tiny_signatures, &["done"], 1)? {
                     tiny_latency = Some(tiny_start.elapsed());
                     tiny_turn = Some(b.ticks);
                 }
             }
-            b.validator += t.elapsed();
+            b.validator += observation::elapsed(t);
         }
         let status = request(&r, "/api/status", &heavy_req)?;
         check(status["error"].is_null(), "runtime source error")?;
@@ -718,15 +734,15 @@ fn runtime(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
         }
         heavy_req["ack"] = out["sequence"].clone();
         batches += 1;
-        let t = Instant::now();
+        let t = observation::start(b.detailed);
         for v in out["events"].as_array().ok_or("missing events")? {
-            first_event.get_or_insert(delivery.elapsed());
+            first_event.get_or_insert_with(|| delivery.elapsed());
             bytes += serde_json::to_vec(v).map_err(|e| e.to_string())?.len() + 1;
             if reader.push(event(v)?, &signatures, &["done"], n)? {
-                first_answer.get_or_insert(delivery.elapsed());
+                first_answer.get_or_insert_with(|| delivery.elapsed());
             }
         }
-        b.validator += t.elapsed();
+        b.validator += observation::elapsed(t);
         check(
             out["applications"] == json!(2 * n),
             "shared application count mismatch",
@@ -736,6 +752,7 @@ fn runtime(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
             break;
         }
     }
+    complete &= b.in_time();
     if complete {
         check(
             reader.answers == n && !reader.open && tiny_reader.answers == 1 && !tiny_reader.open,
@@ -743,7 +760,7 @@ fn runtime(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
         )?;
     }
     println!(
-        "case=runtime size={n} source_status={} admission_ms={:.3} start_replay_ms={:.3} tiny_admission_ms={:.3} tiny_answer_ms={:?} delayed_read_ms={:.3} delivery_ms={:.3} first_read_event_ms={:?} first_read_answer_ms={:?} validator_ms={:.3} max_scheduler_tick_ms={:.3} scheduler_and_read_work={} batches={batches} answers={} event_json_bytes={bytes}",
+        "case=runtime size={n} source_status={} admission_ms={:.3} start_replay_ms={:.3} tiny_admission_ms={:.3} tiny_answer_ms={:?} delayed_read_ms={:.3} delivery_ms={:.3} first_read_event_ms={:?} first_read_answer_ms={:?} validator_ms={} max_scheduler_tick_ms={} scheduler_and_read_work={} batches={batches} answers={} event_json_bytes={bytes}",
         if complete { "COMPLETE" } else { "INCOMPLETE" },
         ms(admission),
         ms(replay),
@@ -753,8 +770,8 @@ fn runtime(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
         ms(delivery.elapsed()),
         first_event.map(ms),
         first_answer.map(ms),
-        ms(b.validator),
-        ms(b.maximum),
+        observation::milliseconds(b.detailed, b.validator),
+        observation::milliseconds(b.detailed, b.maximum),
         b.ticks,
         reader.answers
     );
@@ -775,6 +792,7 @@ fn runtime(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
             break;
         }
     }
+    closed &= cleanup.in_time();
     if closed {
         check(
             request(&r, "/api/retire", &json!({"boot":boot,"owner":heavy}))?["retired"] == true,
@@ -786,11 +804,11 @@ fn runtime(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
         )?;
     }
     println!(
-        "cleanup_status={} close_ms={:.3} close_scheduler_ticks={} close_max_tick_ms={:.3}",
+        "cleanup_status={} close_ms={:.3} close_scheduler_ticks={} close_max_tick_ms={}",
         if closed { "COMPLETE" } else { "INCOMPLETE" },
         ms(cleanup.start.elapsed()),
         cleanup.ticks,
-        ms(cleanup.maximum)
+        observation::milliseconds(cleanup.detailed, cleanup.maximum)
     );
     Ok(complete && closed)
 }

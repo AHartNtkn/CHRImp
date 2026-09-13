@@ -49,6 +49,27 @@ cargo clippy --example measure -- -D warnings
 python3 -m unittest discover -s tests -p profile_test.py
 ```
 
+## Baseline and detailed observation
+
+```sh
+cargo build --offline --release --example measure
+target/release/examples/measure notebook-behavior-i 1 50000000 15
+target/release/examples/measure notebook-behavior-i 1 50000000 15 --detail
+```
+
+Default observation records phase totals, first-event/first-answer latency and periodic budget/memory checks. `--detail` additionally measures per-step maximum latency where supported, validator duration and collection-status samples. Both modes execute the same workload and all semantic validators. Unmeasured detail-only fields are `null`, not zero. First-event fields retain the existing `Some`/`None` textual notation until structured results are integrated. `source_delivery_ms` includes validation; the separately reported subtraction exists only in detailed mode. First-answer latency is elapsed time before validation of its final event, including work to handle preceding events.
+
+Lifecycle deadline checks occur every 2048 work units and at phase completion; they cannot preempt one engine or API call. Lifecycle memory peaks are sampled every 2048 ticks and at application milestones in baseline mode, every source tick in detailed mode. External supervision is still required for stuck calls, output and destruction. Detailed observation and the allocation/work `diagnostics` build feature are independent; baseline timing uses neither. Mode identity and feature status are printed in each command result.
+
+Check mode equivalence with actual core, generated, notebook, archive and runtime workloads:
+
+```sh
+cargo build --offline --release --features diagnostics --example measure
+python3 -m unittest discover -s tests -p measure_observation_test.py
+```
+
+These checks compare validated endpoints and per-rule work, and require any total iteration difference to be explained entirely by collection dispatch counts. Repeated unchanged synthesis runs already vary in collector work; collection traverses shared variable groups in address order. Treat raw internal work counts as measurements requiring calibration, not universally deterministic language properties. Independent scaling/regression detection remains required.
+
 ## Opt-in work and allocation diagnostics
 
 ```sh

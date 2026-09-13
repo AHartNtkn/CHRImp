@@ -1,5 +1,6 @@
 //! Actual notebook workloads; only one scalar-delivered answer is retained.
 use crate::allocation::{Phase, during};
+use crate::observation;
 use chr::{
     engine::Engine,
     observe::Output,
@@ -633,6 +634,7 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
     let start = Instant::now();
     let mut e = during(Phase::Setup, || Engine::new(code));
     let init_time = start.elapsed();
+    let detailed = observation::detailed();
     let mut reader = Reader::default();
     let mut triples = BTreeSet::new();
     let mut ticks = 0;
@@ -649,14 +651,20 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
         if ticks % 2048 == 0 && start.elapsed() >= timeout {
             break;
         }
-        let collecting = e.collecting();
+        let collecting = detailed && e.collecting();
         during(Phase::Engine, || e.advance(1));
         ticks += 1;
-        collection_ticks += u64::from(collecting || e.collecting());
+        collection_ticks += u64::from(detailed && (collecting || e.collecting()));
         while let Some(output) = during(Phase::Delivery, || e.take_output()) {
-            let arrival = start.elapsed().saturating_sub(validator);
+            let arrival = if first_event.is_none()
+                || (matches!(output, Output::End) && first_answer.is_none())
+            {
+                start.elapsed()
+            } else {
+                Duration::ZERO
+            };
             first_event.get_or_insert((ticks, arrival));
-            let v = Instant::now();
+            let v = observation::start(detailed);
             let result = during(Phase::Validator, || {
                 reader.push(output, &e).and_then(|a| {
                     if let Some(a) = a {
@@ -703,7 +711,7 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
                     Ok(())
                 })
             });
-            validator += v.elapsed();
+            validator += observation::elapsed(v);
             if let Err(problem) = result {
                 error = Some(problem);
                 break;
@@ -749,6 +757,7 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
         cleanup_ticks += 1;
     }
     let cleanup_time = cleanup_start.elapsed();
+    let cleanup_in_time = cleanup_time < timeout;
     crate::report_diagnostics("after_cancel", &e);
     let cleanup_done = e.cancel_done();
     let after = memory(&e);
@@ -784,7 +793,7 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
         .collect();
     let status = if error.is_some() {
         "INVALID"
-    } else if !achieved || !cleanup_done {
+    } else if !achieved || !cleanup_done || !cleanup_in_time {
         "INCOMPLETE"
     } else if finite {
         "COMPLETE"
@@ -802,12 +811,13 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
         }
     );
     println!(
-        "parse_ms={:.3} prepare_ms={:.3} engine_init_ms={:.3} source_delivery_without_validator_ms={:.3} validator_ms={:.3}",
+        "parse_ms={:.3} prepare_ms={:.3} engine_init_ms={:.3} source_delivery_ms={:.3} source_delivery_without_validator_ms={} validator_ms={}",
         ms(parse_time),
         ms(prepare_time),
         ms(init_time),
-        ms(elapsed.saturating_sub(validator)),
-        ms(validator)
+        ms(elapsed),
+        observation::milliseconds(detailed, elapsed.saturating_sub(validator)),
+        observation::milliseconds(detailed, validator)
     );
     println!(
         "first_event_ticks={:?} first_event_ms={:?} first_answer_ticks={:?} first_answer_ms={:?}",
@@ -818,7 +828,8 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
     );
     println!("first_complete_answer={first_answer_value:?}");
     println!(
-        "advance1_ticks={ticks} applications={applications} collection_ticks={collection_ticks} collections={collections} scalars={} max_ticks={max_ticks} timeout_ms={:.3}",
+        "advance1_ticks={ticks} applications={applications} collection_ticks={} collections={collections} scalars={} max_ticks={max_ticks} timeout_ms={:.3}",
+        observation::count(detailed, collection_ticks),
         reader.scalars,
         ms(timeout)
     );
@@ -826,9 +837,9 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
         "sampled_peak={peak:?} before_cleanup={before:?} after_cleanup={after:?} reclaimed={reclaimed:?} memory_order=graph,occurrences,conditions,history_nodes,history_records,pending_nodes,descriptors,choices,coordinates,snapshots,inspections,tasks,release_batches (counts; sampled every 2048 ticks and at stop)"
     );
     println!(
-        "cleanup_ticks={cleanup_ticks} cleanup_ms={:.3} cleanup_status={} validator_peak_rows={} validator_peak_ports={} validator_answer_ids={} validator_triples={} (one answer retained; identities and arithmetic multiplicity metadata retained)",
+        "cleanup_ticks={cleanup_ticks} cleanup_in_time={cleanup_in_time} cleanup_ms={:.3} cleanup_status={} validator_peak_rows={} validator_peak_ports={} validator_answer_ids={} validator_triples={} (one answer retained; identities and arithmetic multiplicity metadata retained)",
         ms(cleanup_time),
-        if cleanup_done {
+        if cleanup_done && cleanup_in_time {
             "COMPLETE"
         } else {
             "INCOMPLETE"
@@ -853,7 +864,7 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
     if let Some(error) = error {
         return Err(error);
     }
-    Ok(achieved && cleanup_done)
+    Ok(achieved && cleanup_done && cleanup_in_time)
 }
 
 #[cfg(test)]
