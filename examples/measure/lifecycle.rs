@@ -207,6 +207,7 @@ fn zero(m: Memory) -> bool {
         && m.coordinate_records == 1
         && m.snapshots == 0
         && m.inspections == 0
+        && m.restriction_nodes == 0
 }
 fn cancel(e: &mut Engine, limit: u64, timeout: Duration) -> bool {
     crate::report_diagnostics("source", e);

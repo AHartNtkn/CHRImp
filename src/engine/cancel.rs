@@ -117,7 +117,12 @@ impl Engine {
                         .map(|(&id, _)| id)
                 });
                 if let Some(id) = next {
-                    if self.inspections.get_mut(&id).unwrap().discard_tick() {
+                    if self
+                        .inspections
+                        .get_mut(&id)
+                        .unwrap()
+                        .discard_tick(&mut self.restrictions)
+                    {
                         self.cancellation.after_inspection = Some(id);
                     }
                 } else {

@@ -47,6 +47,7 @@ pub use normalization::NormalizationStats;
 use normalization::Normalizer;
 mod inspection;
 mod obligations;
+mod restriction;
 mod step;
 pub use collection::Memory;
 pub use inspection::{InspectionError, InspectionStatus, SnapshotInfo, SnapshotKind, ViewId};
@@ -241,6 +242,7 @@ pub struct Engine {
     record_history: bool,
     snapshots: BTreeMap<u64, inspection::Snapshot>,
     inspections: BTreeMap<u64, inspection::Inspection>,
+    restrictions: restriction::Restrictions,
     last_inspection: Option<u64>,
     inspection_round: Option<u64>,
     latest_inspection: Option<u64>,
@@ -309,6 +311,7 @@ impl Engine {
             record_history,
             snapshots: BTreeMap::new(),
             inspections: BTreeMap::new(),
+            restrictions: restriction::Restrictions::default(),
             last_inspection: None,
             inspection_round: None,
             latest_inspection: None,

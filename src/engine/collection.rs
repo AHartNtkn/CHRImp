@@ -25,6 +25,7 @@ enum Phase {
     Observe,
     Snapshots,
     Inspections,
+    Restrictions,
     RuleStep,
     TrimBirths,
     SeedVariables,
@@ -90,6 +91,7 @@ pub struct Memory {
     pub coordinate_records: usize,
     pub snapshots: usize,
     pub inspections: usize,
+    pub restriction_nodes: usize,
 }
 impl Memory {
     fn total(self) -> usize {
@@ -105,6 +107,7 @@ impl Memory {
             .saturating_add(self.coordinate_records)
             .saturating_add(self.snapshots)
             .saturating_add(self.inspections)
+            .saturating_add(self.restriction_nodes)
     }
 }
 impl Engine {
@@ -124,6 +127,7 @@ impl Engine {
             coordinate_records: self.coordinates.memory(),
             snapshots: self.snapshots.len(),
             inspections: self.inspections.len(),
+            restriction_nodes: self.restrictions.len(),
         }
     }
     pub fn request_collection(&mut self) {
@@ -278,7 +282,7 @@ impl Engine {
                 Phase::Ready => d.ready += 1,
                 Phase::Observe => d.observe += 1,
                 Phase::Snapshots => d.snapshots += 1,
-                Phase::Inspections => d.inspections += 1,
+                Phase::Inspections | Phase::Restrictions => d.inspections += 1,
                 Phase::RuleStep => d.rule_step += 1,
                 Phase::TrimBirths => d.trim_births += 1,
                 Phase::SeedVariables => d.seed_variables += 1,
@@ -530,9 +534,17 @@ impl Engine {
                         }
                     }
                 } else {
-                    c.phase = Phase::RuleStep;
+                    c.phase = Phase::Restrictions;
                 }
             }
+            Phase::Restrictions => match self.restrictions.trace(&mut c.trace) {
+                Step::Root(root) => retain_condition(&mut c.conditions, root),
+                Step::Pending => {}
+                Step::Done => {
+                    c.trace = TraceCursor::default();
+                    c.phase = Phase::RuleStep;
+                }
+            },
             Phase::RuleStep => {
                 match c.trace.optional(self.rule_step.as_ref()) {
                     Step::Root(root) => retain_condition(&mut c.conditions, root),

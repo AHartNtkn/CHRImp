@@ -345,7 +345,7 @@ impl Reader {
         Ok(())
     }
 }
-fn memory(e: &Engine) -> [usize; 13] {
+fn memory(e: &Engine) -> [usize; 14] {
     let m = e.memory();
     [
         m.graph_nodes,
@@ -361,6 +361,7 @@ fn memory(e: &Engine) -> [usize; 13] {
         m.inspections,
         e.pending_tasks(),
         m.release_batches,
+        m.restriction_nodes,
     ]
 }
 fn ms(duration: Duration) -> f64 {
@@ -546,6 +547,7 @@ fn run_workload(
             coordinate_records: 0 | 1,
             snapshots: 0,
             inspections: 0,
+            restriction_nodes: 0,
         }
     ) && e.pending_tasks() == 0;
     if cleanup_done && !reclaimed_all {
@@ -615,7 +617,7 @@ fn run_workload(
         reader.scalars
     );
     println!(
-        "memory_counts [graph,occurrences,conditions,history_nodes,history_records,pending_nodes,descriptors,choices,coordinates,snapshots,inspections,tasks,release_batches] sampled_peak={peak:?} before_cleanup={before:?} after_cleanup={after:?} reclaimed={reclaimed:?}"
+        "memory_counts [graph,occurrences,conditions,history_nodes,history_records,pending_nodes,descriptors,choices,coordinates,snapshots,inspections,tasks,release_batches,restriction_nodes] sampled_peak={peak:?} before_cleanup={before:?} after_cleanup={after:?} reclaimed={reclaimed:?}"
     );
     println!(
         "cleanup_ticks={cleanup_ticks} cleanup_in_time={cleanup_in_time} cleanup_ms={:.3} engine_drop_ms={:.3} prepared_drop_ms={:.3} validator_peak_bindings={} validator_peak_rows={} validator_answer_ids={}",

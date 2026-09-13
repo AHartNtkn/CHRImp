@@ -568,7 +568,7 @@ fn validate_lambda(e: &Engine, a: &Answer, n: usize) -> Result<(), String> {
     Ok(())
 }
 
-fn memory(e: &Engine) -> [usize; 13] {
+fn memory(e: &Engine) -> [usize; 14] {
     let m = e.memory();
     [
         m.graph_nodes,
@@ -584,6 +584,7 @@ fn memory(e: &Engine) -> [usize; 13] {
         m.inspections,
         e.pending_tasks(),
         m.release_batches,
+        m.restriction_nodes,
     ]
 }
 fn ms(d: Duration) -> f64 {
@@ -798,6 +799,7 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
                     coordinate_records: 0 | 1,
                     snapshots: 0,
                     inspections: 0,
+                    restriction_nodes: 0,
                 }
             ))
     {
@@ -851,7 +853,7 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
         ms(timeout)
     );
     println!(
-        "sampled_peak={peak:?} before_cleanup={before:?} after_cleanup={after:?} reclaimed={reclaimed:?} memory_order=graph,occurrences,conditions,history_nodes,history_records,pending_nodes,descriptors,choices,coordinates,snapshots,inspections,tasks,release_batches (counts; sampled every 2048 ticks and at stop)"
+        "sampled_peak={peak:?} before_cleanup={before:?} after_cleanup={after:?} reclaimed={reclaimed:?} memory_order=graph,occurrences,conditions,history_nodes,history_records,pending_nodes,descriptors,choices,coordinates,snapshots,inspections,tasks,release_batches,restriction_nodes (counts; sampled every 2048 ticks and at stop)"
     );
     println!(
         "cleanup_ticks={cleanup_ticks} cleanup_in_time={cleanup_in_time} cleanup_ms={:.3} cleanup_status={} validator_peak_rows={} validator_peak_ports={} validator_answer_ids={} validator_triples={} (one answer retained; identities and arithmetic multiplicity metadata retained)",

@@ -11,8 +11,8 @@ pub fn emit(kind: &str, mut data: Value) {
     );
 }
 
-pub fn memory(values: [usize; 13]) -> Value {
-    const NAMES: [&str; 13] = [
+pub fn memory(values: [usize; 14]) -> Value {
+    const NAMES: [&str; 14] = [
         "graph_nodes",
         "occurrences",
         "conditions",
@@ -26,6 +26,7 @@ pub fn memory(values: [usize; 13]) -> Value {
         "inspections",
         "pending_tasks",
         "release_batches",
+        "restriction_nodes",
     ];
     NAMES
         .into_iter()
