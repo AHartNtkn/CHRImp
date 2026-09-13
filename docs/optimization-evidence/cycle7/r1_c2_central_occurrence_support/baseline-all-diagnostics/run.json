@@ -1,0 +1,18 @@
+{
+  "command": [
+    "cargo",
+    "+nightly",
+    "test",
+    "--offline",
+    "--release",
+    "--features",
+    "diagnostics",
+    "--all-targets"
+  ],
+  "cwd": "/tmp/chr-cycle7-opt-central-occurrence-support",
+  "started": "2026-09-13T22:59:19.917746+00:00",
+  "source": "523d3a4a6d7a231d9a6e581cdb8029953c607ff4",
+  "dirty": "?? docs/optimization-evidence/cycle7/r1_c2_central_occurrence_support/\n",
+  "exit_status": 101,
+  "finished": "2026-09-13T22:59:36.243748+00:00"
+}

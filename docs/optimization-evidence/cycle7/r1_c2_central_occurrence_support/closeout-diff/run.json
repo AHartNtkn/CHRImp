@@ -1,0 +1,13 @@
+{
+  "command": [
+    "git",
+    "diff",
+    "--check"
+  ],
+  "cwd": "/tmp/chr-cycle7-opt-central-occurrence-support",
+  "started": "2026-09-13T23:10:24.368255+00:00",
+  "source": "523d3a4a6d7a231d9a6e581cdb8029953c607ff4",
+  "dirty": "?? docs/optimization-evidence/cycle7/r1_c2_central_occurrence_support/\n",
+  "exit_status": 0,
+  "finished": "2026-09-13T23:10:24.374335+00:00"
+}

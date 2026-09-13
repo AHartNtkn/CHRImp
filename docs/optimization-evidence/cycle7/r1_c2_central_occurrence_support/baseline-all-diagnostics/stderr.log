@@ -1,0 +1,10 @@
+   Compiling chr v0.1.0 (/tmp/chr-cycle7-opt-central-occurrence-support)
+    Finished `release` profile [optimized] target(s) in 15.93s
+     Running unittests src/lib.rs (target/release/deps/chr-c3caca7f2213860a)
+     Running unittests src/main.rs (target/release/deps/chr-7dd3924609ad1f78)
+     Running tests/arc_ownership.rs (target/release/deps/arc_ownership-630eb2524e89d520)
+     Running tests/balanced.rs (target/release/deps/balanced-4e0c21fd666449d3)
+     Running tests/cancel.rs (target/release/deps/cancel-3ddb314427f89e16)
+     Running tests/central_support.rs (target/release/deps/central_support-6a762eff65cc61d5)
+     Running tests/cli.rs (target/release/deps/cli-346cf51f2471214e)
+error: test failed, to rerun pass `--test cli`

@@ -1,0 +1,19 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling serde_core v1.0.229
+   Compiling zmij v1.0.23
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.151
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling syn v3.0.4
+   Compiling serde_derive v1.0.229
+   Compiling chr v0.1.0 (/tmp/chr-cycle7-opt-central-occurrence-support)
+    Finished `release` profile [optimized] target(s) in 11.46s
+     Running tests/central_support.rs (target/release/deps/central_support-6a762eff65cc61d5)
+     Running tests/graph.rs (target/release/deps/graph-1fa5303be2669686)
+     Running tests/graph_prune.rs (target/release/deps/graph_prune-0387a170f845256f)
+     Running tests/identity.rs (target/release/deps/identity-4f1e0430c55fa812)
+     Running tests/matching.rs (target/release/deps/matching-bc5843329a6c829b)
+     Running tests/shared_restrictions.rs (target/release/deps/shared_restrictions-9b02cd3b0cab813f)

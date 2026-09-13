@@ -1,0 +1,81 @@
+
+running 2 tests
+test support_counters_charge_real_reads_and_updates ... ok
+test pinned_cursors_keep_conditional_support_and_equal_tuple_occurrences ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test an_unpublished_post_survives_collection_and_finishes_its_indexes ... ok
+test collection_traces_live_conditions_and_retained_inspections_only ... ok
+test invalid_posts_are_rejected_before_allocating_occurrences ... ok
+test conditional_consumption_updates_every_index_without_changing_sibling_support ... ok
+test posting_preserves_port_order_multiplicity_and_coherent_snapshots ... ok
+test unchanged_liveness_does_not_rewalk_ports_or_allocate_index_versions ... ok
+test owned_collection_freezes_metadata_and_pending_updates_until_drop ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test active_filter_updates_all_occurrence_indexes_and_old_snapshots_remain_valid ... ok
+test noop_nullary_occurrences_and_owned_protocol_checks ... ok
+test certified_true_keeps_conditional_facts_and_gc_roots ... ok
+test explicit_pending_variables_are_seeded_conditionally_and_duplicates_union ... ok
+test live_raw_arguments_keep_bridge_ancestors_and_only_reachable_reverse_members ... ok
+test conditional_opposite_parent_directions_reach_a_support_fixedpoint ... ok
+test certified_no_identity_prune_work_is_independent_of_occurrence_count ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 10 tests
+test identity_tests_are_nonbinding_and_merges_are_conditional ... ok
+test opposite_parent_directions_in_siblings_do_not_create_a_logical_cycle ... ok
+test uniform_resolution_validates_scope_and_releases_discarded_frontiers ... ok
+test uniform_parent_walks_yield_per_edge_and_preserve_conditional_boundaries ... ok
+test staged_union_survives_graph_and_condition_collection_at_every_tick ... ok
+test nested_identity_traces_survive_gc_through_all_merge_equal_and_resolve_phases ... ok
+test resolve_discard_drains_large_pending_and_visited_maps_with_gc_each_step ... ok
+test rank_prevents_adversarial_descending_alias_chains ... ok
+test resolve_large_visited_map_cleanup_yields_one_record_per_tick ... ok
+test projected_equivalence_matches_independent_union_find_oracles ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 14 tests
+test indexed_port_does_not_replace_other_repeated_variable_guards ... ok
+test equal_rows_still_require_distinct_occurrences_and_preserve_head_order ... ok
+test repeated_variables_only_match_identity_that_already_holds ... ok
+test alias_sensitive_cross_predicate_join_retains_its_condition_through_collection ... ok
+test small_relation_lookup_does_not_enumerate_large_alias_class ... ok
+test selective_join_uses_bound_ports_instead_of_scanning_the_relation ... ok
+test fully_bound_correlation_lookup_does_not_scan_individual_port_buckets ... ok
+test output_only_binary_rewrite_preserves_linear_work_without_unused_indexes ... ok
+test interrupted_alias_planning_discards_incrementally_under_collection ... ok
+test three_head_joins_restore_bindings_after_failed_prefixes_and_allow_any_anchor ... ok
+test selective_alias_buckets_preserve_all_port_and_row_supports_during_collection ... ok
+test rejected_three_head_prefix_uses_empty_partner_before_broad_partner ... ok
+test tuple_buckets_recheck_collisions_swapped_ports_and_conditional_aliases ... ok
+test skewed_multi_bound_join_selects_small_buckets_in_either_port_order ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+
+running 11 tests
+test empty_bucket_dependency_changes_when_its_first_row_arrives ... ok
+test late_conditional_alias_uses_general_matching_without_poisoning_old_restriction ... ok
+test different_productive_values_share_partitions_with_independent_positions_and_support ... ok
+test relevant_insertions_and_liveness_changes_preserve_old_snapshots ... ok
+test paused_subscriber_survives_other_progress_cancellation_and_collection ... ok
+test abandoned_partial_producer_is_never_a_completed_negative_answer ... ok
+test registry_eviction_keeps_live_consumers_valid_and_bounds_retention ... ok
+test unrelated_posts_share_the_correlated_scan_across_graph_versions ... ok
+test unfinished_producer_is_protected_by_surviving_subscribers_different_snapshot ... ok
+test distinct_binding_values_share_one_projection_per_bucket ... ok
+test wider_and_larger_restrictions_continue_through_the_general_matcher ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+

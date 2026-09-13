@@ -11,3 +11,13 @@ The focused fixture passed 2 ordinary and 2 diagnostics release tests, including
 Baseline evidence and worker artifacts are preserved under [cycle-7 candidate evidence](optimization-evidence/cycle7/r1_c1_transient_control_lowering/). The worker branch/commit was `codex/opt/transient-control-lowering` / `981302f`; its strongest untested follow-up is a virtual committed-occurrence representation with explicit promotion to the general graph on observation/escape. That is a materially different representation question, not an automatic continuation follow-up.
 
 The next candidate is the independent `central_occurrence_support` simplification: test whether one versioned occurrence-support authority can remove duplicated support rewrites and their release work without increasing dead-posting scans or retained snapshot state. A separate `segmented_graph_ownership` candidate remains in this round for breadth.
+
+## Round 1, candidate 2: central occurrence support
+
+**Status:** BLOCKED. The worker completed a diagnostics/pinned-root slice but no central-support implementation or workload comparison; diagnostics-only code is not an optimization result.
+
+The slice added counters for fact-support accesses, secondary support writes, and secondary-row reads, plus a pinned-cursor fixture covering conditional support, equal-tuple multiplicity, old roots, and eventual reclamation. Fifty-one focused release/diagnostics tests passed. The counters establish the event boundary needed for a later implementation, but do not establish avoided work, allocation, retention, or non-inferiority. The full diagnostics run hit the same notebook CLI startup assertion recorded in candidate 1; no broad-suite pass is claimed.
+
+Evidence is preserved under [candidate 2 evidence](optimization-evidence/cycle7/r1_c2_central_occurrence_support/). The diagnostic branch/commit is `codex/opt/central-occurrence-support` / `523d3a4`; it remains unintegrated. The hypothesis is unresolved because pruning, coordinate substitution, pinned versions, and dead-posting reclamation still need an implementation-level comparison.
+
+The final round-1 candidate is the materially different `segmented_graph_ownership` hypothesis: test whether region-level graph ownership can eliminate per-node release traversal and collection bookkeeping without survivor-copy, cross-region, or retained-reader costs replacing it.
