@@ -1,0 +1,4 @@
+   Compiling chr v0.1.0 (/tmp/chr-cycle7-opt-unused-port-index)
+    Finished `release` profile [optimized] target(s) in 5.92s
+     Running unittests src/lib.rs (target/release/deps/chr-c3caca7f2213860a)
+error: test failed, to rerun pass `--lib`

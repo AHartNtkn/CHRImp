@@ -1,0 +1,31 @@
+{
+  "status": "failed",
+  "returncode": 101,
+  "limit_reason": null,
+  "descendants_signaled_after_exit": false,
+  "descendant_pids": [],
+  "group_cleanup_complete": true,
+  "launch_parent_rss_kib": 15552,
+  "wall_seconds": 6.120770272100344,
+  "user_cpu_seconds": 12.188015,
+  "system_cpu_seconds": 0.491396,
+  "max_rss_kib": 194596,
+  "minor_faults": 215784,
+  "major_faults": 61,
+  "voluntary_context_switches": 5178,
+  "involuntary_context_switches": 899,
+  "filesystem_input_blocks": 0,
+  "filesystem_output_blocks": 24696,
+  "scope": "Managed original process group only, not containment for commands that change sessions/groups. Linux wait4 includes launcher/pre-exec work and leader plus waited descendants; max_rss is a high-water mark, not summed tree RSS; CPU includes harness/output/cleanup; block counts are kernel accounting, not byte or syscall counts",
+  "limits": {
+    "wall_seconds": 300,
+    "interrupt_grace_seconds": 1,
+    "group_cleanup_grace_seconds": 1,
+    "address_space_mib_per_process": 2048,
+    "file_mib_per_file": 256,
+    "cpu_soft_seconds_per_process": 300,
+    "cpu_hard_seconds_per_process": 301
+  },
+  "source": "cc6ce6a78fbc83b283b2ddce1ad7594d65d8ac92",
+  "dirty": " M src/engine.rs\n M src/graph.rs\n M src/graph/restriction.rs\n M src/program.rs\n?? docs/optimization-evidence/cycle7/r2_c1_unused_port_index_omission/focused-j2/\n?? docs/optimization-evidence/cycle7/r2_c1_unused_port_index_omission/focused/\n?? docs/optimization-evidence/cycle7/r2_c1_unused_port_index_omission/run.py\n?? tests/unused_port_observation.rs\n"
+}
