@@ -74,7 +74,7 @@ fn unrelated_posts_share_the_correlated_scan_across_graph_versions() {
     assert_eq!(work.created, 1);
     assert_eq!(work.reused, 7);
     assert_eq!(work.producer_candidates, 64, "the initial scan is charged");
-    assert_eq!(work.retained_rows, 0);
+    assert_eq!(work.retained_rows, 64);
     assert!(
         visits <= 64 + 8,
         "independent anchors repeated the restriction: {visits}"
@@ -396,4 +396,142 @@ fn wider_and_larger_restrictions_continue_through_the_general_matcher() {
         assert_eq!(g.restriction_diagnostics().created, 0);
         assert_eq!(g.restriction_diagnostics().producer_candidates, 0);
     }
+}
+
+#[test]
+fn distinct_binding_values_share_one_projection_per_bucket() {
+    let n = 8;
+    let c = code();
+    let mut g = Graph::new(c.signatures());
+    let mut root = g.empty();
+    for i in 0..n {
+        for j in 0..n {
+            root = post(&mut g, root, 1, vec![100 + i, 200 + j, 1000 + i * n + j]).0;
+            root = post(&mut g, root, 1, vec![300 + i, 400 + j, 2000 + i * n + j]).0;
+        }
+    }
+    let mut a = Arena::default();
+    for i in 0..n {
+        for j in 0..n {
+            let (next, p) = post(&mut g, root, 0, vec![100 + i, 400 + j, 3000 + i * n + j]);
+            root = next;
+            let mut m = Matches::new(
+                &g,
+                root.clone(),
+                c.clone(),
+                0,
+                Condition::TRUE,
+                Some((0, p)),
+            )
+            .unwrap();
+            assert!(drain(&mut m, &g, &mut a).is_empty());
+        }
+    }
+    let work = g.restriction_diagnostics();
+    assert_eq!(
+        work.producer_candidates,
+        n * n,
+        "one input pass per queried bucket, not one per binding tuple"
+    );
+    assert_eq!(work.created, n);
+    assert_eq!(work.reused, n * n - n);
+    assert_eq!(
+        work.retained_rows,
+        (n * n) as usize,
+        "every partitioned input row is charged even for empty queries"
+    );
+}
+
+#[test]
+fn different_productive_values_share_partitions_with_independent_positions_and_support() {
+    let n = 4;
+    let c = code();
+    let mut g = Graph::new(c.signatures());
+    let mut root = g.empty();
+    let mut a = Arena::default();
+    let (_, choice) = a.fresh_choice();
+    let mut expected = vec![vec![]; (n * n) as usize];
+    // Equal port cardinalities choose X. Interleave different partition values
+    // between duplicates so a paused cursor must follow its own appended links.
+    for copy in 0..2 {
+        for i in 0..n {
+            for j in 0..n {
+                let mut update = g
+                    .post(
+                        root,
+                        1,
+                        vec![100 + i, 200 + j, 1000 + i * n + j],
+                        if copy == 0 { Condition::TRUE } else { choice },
+                    )
+                    .unwrap();
+                expected[(i * n + j) as usize].push(update.occurrence());
+                root = loop {
+                    if let UpdateStatus::Complete(r) = update.tick(&mut g) {
+                        break r;
+                    }
+                };
+            }
+        }
+    }
+    for i in 0..n {
+        let (next, p) = post(&mut g, root, 0, vec![100 + i, 200, 2000 + i * n]);
+        root = next;
+        let mut paused = Matches::new(
+            &g,
+            root.clone(),
+            c.clone(),
+            0,
+            Condition::TRUE,
+            Some((0, p)),
+        )
+        .unwrap();
+        let mut first = None;
+        for _ in 0..10000 {
+            match paused.tick(&g, &mut a) {
+                MatchStatus::Found(m) => {
+                    first = Some(m);
+                    break;
+                }
+                MatchStatus::Pending => {}
+                MatchStatus::Done => panic!("first productive partition is missing"),
+            }
+        }
+        let first = first.expect("first productive partition must progress");
+        assert_eq!(first.occurrences, [p, expected[(i * n) as usize][0]]);
+        assert_eq!(first.support, Condition::TRUE);
+        for j in 1..n {
+            let (next, q) = post(&mut g, root, 0, vec![100 + i, 200 + j, 2000 + i * n + j]);
+            root = next;
+            let scope = if j % 2 == 0 { Condition::TRUE } else { choice };
+            let mut other =
+                Matches::new(&g, root.clone(), c.clone(), 0, scope, Some((0, q))).unwrap();
+            let matches = drain(&mut other, &g, &mut a);
+            assert_eq!(matches.len(), 2);
+            assert_eq!(
+                matches.iter().map(|m| m.occurrences[1]).collect::<Vec<_>>(),
+                expected[(i * n + j) as usize]
+            );
+            assert!(matches.iter().all(|m| m.occurrences[0] == q));
+            assert_eq!(matches[0].support, scope);
+            assert_eq!(matches[1].support, choice);
+        }
+        let remaining = drain(&mut paused, &g, &mut a);
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].occurrences, [p, expected[(i * n) as usize][1]]);
+        assert_eq!(remaining[0].support, choice);
+    }
+    let work = g.restriction_diagnostics();
+    assert_eq!(work.created, n);
+    assert_eq!(work.reused, n * (n - 1));
+    assert_eq!(work.producer_candidates, 2 * n * n);
+    assert_eq!(work.projected_ports, 2 * n * n);
+    assert_eq!(work.retained_rows, (2 * n * n) as usize);
+    assert_eq!(work.retained_partitions, (n * n) as usize);
+    let mut collector = g.collect(vec![root].into_iter());
+    while !collector.done() {
+        collector.tick(&mut g);
+    }
+    drop(collector);
+    assert_eq!(g.restriction_diagnostics().retained_rows, 0);
+    assert_eq!(g.restriction_diagnostics().retained_partitions, 0);
 }

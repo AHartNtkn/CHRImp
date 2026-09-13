@@ -1,9 +1,9 @@
-//! Snapshot-valid raw multiport restrictions. A bounded registry shares one
-//! producer; each subscriber owns its position and scope outside this module.
+//! Snapshot-valid projected bucket arrangements. A bounded registry shares one
+//! producer per queried bucket/mask; subscribers own values, position and scope.
 //! Only singleton-bound inputs qualify. Cached rows carry no Condition handles.
 use super::{Graph, Occurrences, PORT};
 use crate::store::{Root, WeakRoot};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 // This configuration bounds planning, retention and teardown. Wider/larger
@@ -17,8 +17,12 @@ const CAPACITY: usize = 32;
 pub struct RestrictionDiagnostics {
     pub created: u64,
     pub reused: u64,
-    /// Raw occurrence inspections moved into shared producers, not eliminated.
+    /// Raw row inspections: each includes one projection and partition insertion.
     pub producer_candidates: u64,
+    pub projected_ports: u64,
+    pub partition_lookups: u64,
+    pub retained_partitions: usize,
+    pub peak_retained_partitions: usize,
     pub retained_rows: usize,
     pub peak_retained_rows: usize,
     pub entries: usize,
@@ -33,7 +37,8 @@ pub(crate) struct Cache {
 struct Key {
     relation: usize,
     port: usize,
-    bound: [Option<u64>; MAX_PORTS],
+    variable: u64,
+    mask: u8,
 }
 struct Entry {
     key: Key,
@@ -44,7 +49,8 @@ struct Entry {
 }
 struct Producer {
     cursor: Option<Occurrences>,
-    rows: Vec<u64>,
+    rows: Vec<PartitionRow>,
+    partitions: HashMap<[u64; MAX_PORTS], Partition>,
     subscribers: usize,
     done: bool,
     abandoned: bool,
@@ -52,12 +58,26 @@ struct Producer {
 #[cfg(feature = "diagnostics")]
 impl Drop for Entry {
     fn drop(&mut self) {
-        self.stats.lock().unwrap().retained_rows -= self.state.get_mut().unwrap().rows.len();
+        let p = self.state.get_mut().unwrap();
+        let mut stats = self.stats.lock().unwrap();
+        stats.retained_rows -= p.rows.len();
+        stats.retained_partitions -= p.partitions.len();
     }
+}
+// Both buffers have trivial elements: eviction frees buffers without walking
+// per-partition allocation chains. Links remain stable across vector growth.
+struct PartitionRow {
+    occurrence: u64,
+    next: Option<usize>,
+}
+struct Partition {
+    first: usize,
+    last: usize,
 }
 pub(crate) struct Subscriber {
     entry: Arc<Entry>,
-    position: usize,
+    values: [u64; MAX_PORTS],
+    last: Option<usize>,
 }
 pub(crate) enum Status {
     Pending,
@@ -79,33 +99,63 @@ impl Subscriber {
     /// can advance production; lagging/paused subscribers never block another.
     pub(crate) fn tick(&mut self, g: &Graph) -> Status {
         let mut p = self.entry.state.lock().unwrap();
-        if let Some(&id) = p.rows.get(self.position) {
-            self.position += 1;
-            return Status::Found(id);
+        let next = if let Some(last) = self.last {
+            p.rows[last].next
+        } else {
+            #[cfg(feature = "diagnostics")]
+            {
+                self.entry.stats.lock().unwrap().partition_lookups += 1;
+            }
+            p.partitions
+                .get(&self.values)
+                .map(|partition| partition.first)
+        };
+        if let Some(next) = next {
+            self.last = Some(next);
+            return Status::Found(p.rows[next].occurrence);
         }
         if p.done {
             return Status::Done;
         }
         if let Some((id, _)) = p.cursor.as_mut().expect("live subscriber").next(g) {
+            let args = g.arguments(id);
+            let mut values = [0; MAX_PORTS];
+            for port in 0..MAX_PORTS {
+                if self.entry.key.mask & (1 << port) != 0 {
+                    values[port] = args[port];
+                }
+            }
+            let next = p.rows.len();
+            p.rows.push(PartitionRow {
+                occurrence: id,
+                next: None,
+            });
+            if let Some(partition) = p.partitions.get_mut(&values) {
+                let last = partition.last;
+                partition.last = next;
+                p.rows[last].next = Some(next);
+            } else {
+                p.partitions.insert(
+                    values,
+                    Partition {
+                        first: next,
+                        last: next,
+                    },
+                );
+            }
             #[cfg(feature = "diagnostics")]
             {
-                self.entry.stats.lock().unwrap().producer_candidates += 1;
-            }
-            let args = g.arguments(id);
-            if self
-                .entry
-                .key
-                .bound
-                .iter()
-                .enumerate()
-                .all(|(port, bound)| bound.is_none_or(|x| args[port] == x))
-            {
-                p.rows.push(id);
-                #[cfg(feature = "diagnostics")]
-                {
-                    let mut stats = self.entry.stats.lock().unwrap();
-                    stats.retained_rows += 1;
-                    stats.peak_retained_rows = stats.peak_retained_rows.max(stats.retained_rows);
+                let mut stats = self.entry.stats.lock().unwrap();
+                stats.producer_candidates += 1;
+                stats.projected_ports += self.entry.key.mask.count_ones() as u64;
+                stats.retained_rows += 1;
+                stats.peak_retained_rows = stats.peak_retained_rows.max(stats.retained_rows);
+                // A first link denotes a newly created partition.
+                if p.partitions[&values].first == next {
+                    stats.retained_partitions += 1;
+                    stats.peak_retained_partitions = stats
+                        .peak_retained_partitions
+                        .max(stats.retained_partitions);
                 }
             }
         } else {
@@ -152,10 +202,22 @@ impl Graph {
         }
         let prefix = [PORT, self.port_bases[relation] + port as u64, variable, 0];
         let dependency = self.index.prefix_root(root, prefix, 3);
+        let mut values = [0; MAX_PORTS];
+        let mut mask = 0;
+        for (i, value) in bound.iter().enumerate() {
+            // The chosen port's value identifies the bucket itself.
+            if i != port {
+                if let Some(value) = value {
+                    mask |= 1 << i;
+                    values[i] = *value;
+                }
+            }
+        }
         let key = Key {
             relation,
             port,
-            bound,
+            variable,
+            mask,
         };
         let cache = &self.shared_restrictions;
         let mut entries = cache.entries.lock().unwrap();
@@ -170,7 +232,8 @@ impl Graph {
                     }
                     return Some(Subscriber {
                         entry: entry.clone(),
-                        position: 0,
+                        values,
+                        last: None,
                     });
                 }
             }
@@ -190,6 +253,7 @@ impl Graph {
                     id_word: 3,
                 }),
                 rows: Vec::new(),
+                partitions: HashMap::new(),
                 subscribers: 1,
                 done: false,
                 abandoned: false,
@@ -205,6 +269,10 @@ impl Graph {
         {
             cache.stats.lock().unwrap().created += 1;
         }
-        Some(Subscriber { entry, position: 0 })
+        Some(Subscriber {
+            entry,
+            values,
+            last: None,
+        })
     }
 }
