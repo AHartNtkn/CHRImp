@@ -6,32 +6,31 @@ goal:
   tranche: Comparative architectural exploration through a defensible recommendation
   status: active
   oracle:
-    signal: Working comparisons resolve major architectural hypotheses and consequential
-      combinations.
+    signal: Working comparisons resolve major architectural hypotheses and consequential combinations.
     cadence: After decision-changing experiments and at completion.
-    final_proof: Comparative recommendation with gains, adverse regimes, semantic
-      evidence and remaining decision-relevant uncertainty.
+    final_proof: Comparative recommendation with gains, adverse regimes, semantic evidence
+      and remaining decision-relevant uncertainty.
   intake:
-    original_request: Define the best exploration strategy, create a goal and follow
-      it; avoid microoptimization and expanding obligations.
-    interpreted_outcome: Identify the strongest supported architectural configuration
-      or tradeoff frontier through bounded experiments.
+    original_request: Define the best exploration strategy, create a goal and follow it; avoid
+      microoptimization and expanding obligations.
+    interpreted_outcome: Identify the strongest supported architectural configuration or tradeoff
+      frontier through bounded experiments.
     input_shape: specific
     audience: Language owner
     authority: requested
     proof_type: decision
-    completion_proof: Executable evidence supports the leading architectural claims
-      and the recommendation.
-    likely_misfire: Accumulating small improvements, research artifacts or mandatory
-      candidates instead of resolving architectural choices.
+    completion_proof: Executable evidence supports the leading architectural claims and the
+      recommendation.
+    likely_misfire: Accumulating small improvements, research artifacts or mandatory candidates
+      instead of resolving architectural choices.
     blind_spots_considered:
       - Interactions can reverse individual gains.
       - Unknown mathematical workloads exceed supplied synthesis examples.
       - Sharing already exists; representation cost and repeated derivations are separate
         questions.
     existing_plan_facts:
-      - Five independent agents are running with different priorities and no supplied
-        conversation history.
+      - Five independent agents are running with different priorities and no supplied conversation
+        history.
 rules:
   pm_owns_state: true
   one_active_task: true
@@ -63,14 +62,14 @@ visual_board:
     url: null
   reason: Use concise file state; a visual process surface does not advance this architectural
     decision.
-active_task: T005
+active_task: T006
 tasks:
   - id: T001
     type: pm
     assignee: PM
     status: done
-    objective: Synthesize independent priority investigations into distinct hypotheses
-      and select the first decision-changing experiment.
+    objective: Synthesize independent priority investigations into distinct hypotheses and
+      select the first decision-changing experiment.
     inputs:
       - Five running independent research agents
       - ../../behavior-synthesis-performance.md
@@ -82,18 +81,18 @@ tasks:
       - Leading configurations, comparative rationale and one bounded experiment specification.
     receipt:
       result: done
-      summary: Four distinct hypotheses identified; simple exclusive-control fusion
-        has no eligible behavior-synthesis predicates; abstract failure requires finite
-        operational coverage. Selected a bounded baseline discriminator before commissioning
-        whole-head runtime work.
+      summary: Four distinct hypotheses identified; simple exclusive-control fusion has no
+        eligible behavior-synthesis predicates; abstract failure requires finite operational
+        coverage. Selected a bounded baseline discriminator before commissioning whole-head
+        runtime work.
       note: notes/T001-hypotheses.md
       harness: codex
   - id: T002
     type: pm
     assignee: PM
     status: done
-    objective: Measure whether whole-head reasoning can avoid substantial candidate
-      scaling on the proposed witness; choose whether it merits a prototype.
+    objective: Measure whether whole-head reasoning can avoid substantial candidate scaling
+      on the proposed witness; choose whether it merits a prototype.
     inputs:
       - notes/T001-hypotheses.md
       - examples/measure.rs
@@ -110,9 +109,9 @@ tasks:
       - The witness fails to establish the predicted avoidable scaling.
     receipt:
       result: done
-      summary: 35 completed observations validated exactly; empty-join 32-to-64 growth
-        raises median completion from 80.26 to 691.77 ms. Whole-head feasibility warrants
-        a prototype; no runtime code changed.
+      summary: 35 completed observations validated exactly; empty-join 32-to-64 growth raises
+        median completion from 80.26 to 691.77 ms. Whole-head feasibility warrants a prototype;
+        no runtime code changed.
       note: notes/T002-baseline.md
       harness: codex
       commands:
@@ -123,9 +122,8 @@ tasks:
     type: worker
     assignee: Worker
     status: done
-    objective: Implement a bounded source-driven comparison of whole-head feasibility
-      and on-demand query plans in an isolated prototype; test correctness before
-      timing.
+    objective: Implement a bounded source-driven comparison of whole-head feasibility and
+      on-demand query plans in an isolated prototype; test correctness before timing.
     inputs:
       - notes/T002-baseline.md
       - /tmp/chr-arch-whole-head
@@ -136,10 +134,10 @@ tasks:
       - cargo build --offline --release --example arch_whole_head
       - Exact relational output comparison with baseline on supported program class
     stop_if:
-      - '45-minute implementation budget expires: return concrete result/remaining
-        uncertainty, no automatic extension.'
-      - Supporting the hypothesis requires full engine integration; do not expand
-        prototype silently.
+      - '45-minute implementation budget expires: return concrete result/remaining uncertainty,
+        no automatic extension.'
+      - Supporting the hypothesis requires full engine integration; do not expand prototype
+        silently.
     receipt:
       result: done
       changed_files:
@@ -149,13 +147,12 @@ tasks:
           status: pass
         - cmd: cargo build --offline --release --example arch_whole_head
           status: pass
-        - cmd: 'Bounded supervisor campaign: all 55 completed observations exact;
-            five Engine observations honestly censored'
+        - cmd: 'Bounded supervisor campaign: all 55 completed observations exact; five Engine
+            observations honestly censored'
           status: pass
-      summary: Whole-head feasibility avoids 16.8 million candidates with 258 probes
-        at n256; ~142x total-process gain over on-demand in same executor. No benefit
-        established on connected/dense controls; general maintained views not justified
-        by this static result.
+      summary: Whole-head feasibility avoids 16.8 million candidates with 258 probes at n256;
+        ~142x total-process gain over on-demand in same executor. No benefit established on
+        connected/dense controls; general maintained views not justified by this static result.
       note: notes/T003-comparison.md
       commit: c95cc9f6b9231c84f67564930327e198fdc79ddd
       harness: codex
@@ -164,8 +161,8 @@ tasks:
     type: pm
     assignee: PM
     status: done
-    objective: Select and scope a representation-lowering experiment that includes
-      conditional structural normalization and actual evaluator interaction.
+    objective: Select and scope a representation-lowering experiment that includes conditional
+      structural normalization and actual evaluator interaction.
     inputs:
       - notes/T001-hypotheses.md
       - notes/T003-comparison.md
@@ -176,17 +173,17 @@ tasks:
     agent_id: 01a09935-dd83-7411-9e01-d83f1cbd9efa
     receipt:
       result: done
-      summary: Scoped direct conditional normalization integrated with shared graph
-        roots, using baseline/priority/direct attribution controls. Recognized subsystem
-        becomes direct operations while other evaluator rules remain general.
+      summary: Scoped direct conditional normalization integrated with shared graph roots,
+        using baseline/priority/direct attribution controls. Recognized subsystem becomes
+        direct operations while other evaluator rules remain general.
       note: notes/T004-structural-experiment.md
       harness: codex
   - id: T005
     type: worker
     assignee: Worker
-    status: active
-    objective: Implement and validate the bounded direct structural-normalization
-      experiment in an isolated worktree.
+    status: done
+    objective: Implement and validate the bounded direct structural-normalization experiment
+      in an isolated worktree.
     inputs:
       - notes/T004-structural-experiment.md
       - /tmp/chr-arch-structural
@@ -209,21 +206,70 @@ tasks:
       - /tmp/chr-arch-structural/tests/constructor_lowering.rs
     verify:
       - Focused recognition/normalization source-semantics tests
-      - Existing affected identity, semantics, progress, lifecycle and observation
-        tests
+      - Existing affected identity, semantics, progress, lifecycle and observation tests
       - Release build of experimental command
     stop_if:
       - 90-minute initial budget expires; report evidence and remaining uncertainty.
       - A different identity or evaluator foundation is necessary; report the architectural
         finding instead of silently expanding this package.
     agent_id: 01a09935-dd83-7411-9e01-d83f1cbd9efa
+    receipt:
+      result: done
+      changed_files:
+        - /tmp/chr-arch-structural/src/program.rs
+        - /tmp/chr-arch-structural/src/program/constructors.rs
+        - /tmp/chr-arch-structural/src/graph.rs
+        - /tmp/chr-arch-structural/src/graph/constructors.rs
+        - /tmp/chr-arch-structural/src/identity.rs
+        - /tmp/chr-arch-structural/src/engine.rs
+        - /tmp/chr-arch-structural/src/engine/normalization.rs
+        - /tmp/chr-arch-structural/src/wake.rs
+        - /tmp/chr-arch-structural/src/graph/prune.rs
+        - /tmp/chr-arch-structural/src/engine/collection.rs
+        - /tmp/chr-arch-structural/src/engine/cancel.rs
+        - /tmp/chr-arch-structural/src/engine/compact.rs
+        - /tmp/chr-arch-structural/src/engine/obligations.rs
+        - /tmp/chr-arch-structural/src/engine/diagnostics.rs
+        - /tmp/chr-arch-structural/examples/constructor_probe.rs
+        - /tmp/chr-arch-structural/tests/constructor_lowering.rs
+      summary: Direct normalization gives 3.57x over priority on controlled 256-description
+        input and 1.49x on unrestricted identity. B/W remain censored; deterministic cancellation
+        diagnosis verifies eventual reclamation and reveals substantial coordinate-compaction
+        work.
+      commands:
+        - cmd: 'Parent: cargo test --offline --release --test constructor_lowering (12 tests),
+            release constructor_probe build'
+          status: pass
+        - cmd: 60 completed bounded comparative observations; exact field/partition oracles
+            on controlled cases
+          status: pass
+        - cmd: 'Deterministic W cancellation checkpoint: no source progress after cancel,
+            eventual zero engine storage; original cleanup allowance censored'
+          status: pass
+      note: notes/T005-comparison.md
+      commit: f2cf1ceb094ebd7f1386992563c9089ea711c478
+      harness: codex
+  - id: T006
+    type: pm
+    assignee: PM
+    status: active
+    objective: Select a consequential next architecture experiment from observed conditional-state
+      rebuilding costs and independently assessed reuse opportunities.
+    inputs:
+      - notes/T005-comparison.md
+      - /tmp/chr-structural-cancel-position.log
+      - Targeted sharing, adverse-workload and search-reuse studies
+    constraints:
+      - Source studies first; no loop tuning or automatic prototype expansion.
+      - No combined whole-head/normalization experiment without meaningful interaction.
+      - Bound each targeted study to 10 minutes; choose one next decision or conclude the
+        frontier is sufficient.
     receipt: null
   - id: T999
     type: pm
     assignee: PM
     status: queued
-    objective: Determine whether comparative evidence now supports the architectural
-      recommendation.
+    objective: Determine whether comparative evidence now supports the architectural recommendation.
     inputs:
       - Selected experiment results
     expected_output:
