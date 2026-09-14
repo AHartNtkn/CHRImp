@@ -1,9 +1,11 @@
 # Rehearse 001: certified structural field updates
 
-Recommendation: **DISCARD the evaluated candidate**, retaining this experiment
-commit for inspection. Accepted baseline: `e96efeef47a0de272ec3f24fd9169b270c36581d`.
-The evaluated revision is the commit containing this report, on
-`codex/opt/theory-derived-execution`. No parent-checkout edits or integration.
+Original implementor recommendation: **DISCARD the evaluated candidate**. That
+recommendation is superseded by the corrected campaign disposition below.
+Corrected campaign disposition: **KEEP the evaluated candidate**. Accepted
+baseline before this experiment: `e96efeef47a0de272ec3f24fd9169b270c36581d`.
+The evaluated revision is commit `f7dd15e6408e0f912aeeaef8c156faf80727ba68`,
+integrated on `codex/shared-relational-engine` by landing commit `01d5d60`.
 Historical cycle-7 BLOCKED labels were not used as campaign controls.
 
 ## Actual implementation and proof boundary
@@ -307,15 +309,17 @@ all possible programs.
 
 ## Decision and materially different follow-up
 
-DISCARD under the current Rehearse/AGENTS priorities. The executable mechanism
-does avoid measured index writes and held nodes, with all tested semantic and
-release obligations intact. But a 2–4% total requested-allocation saving at the
-completed target prefixes, increased I condition residency, small generic
-overheads, and no demonstrated B/C/W equivalent-progress gain do not justify
-the extra compiler/graph/cursor machinery. It is not a simplification, and it
-does not achieve the proposed substantial removal of structural semantic work.
-This conclusion rejects this evaluated slice, not compiler-derived execution
-as an architectural family.
+KEEP under the corrected Rehearse/AGENTS acceptance rule. The executable
+mechanism avoids measured index writes and held nodes, with all tested semantic
+and release obligations intact. It reduces sampled peak graph nodes by 12.77%
+on I and 8.44% on S, lowers S peak requested residency by 9.87%, and avoids
+170/186 structural index writes, without a material semantic, control, or
+reclamation regression. The completed I/S comparisons reach the same validated
+first-answer endpoints; B/C/W remain honestly censored and are not used as
+equivalent-progress savings. The candidate is a scoped representation/storage
+optimization, not a claim of broad semantic-work reduction. The original
+implementor recommendation overweighted whole-process allocation and is
+superseded by this corrected disposition.
 
 A distinct future proposal could represent certified structural occurrences in
 versioned identity/field storage and reconstruct source Post/Application and
