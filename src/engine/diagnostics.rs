@@ -88,6 +88,7 @@ impl DispatchDiagnostics {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Diagnostics {
+    pub waiters: WaiterDiagnostics,
     pub shared: SharedDiagnostics,
     pub advance_iterations: u64,
     pub dispatch: DispatchDiagnostics,
@@ -115,6 +116,18 @@ pub struct Diagnostics {
     pub certificates_published: u64,
     pub output_events: u64,
     pub complete_answers: u64,
+}
+
+/// FIFO lane events, ordered Task / Completion / Collection. Requests include
+/// retries by an owner already holding the lane. Entries count only the FIFO,
+/// not runnable tasks or the current lane reservation. No queue scan is added.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct WaiterDiagnostics {
+    pub requests: [u64; 3],
+    pub enqueued: [u64; 3],
+    pub granted: [u64; 3],
+    pub entries: usize,
+    pub peak_entries: usize,
 }
 
 /// Continuation calls and structural Job/Transform work. Calls include identity,

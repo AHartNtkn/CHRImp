@@ -140,6 +140,10 @@ impl Engine {
             }
             Phase::Waiters => {
                 self.waiting = VecDeque::new(); // Scalar owner IDs only.
+                #[cfg(feature = "diagnostics")]
+                {
+                    self.diagnostics.waiters.entries = 0;
+                }
                 if self.requested.pop_first().is_none() {
                     self.lane = None;
                     self.cancellation.phase = Phase::Roots;

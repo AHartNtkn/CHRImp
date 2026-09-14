@@ -92,6 +92,16 @@ enum Owner {
     Completion,
     Collection,
 }
+#[cfg(feature = "diagnostics")]
+impl Owner {
+    fn diagnostic_slot(self) -> usize {
+        match self {
+            Self::Task(_) => 0,
+            Self::Completion => 1,
+            Self::Collection => 2,
+        }
+    }
+}
 struct Scheduled {
     epoch: Option<Epoch>,
     id: u64,
@@ -512,16 +522,32 @@ impl Engine {
         }
     }
     fn acquire(&mut self, owner: Owner) -> bool {
+        #[cfg(feature = "diagnostics")]
+        {
+            self.diagnostics.waiters.requests[owner.diagnostic_slot()] += 1;
+        }
         if self.lane == Some(owner) {
             return true;
         }
         if self.requested.insert(owner) {
             self.waiting.push_back(owner);
+            #[cfg(feature = "diagnostics")]
+            {
+                let d = &mut self.diagnostics.waiters;
+                d.enqueued[owner.diagnostic_slot()] += 1;
+                d.entries = self.waiting.len();
+                d.peak_entries = d.peak_entries.max(d.entries);
+            }
         }
         if self.lane.is_none() && self.waiting.front() == Some(&owner) {
             self.waiting.pop_front();
             self.requested.remove(&owner);
             self.lane = Some(owner);
+            #[cfg(feature = "diagnostics")]
+            {
+                self.diagnostics.waiters.granted[owner.diagnostic_slot()] += 1;
+                self.diagnostics.waiters.entries = self.waiting.len();
+            }
             return true;
         }
         false
@@ -530,6 +556,11 @@ impl Engine {
         self.lane = self.waiting.pop_front();
         if let Some(owner) = self.lane {
             self.requested.remove(&owner);
+            #[cfg(feature = "diagnostics")]
+            {
+                self.diagnostics.waiters.granted[owner.diagnostic_slot()] += 1;
+                self.diagnostics.waiters.entries = self.waiting.len();
+            }
             if let Owner::Task(id) = owner {
                 #[cfg(feature = "diagnostics")]
                 {
