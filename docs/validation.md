@@ -21,6 +21,14 @@ Notebook tests check execution without browser requests, exact replay of retaine
 
 Fair service includes source work, completion, observation and reclamation. A frozen pending-work view excludes unfinished scopes; children are admitted before their parent obligation retires. The FIFO mutation lane revalidates against current state before publication. Immutable readers and explicit snapshots retain their dependencies. Tests exercise these obligations under divergence, conditional updates, collection and cancellation; they are not a formal proof over every program.
 
+Coordinate unit tests exhaust every source/target pair through 19 sparse
+publications against a Boolean truth table, including repeated keys and segment
+boundaries. They check frozen targets during publication, functional-image
+fallback, collection at transport/discard suspensions, interior retirement,
+cache-only Boolean roots, and bounded composition retention. Existing integration
+tests cover snapshots, inspections, history, runtime replay, held output,
+cancellation and fair finite progress through the same engine.
+
 Prepared programs derive constructor applicability once, and both ordinary and recording engines share that plan. Exact same-tag consistency and complete cross-tag failure rules support conditional identity attachments; whole-program consumer checks protect their validity. Programs outside that admitted class execute general CHR. Recognized disjunctions reuse known conditional tag support, retaining the selected original arm and its field semantics; uncovered support executes the original generative disjunction. Independent choices retain their multiplicity, and cycles require no occurs check.
 
 Structural applications retain their source rule IDs and names. A logical step stops after head consumption with the actual RHS pending; field equalities then execute as source bodies, and terminal failure retains the mutation lane until its active support is updated. Recording captures actual source-corresponding Post, Merge, Application and Failure events. Dispatch inspection exposes only alternatives still pending. History controls recording without selecting a different executor. This schedule need not match historical prototype schedules, so their timing results are not production measurements.

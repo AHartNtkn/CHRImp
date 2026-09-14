@@ -3,7 +3,244 @@ use super::*;
 use crate::condition::Transform;
 use crate::gc::discard_slot;
 use crate::trace::{Cursor as TraceCursor, Step, Trace};
+use std::cell::{Cell, RefCell};
 use std::sync::Weak;
+
+type Map = Arc<BTreeMap<u64, Condition>>;
+const SEGMENT_EPOCHS: usize = 8;
+
+// A single publication needs no run allocation. Runs append immutable maps;
+// retirement empties slots without changing any remaining epoch's identity.
+enum Segment {
+    Single(Map),
+    Run(Box<Run>),
+}
+struct Run {
+    deltas: Vec<Option<Map>>,
+}
+struct Composition {
+    from: u64,
+    to: u64,
+    images: Map,
+}
+// One completed exact prefix across all segments. It never owns an epoch lease:
+// the first retired map in its interval invalidates it. Trace both Boolean roots
+// until then, even when the original transport has been dropped.
+#[derive(Clone, Copy)]
+struct Prefix {
+    from: u64,
+    to: u64,
+    input: Condition,
+    output: Condition,
+}
+#[derive(Default)]
+struct Changes {
+    segments: BTreeMap<u64, Segment>,
+    len: usize,
+    runs: usize,
+    composition_records: Cell<usize>,
+    // One immutable recent image, bounded independently of reader age/count.
+    composition: RefCell<Option<Composition>>,
+    #[cfg(feature = "diagnostics")]
+    diagnostics: RefCell<diagnostics::SegmentDiagnostics>,
+}
+impl Segment {
+    fn span(&self) -> usize {
+        match self {
+            Self::Single(_) => 1,
+            Self::Run(run) => run.deltas.len(),
+        }
+    }
+    fn get(&self, offset: usize) -> Option<&Map> {
+        match self {
+            Self::Single(map) => (offset == 0).then_some(map),
+            Self::Run(run) => run.deltas.get(offset)?.as_ref(),
+        }
+    }
+}
+impl Changes {
+    fn len(&self) -> usize {
+        self.len
+    }
+    fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    fn insert(&mut self, epoch: u64, map: Map) {
+        if let Some((&start, segment)) = self.segments.last_key_value()
+            && start + segment.span() as u64 == epoch
+            && segment.span() < SEGMENT_EPOCHS
+        {
+            let segment = self.segments.get_mut(&start).unwrap();
+            match segment {
+                Segment::Single(first) => {
+                    *segment = Segment::Run(Box::new(Run {
+                        deltas: vec![Some(first.clone()), Some(map)],
+                    }));
+                    self.runs += 1;
+                }
+                Segment::Run(run) => run.deltas.push(Some(map)),
+            }
+        } else {
+            self.segments.insert(epoch, Segment::Single(map));
+            #[cfg(feature = "diagnostics")]
+            {
+                self.diagnostics.borrow_mut().segments_created += 1;
+            }
+        }
+        self.len += 1;
+    }
+    fn get(&self, epoch: &u64) -> Option<&Map> {
+        let (&start, segment) = self.segments.range(..=epoch).next_back()?;
+        segment.get((*epoch - start) as usize)
+    }
+    fn next(&self, after: Option<u64>) -> Option<(u64, &Map)> {
+        let begin = after.map_or(0, |epoch| epoch + 1);
+        // At most one segment can begin before the requested epoch.
+        let start = self
+            .segments
+            .range(..=begin)
+            .next_back()
+            .map_or(begin, |(&id, _)| id);
+        for (&id, segment) in self.segments.range(start..) {
+            for offset in begin.saturating_sub(id) as usize..segment.span() {
+                if let Some(map) = segment.get(offset) {
+                    return Some((id + offset as u64, map));
+                }
+            }
+        }
+        None
+    }
+    fn remove(&mut self, epoch: &u64) -> Option<Map> {
+        self.get(epoch)?;
+        if self
+            .composition
+            .get_mut()
+            .as_ref()
+            .is_some_and(|c| c.from <= *epoch && *epoch < c.to)
+        {
+            let c = self.composition.get_mut().take().unwrap();
+            self.composition_records.set(0);
+            #[cfg(not(feature = "diagnostics"))]
+            let _ = c;
+            #[cfg(feature = "diagnostics")]
+            {
+                let d = &mut *self.diagnostics.borrow_mut();
+                d.invalidations += 1;
+                d.retained_compositions -= 1;
+                d.retained_composition_assignments -= c.images.len();
+            }
+        }
+        let (&start, _) = self.segments.range(..=epoch).next_back()?;
+        let segment = self.segments.get_mut(&start).unwrap();
+        let (map, empty) = match segment {
+            Segment::Single(_) => {
+                if *epoch != start {
+                    return None;
+                }
+                let Segment::Single(map) = self.segments.remove(&start).unwrap() else {
+                    unreachable!()
+                };
+                self.len -= 1;
+                #[cfg(feature = "diagnostics")]
+                {
+                    self.diagnostics.borrow_mut().segments_retired += 1;
+                }
+                return Some(map);
+            }
+            Segment::Run(run) => {
+                let map = run.deltas.get_mut((*epoch - start) as usize)?.take()?;
+                (map, run.deltas.iter().all(Option::is_none))
+            }
+        };
+        if empty {
+            self.segments.remove(&start);
+            self.runs -= 1;
+            #[cfg(feature = "diagnostics")]
+            {
+                self.diagnostics.borrow_mut().segments_retired += 1;
+            }
+        }
+        self.len -= 1;
+        Some(map)
+    }
+    fn images(&self, from: u64, target: u64) -> (Map, u64) {
+        let (&start, segment) = self
+            .segments
+            .range(..=from)
+            .next_back()
+            .expect("leased coordinate segment");
+        let fallback = || {
+            (
+                self.get(&from)
+                    .expect("leased coordinate transition")
+                    .clone(),
+                from + 1,
+            )
+        };
+        let Segment::Run(run) = segment else {
+            return fallback();
+        };
+        let to = target.min(start + run.deltas.len() as u64);
+        if to <= from + 1 {
+            return fallback();
+        }
+        if let Some(c) = self.composition.borrow().as_ref()
+            && c.from == from
+            && c.to == to
+        {
+            #[cfg(feature = "diagnostics")]
+            {
+                self.diagnostics.borrow_mut().segment_hits += 1;
+            }
+            return (c.images.clone(), to);
+        }
+        // A bounded exact prefix. Constants survive subsequent substitution;
+        // the first assignment to a repeated key therefore wins. Functional
+        // images and nonsingleton maps retain the per-epoch transport path.
+        let mut entries = [(0, Condition::FALSE); SEGMENT_EPOCHS];
+        for (slot, epoch) in (from..to).enumerate() {
+            #[cfg(feature = "diagnostics")]
+            {
+                self.diagnostics.borrow_mut().composition_probes += 1;
+            }
+            let map = segment
+                .get((epoch - start) as usize)
+                .expect("pinned interior cutoff");
+            if map.len() != 1 {
+                return fallback();
+            }
+            let (&id, &image) = map.first_key_value().unwrap();
+            if !image.is_terminal() {
+                return fallback();
+            }
+            entries[slot] = (id, image);
+        }
+        let mut images = BTreeMap::new();
+        for &(id, image) in &entries[..(to - from) as usize] {
+            images.entry(id).or_insert(image);
+        }
+        let images = Arc::new(images);
+        let previous = self.composition.borrow_mut().replace(Composition {
+            from,
+            to,
+            images: images.clone(),
+        });
+        let old_records = previous.as_ref().map_or(0, |c| 1 + c.images.len());
+        self.composition_records
+            .set(self.composition_records.get() + 1 + images.len() - old_records);
+        #[cfg(feature = "diagnostics")]
+        {
+            let d = &mut *self.diagnostics.borrow_mut();
+            d.compositions_built += 1;
+            d.composition_entries += to - from;
+            d.invalidations += u64::from(previous.is_some());
+            d.retained_compositions += usize::from(previous.is_none());
+            d.retained_composition_assignments += images.len();
+            d.retained_composition_assignments -= previous.as_ref().map_or(0, |c| c.images.len());
+        }
+        (images, to)
+    }
+}
 
 #[derive(Clone)]
 pub(super) struct Epoch {
@@ -13,9 +250,10 @@ pub(super) struct Epoch {
 pub(super) struct Coordinates {
     current: Epoch,
     readers: BTreeMap<u64, Weak<()>>,
-    changes: BTreeMap<u64, Arc<BTreeMap<u64, Condition>>>,
+    changes: Changes,
     draining: BTreeMap<u64, Condition>,
     assignment_count: usize,
+    prefix: Cell<Option<Prefix>>,
 }
 impl Default for Coordinates {
     fn default() -> Self {
@@ -26,13 +264,45 @@ impl Default for Coordinates {
         Self {
             readers: BTreeMap::from([(0, Arc::downgrade(&current.lease))]),
             current,
-            changes: BTreeMap::new(),
+            changes: Changes::default(),
             draining: BTreeMap::new(),
             assignment_count: 0,
+            prefix: Cell::new(None),
         }
     }
 }
 impl Coordinates {
+    fn reuse(&self, from: u64, target: u64, input: Condition) -> Option<(Condition, u64)> {
+        #[cfg(feature = "diagnostics")]
+        {
+            self.changes.diagnostics.borrow_mut().prefix_probes += 1;
+        }
+        let prefix = self.prefix.get()?;
+        if prefix.from != from || prefix.to > target || prefix.input != input {
+            return None;
+        }
+        #[cfg(feature = "diagnostics")]
+        {
+            self.changes.diagnostics.borrow_mut().prefix_hits += 1;
+        }
+        Some((prefix.output, prefix.to))
+    }
+    fn remember(&self, from: u64, to: u64, input: Condition, output: Condition) {
+        let previous = self.prefix.replace(Some(Prefix {
+            from,
+            to,
+            input,
+            output,
+        }));
+        #[cfg(not(feature = "diagnostics"))]
+        let _ = previous;
+        #[cfg(feature = "diagnostics")]
+        {
+            let d = &mut *self.changes.diagnostics.borrow_mut();
+            d.prefix_publications += 1;
+            d.prefix_invalidations += u64::from(previous.is_some());
+        }
+    }
     pub(super) fn current(&self) -> Epoch {
         self.current.clone()
     }
@@ -60,6 +330,7 @@ impl Coordinates {
             measured_transform: Default::default(),
             _from: from.clone(),
             next: from.id,
+            job_target: from.id,
             target: self.current(),
             value: input,
             job: None,
@@ -67,11 +338,16 @@ impl Coordinates {
         }
     }
     pub(super) fn memory(&self) -> usize {
+        // Packing does not remove the retained maps or their assignments.
+        // Preserve their counts and charge the additional run/cache records.
         self.changes
             .len()
+            .saturating_add(self.changes.runs)
             .saturating_add(self.readers.len())
             .saturating_add(self.assignment_count)
             .saturating_add(self.draining.len())
+            .saturating_add(self.changes.composition_records.get())
+            .saturating_add(usize::from(self.prefix.get().is_some()))
     }
     pub(super) fn cleanup_tick(&mut self) -> bool {
         if self.draining.pop_first().is_some() {
@@ -84,6 +360,13 @@ impl Coordinates {
             return self.changes.is_empty();
         }
         self.readers.pop_first();
+        if self.prefix.get().is_some_and(|p| p.from <= id && id < p.to) {
+            self.prefix.set(None);
+            #[cfg(feature = "diagnostics")]
+            {
+                self.changes.diagnostics.borrow_mut().prefix_invalidations += 1;
+            }
+        }
         if let Some(bindings) = self.changes.remove(&id) {
             self.assignment_count -= bindings.len();
             if let Some(bindings) = Arc::into_inner(bindings) {
@@ -95,6 +378,8 @@ impl Coordinates {
 }
 // The epoch log owns images even when no transport has started using them.
 // Visit one epoch boundary or one image per trace step, including drain state.
+// Composition images are exclusively immortal Boolean constants. General
+// functional images remain owned/traced by their original exact epoch maps.
 // Cleanup may retire maps during tracing; the child cursor belongs to one epoch.
 struct Images<'a>(&'a BTreeMap<u64, Condition>);
 impl Trace for Images<'_> {
@@ -110,14 +395,7 @@ impl Trace for Coordinates {
         match cursor.phase {
             0 => {
                 if cursor.slot == 0 {
-                    let next = match cursor.key {
-                        Some(epoch) => self
-                            .changes
-                            .range((std::ops::Bound::Excluded(epoch), std::ops::Bound::Unbounded))
-                            .next(),
-                        None => self.changes.first_key_value(),
-                    };
-                    let Some((&epoch, _)) = next else {
+                    let Some((epoch, _)) = self.changes.next(cursor.key) else {
                         return cursor.advance();
                     };
                     cursor.key = Some(epoch);
@@ -138,7 +416,11 @@ impl Trace for Coordinates {
                 }
                 step
             }
-            1 => cursor.values(&self.draining),
+            1 => match self.prefix.get() {
+                Some(prefix) => cursor.fields(&[prefix.input, prefix.output]),
+                None => cursor.advance(),
+            },
+            2 => cursor.values(&self.draining),
             _ => Step::Done,
         }
     }
@@ -149,6 +431,7 @@ pub(super) struct Transport {
     measured_transform: diagnostics::ConditionalWork,
     _from: Epoch,
     next: u64,
+    job_target: u64,
     target: Epoch,
     value: Condition,
     job: Option<Transform>,
@@ -162,21 +445,20 @@ impl Transport {
         }
         if let Some(job) = &mut self.job {
             if let Progress::Complete(value) = measured_tick!(job, arena, self.measured_transform) {
+                coordinates.remember(self.next, self.job_target, self.value, value);
                 self.value = value;
                 self.job = None;
-                self.next += 1;
+                self.next = self.job_target;
             }
         } else {
-            self.job = Some(
-                arena.substitute(
-                    self.value,
-                    coordinates
-                        .changes
-                        .get(&self.next)
-                        .expect("leased coordinate transition")
-                        .clone(),
-                ),
-            );
+            if let Some((value, to)) = coordinates.reuse(self.next, self.target.id, self.value) {
+                self.value = value;
+                self.next = to;
+                return Progress::Pending;
+            }
+            let (images, to) = coordinates.changes.images(self.next, self.target.id);
+            self.job_target = to;
+            self.job = Some(arena.substitute(self.value, images));
         }
         Progress::Pending
     }
@@ -248,6 +530,196 @@ mod tests {
         }
         assert!(c.changes.is_empty());
         assert!(c.draining.is_empty());
+    }
+
+    #[test]
+    fn sparse_publications_pack_exact_deltas_in_one_segment() {
+        let mut a = Arena::default();
+        let mut c = Coordinates::default();
+        let old = c.current();
+        for _ in 0..8 {
+            let (id, _) = a.fresh_choice();
+            c.publish(Arc::new(BTreeMap::from([(id, Condition::TRUE)])));
+        }
+        assert_eq!(c.changes.segments.len(), 1);
+        assert_eq!(c.changes.len(), 8, "all exact source maps remain retained");
+        assert_eq!(
+            c.memory(),
+            26,
+            "maps, assignments, epoch leases, and one run"
+        );
+        drop(old);
+        for _ in 0..100 {
+            c.cleanup_tick();
+        }
+        assert_eq!(c.memory(), 1);
+    }
+
+    #[cfg(feature = "diagnostics")]
+    #[test]
+    fn adjacent_constant_deltas_traverse_an_unaffected_boolean_once() {
+        let mut a = Arena::default();
+        let (_, x) = a.fresh_choice();
+        let (_, y) = a.fresh_choice();
+        let mut conjunction = a.start(Operation::And(x, y));
+        let input = loop {
+            if let Progress::Complete(v) = conjunction.tick(&mut a) {
+                break v;
+            }
+        };
+        let mut c = Coordinates::default();
+        let old = c.current();
+        let mut images = BTreeMap::new();
+        for _ in 0..8 {
+            let (id, _) = a.fresh_choice();
+            images.insert(id, Condition::TRUE);
+            c.publish(Arc::new(BTreeMap::from([(id, Condition::TRUE)])));
+        }
+        let mut reference = a.substitute(input, Arc::new(images));
+        while reference.tick(&mut a) != Progress::Complete(input) {}
+        for _ in 0..2 {
+            let mut transport = c.transport(input, &old);
+            assert_eq!(finish(&mut transport, &mut a, &c), input);
+            assert!(
+                transport.measured_transform.work <= reference.work(),
+                "at most one Boolean traversal per exact composition"
+            );
+        }
+    }
+
+    #[cfg(feature = "diagnostics")]
+    #[test]
+    fn repeated_exact_single_epoch_transport_reuses_boolean_work() {
+        let mut a = Arena::default();
+        let (xi, x) = a.fresh_choice();
+        let (_, y) = a.fresh_choice();
+        let mut job = a.start(Operation::And(x, y));
+        let input = loop {
+            if let Progress::Complete(value) = job.tick(&mut a) {
+                break value;
+            }
+        };
+        let mut c = Coordinates::default();
+        let old = c.current();
+        c.publish(Arc::new(BTreeMap::from([(xi, Condition::TRUE)])));
+        let mut first = c.transport(input, &old);
+        assert_eq!(finish(&mut first, &mut a, &c), y);
+        assert!(first.measured_transform.work > 0);
+        let mut second = c.transport(input, &old);
+        assert_eq!(finish(&mut second, &mut a, &c), y);
+        assert_eq!(
+            second.measured_transform.work, 0,
+            "an exact retained prefix result is reusable"
+        );
+    }
+
+    #[cfg(feature = "diagnostics")]
+    #[test]
+    fn retained_composition_images_are_bounded_across_many_segments() {
+        let mut a = Arena::default();
+        let (_, x) = a.fresh_choice();
+        let mut c = Coordinates::default();
+        let old = c.current();
+        for _ in 0..64 {
+            let (id, _) = a.fresh_choice();
+            c.publish(Arc::new(BTreeMap::from([(id, Condition::TRUE)])));
+        }
+        assert_eq!(finish(&mut c.transport(x, &old), &mut a, &c), x);
+        let d = c.changes.diagnostics.borrow();
+        assert_eq!(d.compositions_built, 8);
+        assert!(
+            d.retained_compositions <= 1,
+            "one recent composition, not one per retained segment"
+        );
+        assert!(d.retained_composition_assignments <= 8);
+    }
+
+    #[cfg(feature = "diagnostics")]
+    #[test]
+    fn segmented_transport_work_scales_at_equal_publications_and_reader_cutoffs() {
+        for n in [8, 64, 512] {
+            let code = crate::program::prepare(
+                &crate::syntax::parse_program("").unwrap(),
+                &crate::syntax::parse_query("true").unwrap(),
+            )
+            .unwrap();
+            let mut e = Engine::new(Arc::new(code));
+            let (_, x) = e.arena.fresh_choice();
+            let (_, y) = e.arena.fresh_choice();
+            let mut job = e.arena.start(Operation::And(x, y));
+            let input = loop {
+                if let Progress::Complete(value) = job.tick(&mut e.arena) {
+                    break value;
+                }
+            };
+            let old = e.coordinates.current();
+            let mut maps = vec![];
+            for _ in 0..n {
+                let (id, _) = e.arena.fresh_choice();
+                let map = Arc::new(BTreeMap::from([(id, Condition::TRUE)]));
+                maps.push(map.clone());
+                e.coordinates.publish(map);
+            }
+            let prepared_records = e.coordinates.memory();
+            let mut reference_work = 0;
+            let mut reference_calls = 0;
+            for value in [input, input.not(), input] {
+                // Execute the accepted algorithm's exact per-epoch operations,
+                // with the same immutable map owners and reader endpoints.
+                for map in &maps {
+                    let mut transform = e.arena.substitute(value, map.clone());
+                    loop {
+                        reference_calls += 1;
+                        if let Progress::Complete(result) = transform.tick(&mut e.arena) {
+                            assert_eq!(result, value);
+                            reference_work += transform.work();
+                            break;
+                        }
+                    }
+                }
+                let mut transport = e.coordinates.transport(value, &old);
+                loop {
+                    if let Progress::Complete(result) = e.transport_tick(&mut transport, true) {
+                        assert_eq!(result, value);
+                        break;
+                    }
+                }
+            }
+            let retained_records = e.coordinates.memory();
+            let work = e.diagnostics.shared.coordinates.clone();
+            assert_eq!(work.search.epochs_crossed, 3 * n as u64);
+            assert_eq!(work.search.transform_starts, 3 * n as u64 / 8);
+            assert_eq!(work.search.transform.work * 8, reference_work);
+            assert_eq!(work.segments.retained_compositions, 1);
+            assert_eq!(work.segments.retained_composition_assignments, 8);
+            if n == 8 {
+                assert_eq!(work.segments.segment_hits, 2);
+            }
+            drop(maps);
+            drop(old);
+            let mut release_calls = 0;
+            while !e.cleanup_coordinates() {
+                release_calls += 1;
+            }
+            assert_eq!(e.coordinates.memory(), 1);
+            assert_eq!(
+                e.diagnostics.shared.coordinates.assignments_drained,
+                n as u64
+            );
+            println!(
+                "coordinate_probe={}",
+                serde_json::json!({
+                    "publications": n, "assignments": n, "readers": 3,
+                    "validated_results": 3, "source_cutoff": 0, "target_cutoff": n,
+                    "reference_transform_starts": 3*n, "reference_transform_calls": reference_calls,
+                    "reference_transform_work": reference_work, "candidate": work,
+                    "candidate_prepared_records": prepared_records,
+                    "candidate_retained_records": retained_records,
+                    "accepted_log_records_formula": 3*n+1,
+                    "release_calls": release_calls, "final_records": e.coordinates.memory(),
+                })
+            );
+        }
     }
 }
 
@@ -622,6 +1094,199 @@ mod functional_image_tests {
         while !gc.tick(arena) {}
     }
     #[test]
+    fn prefix_alone_roots_boolean_dag_until_its_source_map_retires() {
+        let mut arena = Arena::default();
+        let (_, x) = arena.fresh_choice();
+        let (_, y) = arena.fresh_choice();
+        let (zi, _) = arena.fresh_choice();
+        let input = boolean(&mut arena, Operation::And(x, y));
+        let mut c = Coordinates::default();
+        let old = c.current();
+        c.publish(Arc::new(BTreeMap::from([(zi, Condition::FALSE)])));
+        let mut transport = c.transport(input, &old);
+        while transport.tick(&mut arena, &c) != Progress::Complete(input) {}
+        drop(transport);
+        collect(&mut arena, &c, &[]);
+        assert!(
+            arena.contains(input),
+            "completed prefix owns both Boolean roots"
+        );
+        let mut repeat = c.transport(input, &old);
+        assert_eq!(repeat.tick(&mut arena, &c), Progress::Pending);
+        assert_eq!(repeat.tick(&mut arena, &c), Progress::Complete(input));
+        drop(repeat);
+        drop(old);
+        for _ in 0..100 {
+            c.cleanup_tick();
+        }
+        assert_eq!(c.memory(), 1);
+        collect(&mut arena, &c, &[]);
+        assert!(!arena.contains(input));
+    }
+
+    #[test]
+    fn later_prefix_cannot_satisfy_an_older_frozen_target() {
+        let mut arena = Arena::default();
+        let (xi, x) = arena.fresh_choice();
+        let (yi, y) = arena.fresh_choice();
+        let mut c = Coordinates::default();
+        let old = c.current();
+        c.publish(Arc::new(BTreeMap::from([(xi, y)])));
+        let mut frozen = c.transport(x, &old);
+        c.publish(Arc::new(BTreeMap::from([(yi, Condition::FALSE)])));
+        let mut later = c.transport(x, &old);
+        while later.tick(&mut arena, &c) != Progress::Complete(Condition::FALSE) {}
+        drop(later);
+        loop {
+            collect(&mut arena, &c, &[&frozen]);
+            if let Progress::Complete(value) = frozen.tick(&mut arena, &c) {
+                assert_eq!(value, y);
+                break;
+            }
+        }
+    }
+    #[test]
+    fn every_segment_cutoff_and_repeated_key_matches_a_truth_table() {
+        let mut arena = Arena::default();
+        let (xi, x) = arena.fresh_choice();
+        let (yi, y) = arena.fresh_choice();
+        let (zi, z) = arena.fresh_choice();
+        let xy = boolean(&mut arena, Operation::And(x, y));
+        let input = boolean(&mut arena, Operation::Or(xy, z));
+        let mut c = Coordinates::default();
+        let mut epochs = vec![c.current()];
+        let ids = [xi, yi, zi];
+        for i in 0..19 {
+            c.publish(Arc::new(BTreeMap::from([(
+                ids[i % 3],
+                if i % 2 == 0 {
+                    Condition::TRUE
+                } else {
+                    Condition::FALSE
+                },
+            )])));
+            epochs.push(c.current());
+        }
+        for to in 0..=19 {
+            for from in 0..=to {
+                for _ in 0..2 {
+                    let mut transport = c.transport(input, &epochs[from]);
+                    // The same frozen target a transport created at `to` owns.
+                    transport.target = epochs[to].clone();
+                    let result = loop {
+                        if let Progress::Complete(value) = transport.tick(&mut arena, &c) {
+                            break value;
+                        }
+                    };
+                    for bits in 0..8 {
+                        let mut values = [bits & 1 != 0, bits & 2 != 0, bits & 4 != 0];
+                        let mut assigned = [false; 3];
+                        for i in from..to {
+                            if !assigned[i % 3] {
+                                values[i % 3] = i % 2 == 0;
+                                assigned[i % 3] = true;
+                            }
+                        }
+                        assert_eq!(
+                            arena.evaluate(result, |id| bits & (1 << id) != 0),
+                            (values[0] && values[1]) || values[2],
+                            "{from}..{to}, bits={bits}"
+                        );
+                    }
+                }
+            }
+        }
+        drop(epochs);
+        for _ in 0..200 {
+            c.cleanup_tick();
+        }
+        assert_eq!(c.memory(), 1);
+    }
+
+    #[test]
+    fn cached_prefix_survives_append_and_interior_retirement() {
+        let mut arena = Arena::default();
+        let (xi, x) = arena.fresh_choice();
+        let (yi, y) = arena.fresh_choice();
+        let mut c = Coordinates::default();
+        let origin = c.current();
+        c.publish(Arc::new(BTreeMap::from([(xi, Condition::TRUE)])));
+        let interior = c.current();
+        c.publish(Arc::new(BTreeMap::from([(yi, Condition::FALSE)])));
+        let mut frozen = c.transport(y, &origin);
+        assert_eq!(frozen.tick(&mut arena, &c), Progress::Pending);
+        c.publish(Arc::new(BTreeMap::from([(yi, Condition::TRUE)])));
+        let mut after = c.transport(x, &interior);
+        for _ in 0..100 {
+            c.cleanup_tick();
+        }
+        loop {
+            collect(&mut arena, &c, &[&frozen, &after]);
+            if let Progress::Complete(value) = frozen.tick(&mut arena, &c) {
+                assert_eq!(value, Condition::FALSE);
+                break;
+            }
+        }
+        drop(frozen);
+        drop(origin);
+        for _ in 0..100 {
+            c.cleanup_tick();
+        }
+        assert!(c.changes.get(&0).is_none());
+        assert!(c.changes.get(&1).is_some());
+        loop {
+            collect(&mut arena, &c, &[&after]);
+            if let Progress::Complete(value) = after.tick(&mut arena, &c) {
+                assert_eq!(value, x, "interior reader must not apply earlier x=true");
+                break;
+            }
+        }
+        drop(after);
+        drop(interior);
+        for _ in 0..100 {
+            c.cleanup_tick();
+        }
+        assert_eq!(c.memory(), 1);
+    }
+
+    #[test]
+    fn cancelling_composed_transport_at_each_suspension_releases_every_map() {
+        for suspension in 0..48 {
+            let mut arena = Arena::default();
+            let (_, x) = arena.fresh_choice();
+            let (_, y) = arena.fresh_choice();
+            let input = boolean(&mut arena, Operation::And(x, y));
+            let mut c = Coordinates::default();
+            let origin = c.current();
+            for _ in 0..19 {
+                let (id, _) = arena.fresh_choice();
+                c.publish(Arc::new(BTreeMap::from([(id, Condition::TRUE)])));
+            }
+            let mut transport = c.transport(input, &origin);
+            drop(origin);
+            for _ in 0..suspension {
+                collect(&mut arena, &c, &[&transport]);
+                if matches!(transport.tick(&mut arena, &c), Progress::Complete(_)) {
+                    break;
+                }
+            }
+            loop {
+                collect(&mut arena, &c, &[&transport]);
+                c.cleanup_tick();
+                if transport.discard_tick() {
+                    break;
+                }
+            }
+            drop(transport);
+            for _ in 0..200 {
+                c.cleanup_tick();
+            }
+            assert_eq!(c.memory(), 1);
+            collect(&mut arena, &c, &[]);
+            assert!(!arena.contains(input));
+        }
+    }
+    #[test]
     fn functional_images_compose_across_epochs_with_gc_at_every_transport_tick() {
         let mut arena = Arena::default();
         let (_, z) = arena.fresh_choice();
@@ -757,7 +1422,7 @@ mod functional_image_tests {
         assert_eq!(roots, vec![Condition::TRUE]);
         drop(oldest);
         coordinates.cleanup_tick();
-        assert!(!coordinates.changes.contains_key(&0));
+        assert!(coordinates.changes.get(&0).is_none());
         let mut done = false;
         for _ in 0..100 {
             coordinates.cleanup_tick();
@@ -781,6 +1446,15 @@ mod functional_image_tests {
 }
 
 impl Engine {
+    #[cfg(feature = "diagnostics")]
+    pub(super) fn measure_coordinate_segments(&mut self) {
+        let changes = &self.coordinates.changes;
+        let mut d = changes.diagnostics.borrow().clone();
+        d.retained_segments = changes.segments.len();
+        d.retained_maps = changes.len();
+        d.retained_prefixes = usize::from(self.coordinates.prefix.get().is_some());
+        self.diagnostics.shared.coordinates.segments = d;
+    }
     pub(super) fn cleanup_coordinates(&mut self) -> bool {
         #[cfg(feature = "diagnostics")]
         let before = (
@@ -796,6 +1470,7 @@ impl Engine {
             d.epochs_retired += (before.0 - self.coordinates.readers.len()) as u64;
             d.maps_retired += (before.1 - self.coordinates.changes.len()) as u64;
             d.assignments_drained += u64::from(before.2);
+            self.measure_coordinate_segments();
         }
         done
     }
@@ -804,6 +1479,8 @@ impl Engine {
         let _ = search;
         #[cfg(feature = "diagnostics")]
         let before = transport.next;
+        #[cfg(feature = "diagnostics")]
+        let starting = transport.job.is_none() && transport.next != transport.target.id;
         let result = transport.tick(&mut self.arena, &self.coordinates);
         #[cfg(feature = "diagnostics")]
         {
@@ -813,10 +1490,12 @@ impl Engine {
                 &mut self.diagnostics.shared.coordinates.completion
             };
             d.calls += 1;
+            d.transform_starts += u64::from(starting && transport.job.is_some());
             d.epochs_crossed += transport.next - before;
             let delta = std::mem::take(&mut transport.measured_transform);
             d.transform.calls += delta.calls;
             d.transform.work += delta.work;
+            self.measure_coordinate_segments();
         }
         result
     }

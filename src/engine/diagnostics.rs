@@ -193,15 +193,41 @@ pub struct CoordinateDiagnostics {
     pub epochs_retired: u64,
     pub maps_retired: u64,
     pub assignments_drained: u64,
+    pub segments: SegmentDiagnostics,
     pub search: TransportDiagnostics,
     pub completion: TransportDiagnostics,
 }
 
-/// Epoch crossings count completed transforms, not transport starts. Transform
-/// calls/work are nested within transport calls; interrupted work stays recorded.
+/// Exact interval reuse of at most eight singleton constant deltas. Probes and
+/// entries include construction work, even on failed eligibility checks.
+/// Retained gauges include cache metadata/images, separately from source maps.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct SegmentDiagnostics {
+    pub segments_created: u64,
+    pub segments_retired: u64,
+    pub segment_hits: u64,
+    pub compositions_built: u64,
+    pub composition_probes: u64,
+    pub composition_entries: u64,
+    pub invalidations: u64,
+    pub retained_segments: usize,
+    pub retained_maps: usize,
+    pub retained_compositions: usize,
+    pub retained_composition_assignments: usize,
+    pub prefix_probes: u64,
+    pub prefix_hits: u64,
+    pub prefix_publications: u64,
+    pub prefix_invalidations: u64,
+    pub retained_prefixes: usize,
+}
+
+/// Epoch crossings count exact completed transitions, including composed and
+/// reused prefixes. Transform starts, calls and work remain separate; interrupted
+/// work stays recorded. Calls/work are nested within transport calls.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct TransportDiagnostics {
     pub calls: u64,
+    pub transform_starts: u64,
     pub epochs_crossed: u64,
     pub transform: ConditionalWork,
 }
@@ -241,10 +267,13 @@ mod tests {
         let (xi, yi, mut value) = conjunction(&mut reference);
         let mut calls = 0;
         let mut work = 0;
-        for id in [xi, yi] {
+        for bindings in [BTreeMap::from([
+            (xi, Condition::TRUE),
+            (yi, Condition::TRUE),
+        ])] {
             // Match the coordinate log's ownership: the transform is not the
             // last assignment-map owner and does not drain that map itself.
-            let bindings = Arc::new(BTreeMap::from([(id, Condition::TRUE)]));
+            let bindings = Arc::new(bindings);
             let mut job = reference.substitute(value, bindings.clone());
             let mut complete = false;
             for _ in 0..100 {
@@ -282,9 +311,19 @@ mod tests {
         assert_eq!(d.search.epochs_crossed, 2);
         assert_eq!(d.search.transform.work, work);
         assert_eq!(d.search.transform.calls, calls);
-        assert_eq!(d.search.calls, calls + 3); // two starts and final completion
+        assert_eq!(d.search.calls, calls + 2); // one start and final completion
+        assert_eq!(d.search.transform_starts, 1);
+        assert_eq!(d.segments.compositions_built, 1);
+        assert_eq!(d.segments.composition_entries, 2);
+        assert_eq!(d.segments.retained_maps, 2);
+        assert_eq!(d.segments.retained_segments, 1);
+        assert_eq!(d.segments.retained_compositions, 1);
         assert_eq!(d.completion, TransportDiagnostics::default());
         drop(transport);
+        let mut repeat = e.coordinates.transport(input, &old);
+        while e.transport_tick(&mut repeat, true) != Progress::Complete(Condition::TRUE) {}
+        drop(repeat);
+        assert_eq!(e.diagnostics().shared.coordinates.segments.prefix_hits, 1);
         let before = e.memory().coordinate_records;
         for _ in 0..8 {
             e.cleanup_coordinates();
@@ -300,6 +339,12 @@ mod tests {
         assert_eq!(d.epochs_retired, 2);
         assert_eq!(d.maps_retired, 2);
         assert_eq!(d.assignments_drained, 2);
+        assert_eq!(d.segments.invalidations, 1);
+        assert_eq!(d.segments.retained_segments, 0);
+        assert_eq!(d.segments.retained_maps, 0);
+        assert_eq!(d.segments.retained_compositions, 0);
+        assert_eq!(d.segments.retained_composition_assignments, 0);
+        assert_eq!(d.segments.retained_prefixes, 0);
 
         let mut current = e
             .coordinates

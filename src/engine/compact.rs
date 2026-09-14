@@ -439,6 +439,8 @@ impl Compact {
                             self.bindings.len() as u64;
                     }
                     e.coordinates.publish(self.bindings.clone());
+                    #[cfg(feature = "diagnostics")]
+                    e.measure_coordinate_segments();
                 }
                 return true;
             }

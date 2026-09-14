@@ -315,6 +315,28 @@ The temporary interposer affected real native reads and preserved returned data.
 
 Shared-service diagnostics separate entered collection phases, compaction-owned Boolean/transform work, persistent-index substitution steps, coordinate publications/retirements, and search/completion coordinate transport. Counters include cancellation and explicit maintenance. Nested operation work is a subset of the enclosing service and cannot be summed as exclusive CPU time. Conditional work outside those measured responsibilities remains explicitly unavailable; CPU and heap stacks provide broader source attribution. Calibration checks actual physical maintenance, conditional compaction and coordinate retirement. Observer checks require the measured graph-pruning/arena traversal difference to account for the permitted collection-iteration difference.
 
+Coordinate diagnostics now separate `transform_starts` from exact
+`epochs_crossed`: a composed or cached prefix can cross several epochs with
+one or zero transforms. `coordinates.segments` reports segment creation/release,
+composition eligibility probes, copied entries, builds, hits and invalidations,
+and exact input/result prefix probes, publications, hits and invalidations.
+Gauges report retained source maps, segments, composition maps/assignments and
+prefix results. The engine retains at most one composition of eight constant
+images and one completed prefix result; live transforms separately own any
+images still in use. The public `coordinate_records` count preserves original
+source-map, assignment and epoch records and adds run/cache metadata; it is
+neither bytes nor a count of Boolean nodes reachable through a cached root.
+Composition construction/release processes at most eight entries; prefix reuse
+compares exact source/target boundaries and input identity. Functional images
+and nonsingleton deltas use the existing per-epoch transformation.
+
+The diagnostic unit test
+`segmented_transport_work_scales_at_equal_publications_and_reader_cutoffs`
+compares actual per-epoch transformations with segmented transport at 8, 64
+and 512 publications, validates three identical endpoints, prints raw work and
+retention counters, and checks final map release. It is a mechanism probe,
+not an end-to-end notebook or allocation benchmark.
+
 Observer costs can be compared explicitly while holding the workload fixed:
 
 ```sh
