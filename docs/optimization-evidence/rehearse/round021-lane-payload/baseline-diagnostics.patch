@@ -1,0 +1,120 @@
+diff --git a/src/engine.rs b/src/engine.rs
+index c842fe5..e9ccee0 100644
+--- a/src/engine.rs
++++ b/src/engine.rs
+@@ -547,6 +547,8 @@ impl Engine {
+             Owner::Collection => !std::mem::replace(&mut self.collection_waiting, true),
+         };
+         if enqueue {
++            #[cfg(feature = "diagnostics")]
++            let (capacity, len) = (self.waiting.capacity(), self.waiting.len());
+             self.waiting.push_back(owner);
+             #[cfg(feature = "diagnostics")]
+             {
+@@ -554,6 +556,12 @@ impl Engine {
+                 d.enqueued[owner.diagnostic_slot()] += 1;
+                 d.entries = self.waiting.len();
+                 d.peak_entries = d.peak_entries.max(d.entries);
++                if capacity != self.waiting.capacity() {
++                    d.capacity_changes += 1;
++                    d.growth_move_bytes_bound += (2 * len * size_of::<Owner>()) as u64;
++                }
++                d.capacity_bytes = self.waiting.capacity() * size_of::<Owner>();
++                d.peak_capacity_bytes = d.peak_capacity_bytes.max(d.capacity_bytes);
+             }
+         }
+         if self.lane.is_none() && self.waiting.front() == Some(&owner) {
+@@ -589,6 +597,7 @@ impl Engine {
+                 #[cfg(feature = "diagnostics")]
+                 {
+                     self.diagnostics.task_wakes += 1;
++                    self.diagnostics.waiters.payload_moves += 1;
+                 }
+                 self.queue
+                     .push_back(self.parked.remove(&id).expect("waiting task is suspended"));
+@@ -709,6 +718,7 @@ impl Engine {
+                         #[cfg(feature = "diagnostics")]
+                         {
+                             self.diagnostics.task_parks += 1;
++                            self.diagnostics.waiters.payload_moves += 1;
+                         }
+                         let previous = self.parked.insert(task.id, task);
+                         debug_assert!(previous.is_none());
+diff --git a/src/engine/cancel.rs b/src/engine/cancel.rs
+index 91c53cf..bbc176a 100644
+--- a/src/engine/cancel.rs
++++ b/src/engine/cancel.rs
+@@ -80,8 +80,16 @@ impl Engine {
+             }
+             Phase::Parked => {
+                 if let Some(mut entry) = self.parked.first_entry() {
++                    #[cfg(feature = "diagnostics")]
++                    {
++                        self.diagnostics.waiters.discard_steps += 1;
++                    }
+                     if entry.get_mut().task.discard_tick() {
+                         entry.remove_entry();
++                        #[cfg(feature = "diagnostics")]
++                        {
++                            self.diagnostics.waiters.discarded_tasks += 1;
++                        }
+                     }
+                 } else {
+                     self.cancellation.phase = Phase::Ready;
+@@ -143,6 +151,7 @@ impl Engine {
+                 #[cfg(feature = "diagnostics")]
+                 {
+                     self.diagnostics.waiters.entries = 0;
++                    self.diagnostics.waiters.capacity_bytes = 0;
+                 }
+                 self.completion_waiting = false;
+                 self.collection_waiting = false;
+diff --git a/src/engine/collection.rs b/src/engine/collection.rs
+index 6be62b0..f3ae942 100644
+--- a/src/engine/collection.rs
++++ b/src/engine/collection.rs
+@@ -335,6 +335,10 @@ impl Engine {
+                     .map(|(_, task)| task)
+                 };
+                 if let Some(task) = task {
++                    #[cfg(feature = "diagnostics")]
++                    if matches!(c.phase, Phase::Parked) {
++                        self.diagnostics.waiters.trace_steps += 1;
++                    }
+                     if !c.task_roots {
+                         if let Task::Body(b) = &task.task
+                             && let Some(n) = &b.normalizer
+@@ -402,6 +406,10 @@ impl Engine {
+                             Step::Root(root) => retain_condition(&mut c.conditions, root),
+                             Step::Pending => {}
+                             Step::Done => {
++                                #[cfg(feature = "diagnostics")]
++                                if matches!(c.phase, Phase::Parked) {
++                                    self.diagnostics.waiters.trace_tasks += 1;
++                                }
+                                 if matches!(c.phase, Phase::Tasks) {
+                                     c.index += 1;
+                                 } else {
+diff --git a/src/engine/diagnostics.rs b/src/engine/diagnostics.rs
+index 9eb87e9..e0fb6a4 100644
+--- a/src/engine/diagnostics.rs
++++ b/src/engine/diagnostics.rs
+@@ -128,6 +128,17 @@ pub struct WaiterDiagnostics {
+     pub granted: [u64; 3],
+     pub entries: usize,
+     pub peak_entries: usize,
++    pub capacity_bytes: usize,
++    pub peak_capacity_bytes: usize,
++    pub capacity_changes: u64,
++    pub growth_move_bytes_bound: u64,
++    pub shrink_move_bytes_bound: u64,
++    pub payload_moves: u64,
++    pub direct_handoffs: u64,
++    pub trace_tasks: u64,
++    pub trace_steps: u64,
++    pub discard_steps: u64,
++    pub discarded_tasks: u64,
+ }
+ 
+ /// Continuation calls and structural Job/Transform work. Calls include identity,
+
