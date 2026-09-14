@@ -23,12 +23,66 @@ struct Stats {
     page_splits: AtomicUsize,
     page_merges: AtomicUsize,
     page_cursor_entries: AtomicUsize,
+    page_inline_slots: AtomicUsize,
+    page_shifts: AtomicUsize,
+    page_runs: AtomicUsize,
+    page_fallback_visits: AtomicUsize,
 }
 // Pages never cross a whole-word prefix or an aligned eight-key interval.
 // Thus classification, copying, shifts, destruction and each update are bounded;
 // sparse boundaries and all three-word dependency witnesses remain crit-bit.
 const PAGE_BIT: usize = 253;
 const PAGE_CAPACITY: usize = 8;
+// All slots are initialized from the first scalar pair; only the occupied
+// prefix is observable. This keeps Value's Copy contract without unsafe code
+// or a Default/sentinel requirement on payloads.
+#[derive(Clone)]
+struct PageEntries<V: Value> {
+    slots: [(u64, V); PAGE_CAPACITY],
+    len: usize,
+}
+impl<V: Value> PageEntries<V> {
+    fn new(first: (u64, V)) -> Self {
+        Self {
+            slots: [first; PAGE_CAPACITY],
+            len: 1,
+        }
+    }
+    fn as_slice(&self) -> &[(u64, V)] {
+        &self.slots[..self.len]
+    }
+    fn insert(&mut self, position: usize, pair: (u64, V)) {
+        assert!(self.len < PAGE_CAPACITY && position <= self.len);
+        for i in (position..self.len).rev() {
+            self.slots[i + 1] = self.slots[i];
+        }
+        self.slots[position] = pair;
+        self.len += 1;
+    }
+    fn remove(&mut self, position: usize) {
+        assert!(position < self.len);
+        for i in position + 1..self.len {
+            self.slots[i - 1] = self.slots[i];
+        }
+        self.len -= 1;
+    }
+    fn extend_from_slice(&mut self, entries: &[(u64, V)]) {
+        assert!(self.len + entries.len() <= PAGE_CAPACITY);
+        self.slots[self.len..self.len + entries.len()].copy_from_slice(entries);
+        self.len += entries.len();
+    }
+}
+impl<V: Value> std::ops::Deref for PageEntries<V> {
+    type Target = [(u64, V)];
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+impl<V: Value> std::ops::DerefMut for PageEntries<V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.slots[..self.len]
+    }
+}
 const RELEASE_CAPACITY: usize = 16;
 type Pair<V> = (Option<Arc<Record<V>>>, Option<Arc<Record<V>>>);
 struct Block<V: Value> {
@@ -131,7 +185,9 @@ enum Node<V: Value> {
     },
     Page {
         prefix: Key,
-        entries: Vec<(u64, V)>,
+        // Keep the bounded payload inline within its own allocation so sparse
+        // Leaf/Branch records do not inherit eight slots in their enum size.
+        entries: Box<PageEntries<V>>,
     },
     Branch {
         prefix: Key,
@@ -300,10 +356,10 @@ fn bounds(mut low: Key, bit: u8) -> (Key, Key) {
     (low, high)
 }
 impl<V: Value> Store<V> {
-    fn append_page_entries(&self, root: &Root<V>, result: &mut Vec<(u64, V)>) -> Key {
+    fn append_page_entries(&self, root: &Root<V>, result: &mut PageEntries<V>) -> Key {
         match &self.record(root).node {
             Node::Leaf { key, value } => {
-                result.push((key[3], *value));
+                result.insert(result.len(), (key[3], *value));
                 self.stats.page_copies.fetch_add(1, Relaxed);
                 *key
             }
@@ -319,10 +375,19 @@ impl<V: Value> Store<V> {
         // Called only after membership/no-op checks and aligned interval checks.
         // Reuse unique page storage; copying is bounded by eight scalar pairs.
         if root.is_empty() {
-            let entries: Vec<_> = writes
+            let mut pairs = writes
                 .iter()
-                .filter_map(|&(key, value)| value.map(|v| (key[3], v)))
-                .collect();
+                .filter_map(|&(key, value)| value.map(|v| (key[3], v)));
+            let Some(first) = pairs.next() else {
+                return self.empty();
+            };
+            let mut entries = PageEntries::new(first);
+            self.stats
+                .page_inline_slots
+                .fetch_add(PAGE_CAPACITY, Relaxed);
+            for pair in pairs {
+                entries.insert(entries.len(), pair);
+            }
             return match entries.as_slice() {
                 [] => self.empty(),
                 &[(tail, value)] => self.allocate(Node::Leaf {
@@ -331,18 +396,20 @@ impl<V: Value> Store<V> {
                 }),
                 _ => self.allocate(Node::Page {
                     prefix: writes[0].0,
-                    entries,
+                    entries: Box::new(entries),
                 }),
             };
         }
         self.unique(&mut root);
         let record = Arc::get_mut(root.node.as_mut().unwrap()).unwrap();
         if let Node::Leaf { key, value } = record.node {
-            let mut entries = Vec::with_capacity(PAGE_CAPACITY);
-            entries.push((key[3], value));
+            let entries = PageEntries::new((key[3], value));
+            self.stats
+                .page_inline_slots
+                .fetch_add(PAGE_CAPACITY, Relaxed);
             record.node = Node::Page {
                 prefix: key,
-                entries,
+                entries: Box::new(entries),
             };
             self.stats.page_merges.fetch_add(1, Relaxed);
         }
@@ -357,9 +424,15 @@ impl<V: Value> Store<V> {
             ) {
                 (Ok(i), Some(v)) => entries[i].1 = v,
                 (Ok(i), None) => {
+                    self.stats
+                        .page_shifts
+                        .fetch_add(entries.len() - i - 1, Relaxed);
                     entries.remove(i);
                 }
-                (Err(i), Some(v)) => entries.insert(i, (key[3], v)),
+                (Err(i), Some(v)) => {
+                    self.stats.page_shifts.fetch_add(entries.len() - i, Relaxed);
+                    entries.insert(i, (key[3], v));
+                }
                 (Err(_), None) => {}
             }
         }
@@ -421,8 +494,9 @@ impl<V: Value> Store<V> {
         )
     }
     /// Page allocations, copied entries, writes, sparse-boundary splits,
-    /// packed merges, and cursor entries returned (cumulative).
-    pub fn page_counts(&self) -> [usize; 6] {
+    /// packed merges, cursor entries, initialized/copied inline slots, shifted
+    /// entries, page-run transfers and scalar fallback visits (cumulative).
+    pub fn page_counts(&self) -> [usize; 10] {
         [
             &self.stats.pages,
             &self.stats.page_copies,
@@ -430,6 +504,10 @@ impl<V: Value> Store<V> {
             &self.stats.page_splits,
             &self.stats.page_merges,
             &self.stats.page_cursor_entries,
+            &self.stats.page_inline_slots,
+            &self.stats.page_shifts,
+            &self.stats.page_runs,
+            &self.stats.page_fallback_visits,
         ]
         .map(|counter| counter.load(Relaxed))
     }
@@ -441,6 +519,11 @@ impl<V: Value> Store<V> {
         root.node.as_deref().unwrap()
     }
     fn node(&self, root: &Root<V>) -> Node<V> {
+        if matches!(self.record(root).node, Node::Page { .. }) {
+            self.stats
+                .page_inline_slots
+                .fetch_add(PAGE_CAPACITY, Relaxed);
+        }
         self.record(root).node.clone()
     }
     fn allocate(&mut self, mut node: Node<V>) -> Root<V> {
@@ -449,11 +532,23 @@ impl<V: Value> Store<V> {
         } = &node
             && *bit as usize >= PAGE_BIT
         {
-            let mut entries = Vec::with_capacity(PAGE_CAPACITY);
+            let first = match &self.record(left).node {
+                Node::Leaf { key, value } => (key[3], *value),
+                Node::Page { entries, .. } => entries[0],
+                Node::Branch { .. } => unreachable!(),
+            };
+            let mut entries = PageEntries::new(first);
+            self.stats
+                .page_inline_slots
+                .fetch_add(PAGE_CAPACITY, Relaxed);
+            entries.len = 0;
             let prefix = self.append_page_entries(left, &mut entries);
             self.append_page_entries(right, &mut entries);
             self.stats.page_merges.fetch_add(1, Relaxed);
-            node = Node::Page { prefix, entries };
+            node = Node::Page {
+                prefix,
+                entries: Box::new(entries),
+            };
         }
         if matches!(node, Node::Page { .. }) {
             self.stats.pages.fetch_add(1, Relaxed);
@@ -688,11 +783,13 @@ impl<V: Value> Store<V> {
             Node::Page { prefix, .. } => (*prefix, PAGE_BIT),
             Node::Branch { prefix, bit, .. } => (*prefix, *bit as usize),
         };
-        if bit == PAGE_BIT {
+        if bit == PAGE_BIT || (bit == 256 && prefix != key) {
             if difference(&prefix, &key).is_none_or(|d| d as usize >= PAGE_BIT) {
                 return self.page_batch(root, &[(key, Some(value))]);
             }
-            self.stats.page_splits.fetch_add(1, Relaxed);
+            if bit == PAGE_BIT {
+                self.stats.page_splits.fetch_add(1, Relaxed);
+            }
         }
         if let Some(split) = difference(&prefix, &key).filter(|&x| (x as usize) < bit) {
             let new = self.allocate(Node::Leaf { key, value });
@@ -797,18 +894,17 @@ impl<V: Value> Store<V> {
     }
     pub fn range(&self, root: Root<V>, low: Key, high: Key) -> Cursor<V> {
         assert!(self.contains(&root), "stale or foreign index root");
-        let pending = if root.is_empty() {
-            vec![]
-        } else {
-            vec![root.clone()]
-        };
         Cursor {
+            current: PageRun {
+                root: root.clone(),
+                position: 0,
+                end: 0,
+            },
             root,
-            pending,
+            pending: Vec::new(),
             low,
             high,
             visits: 0,
-            page_position: 0,
         }
     }
     pub fn filter(&self, root: Root<V>) -> Filter<V> {
@@ -860,11 +956,33 @@ impl<V: Value> Store<V> {
 }
 pub struct Cursor<V: Value = Condition> {
     root: Root<V>,
+    current: PageRun<V>,
     pending: Vec<Root<V>>,
     low: Key,
     high: Key,
     visits: u64,
-    page_position: usize,
+}
+// Move a contiguous interval's authority into a continuation, not a temporary
+// scalar buffer. Its owning root remains visible to tracing through the cursor
+// root/filter base. Scalar yields preserve every existing suspension point.
+#[derive(Clone)]
+struct PageRun<V: Value> {
+    root: Root<V>,
+    position: u8,
+    end: u8,
+}
+impl<V: Value> PageRun<V> {
+    fn next(&mut self, store: &Store<V>) -> Option<(Key, V)> {
+        let Node::Page { prefix, entries } = &store.record(&self.root).node else {
+            unreachable!()
+        };
+        if self.position == self.end {
+            return None;
+        }
+        let (tail, value) = entries[self.position as usize];
+        self.position += 1;
+        Some((page_key(*prefix, tail), value))
+    }
 }
 impl<V: Value> Cursor<V> {
     pub fn root(&self) -> Root<V> {
@@ -875,33 +993,40 @@ impl<V: Value> Cursor<V> {
     }
     pub fn next(&mut self, store: &Store<V>) -> Option<(Key, V)> {
         assert!(store.contains(&self.root), "stale or foreign cursor root");
-        while let Some(root) = self.pending.pop() {
-            if self.page_position == 0 {
-                self.visits += 1;
+        loop {
+            if self.current.end != 0 {
+                if let Some(pair) = self.current.next(store) {
+                    store.stats.page_cursor_entries.fetch_add(1, Relaxed);
+                    return Some(pair);
+                }
+                self.current.root = Root::empty();
+                self.current.end = 0;
             }
+            let root = if self.current.root.is_empty() {
+                self.pending.pop()?
+            } else {
+                std::mem::take(&mut self.current.root)
+            };
+            self.visits += 1;
             match &store.record(&root).node {
                 Node::Leaf { key, value } => {
+                    store.stats.page_fallback_visits.fetch_add(1, Relaxed);
                     if *key >= self.low && *key <= self.high {
                         return Some((*key, *value));
                     }
                 }
                 Node::Page { prefix, entries } => {
-                    let position = if self.page_position == 0 {
-                        entries.partition_point(|&(tail, _)| page_key(*prefix, tail) < self.low)
-                    } else {
-                        self.page_position
-                    };
-                    self.page_position = 0;
-                    if let Some(&(tail, value)) = entries.get(position) {
-                        let key = page_key(*prefix, tail);
-                        if key <= self.high {
-                            if position + 1 < entries.len() {
-                                self.page_position = position + 1;
-                                self.pending.push(root.clone());
-                            }
-                            store.stats.page_cursor_entries.fetch_add(1, Relaxed);
-                            return Some((key, value));
-                        }
+                    let position =
+                        entries.partition_point(|&(tail, _)| page_key(*prefix, tail) < self.low);
+                    let end =
+                        entries.partition_point(|&(tail, _)| page_key(*prefix, tail) <= self.high);
+                    if position < end {
+                        self.current = PageRun {
+                            root,
+                            position: position as u8,
+                            end: end as u8,
+                        };
+                        store.stats.page_runs.fetch_add(1, Relaxed);
                     }
                 }
                 Node::Branch {
@@ -910,31 +1035,23 @@ impl<V: Value> Cursor<V> {
                     left,
                     right,
                 } => {
+                    store.stats.page_fallback_visits.fetch_add(1, Relaxed);
                     let (low, high) = bounds(*prefix, *bit);
                     if low <= self.high && high >= self.low {
-                        self.pending.extend([right.clone(), left.clone()]);
+                        self.pending.push(right.clone());
+                        self.current.root = left.clone();
                     }
                 }
             }
         }
-        None
     }
 }
 #[derive(Clone)]
 enum FilterFrame<V: Value> {
     Visit(Root<V>),
-    AfterLeft {
-        root: Root<V>,
-    },
-    AfterRight {
-        root: Root<V>,
-        left: Root<V>,
-    },
-    Page {
-        root: Root<V>,
-        position: usize,
-        result: Root<V>,
-    },
+    AfterLeft { root: Root<V> },
+    AfterRight { root: Root<V>, left: Root<V> },
+    Page { run: PageRun<V>, result: Root<V> },
 }
 struct FilterLeaf<V: Value> {
     root: Root<V>,
@@ -1018,13 +1135,8 @@ impl<V: Value> Filter<V> {
             };
             return self.returned(root);
         }
-        if let Some(FilterFrame::Page { root, position, .. }) = &mut self.frame {
-            let Node::Page { prefix, entries } = &store.record(root).node else {
-                unreachable!()
-            };
-            if let Some(&(tail, value)) = entries.get(*position) {
-                let key = page_key(*prefix, tail);
-                *position += 1;
+        if let Some(FilterFrame::Page { run, .. }) = &mut self.frame {
+            if let Some((key, value)) = run.next(store) {
                 self.leaf = Some(FilterLeaf {
                     root: Root::empty(),
                     key,
@@ -1043,6 +1155,7 @@ impl<V: Value> Filter<V> {
             Some(FilterFrame::Visit(root)) if root.is_empty() => self.returned(root),
             Some(FilterFrame::Visit(root)) => match &store.record(&root).node {
                 Node::Leaf { key, value } => {
+                    store.stats.page_fallback_visits.fetch_add(1, Relaxed);
                     let (key, value) = (*key, *value);
                     self.leaf = Some(FilterLeaf {
                         root,
@@ -1052,15 +1165,20 @@ impl<V: Value> Filter<V> {
                     });
                     FilterStatus::Leaf { key, value }
                 }
-                Node::Page { .. } => {
+                Node::Page { entries, .. } => {
+                    store.stats.page_runs.fetch_add(1, Relaxed);
                     self.frame = Some(FilterFrame::Page {
-                        root: root.clone(),
-                        position: 0,
+                        run: PageRun {
+                            root: root.clone(),
+                            position: 0,
+                            end: entries.len() as u8,
+                        },
                         result: root,
                     });
                     FilterStatus::Pending
                 }
                 Node::Branch { left, .. } => {
+                    store.stats.page_fallback_visits.fetch_add(1, Relaxed);
                     let left = left.clone();
                     self.frames.push(FilterFrame::AfterLeft { root });
                     self.frame = Some(FilterFrame::Visit(left));

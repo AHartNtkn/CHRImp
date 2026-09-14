@@ -222,7 +222,7 @@ impl Graph {
     pub fn index_allocations(&self) -> usize {
         self.index.allocations()
     }
-    pub fn index_page_counts(&self) -> [usize; 6] {
+    pub fn index_page_counts(&self) -> [usize; 10] {
         self.index.page_counts()
     }
     #[cfg(feature = "diagnostics")]
