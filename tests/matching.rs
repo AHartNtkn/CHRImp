@@ -423,8 +423,8 @@ fn rejected_three_head_prefix_uses_empty_partner_before_broad_partner() {
                 .position(|s| s.name == name)
                 .unwrap()
         };
-        let anchor_head = code.rules()[0]
-            .heads
+        let anchor_head = code
+            .heads(&code.rules()[0])
             .iter()
             .position(|h| h.relation == relation("p"))
             .unwrap();

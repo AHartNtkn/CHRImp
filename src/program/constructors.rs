@@ -33,49 +33,56 @@ fn failure_consumers(
     let mut out = vec![];
     for &rule in terminal {
         let r = &code.rules[rule];
-        if r.heads.len() != 2 {
+        if code.heads(r).len() != 2 {
             continue;
         }
-        let Some(position) = r.heads.iter().position(|h| h.relation == atom.relation) else {
+        let Some(position) = code
+            .heads(r)
+            .iter()
+            .position(|h| h.relation == atom.relation)
+        else {
             continue;
         };
-        let constructor = &r.heads[position];
+        let constructor = &code.heads(r)[position];
         // Repeated constructor-head slots impose additional existing-identity
         // tests. Such consumers continue through ordinary source execution.
-        if !distinct(&constructor.args) {
+        if !distinct(code.args(constructor)) {
             continue;
         }
-        let other = &r.heads[1 - position];
+        let other = &code.heads(r)[1 - position];
         // On surviving support the marker remains, or its consumption keeps
         // an incompatible constructor at the SAME key. Constructor admission
         // already proves those attachments persist through coalescence/merges.
         // RHS posts and descendant keys are not witnesses: they leave a gap.
-        let key_port = other.args.iter().position(|&v| v == constructor.args[0]);
+        let key_port = code
+            .args(other)
+            .iter()
+            .position(|&v| v == code.args(constructor)[0]);
         if code.rules.iter().any(|consumer| {
             !matches!(code.instructions[consumer.body], Instruction::Fail)
-                && consumer.heads[consumer.kept..]
+                && code.heads(consumer)[consumer.kept..]
                     .iter()
                     .filter(|h| h.relation == other.relation)
                     .any(|marker| {
                         !key_port.is_some_and(|port| {
-                            consumer.heads[..consumer.kept].iter().any(|kept| {
+                            code.heads(consumer)[..consumer.kept].iter().any(|kept| {
                                 families.get(&kept.relation) == families.get(&atom.relation)
                                     && kept.relation != atom.relation
-                                    && kept.args[0] == marker.args[port]
+                                    && code.args(kept)[0] == code.args(marker)[port]
                             })
                         })
                     })
         }) {
             continue;
         }
-        let mut slots: BTreeMap<usize, ConsumerValue> = constructor
-            .args
+        let mut slots: BTreeMap<usize, ConsumerValue> = code
+            .args(constructor)
             .iter()
             .copied()
-            .zip(atom.args.iter().copied().map(ConsumerValue::Body))
+            .zip(code.args(atom).iter().copied().map(ConsumerValue::Body))
             .collect();
         let mut tests = vec![];
-        for (port, &slot) in other.args.iter().enumerate() {
+        for (port, &slot) in code.args(other).iter().enumerate() {
             match slots.get(&slot) {
                 Some(ConsumerValue::Body(s)) => tests.push((port, ConsumerValue::Body(*s))),
                 Some(ConsumerValue::Port(p)) => tests.push((port, ConsumerValue::Port(*p))),
@@ -110,19 +117,22 @@ fn equalities(code: &Prepared, i: usize, out: &mut Vec<(usize, usize)>) -> bool 
             out.push(((*x).min(*y), (*x).max(*y)));
             true
         }
-        Instruction::And(items) => items.iter().all(|&i| equalities(code, i, out)),
+        Instruction::And(items) => code
+            .operands(*items)
+            .iter()
+            .all(|&i| equalities(code, i, out)),
         _ => false,
     }
 }
 fn distinct(xs: &[usize]) -> bool {
     xs.iter().copied().collect::<BTreeSet<_>>().len() == xs.len()
 }
-fn pair(rule: &RulePlan) -> bool {
-    if rule.heads.len() != 2 {
+fn pair(code: &Prepared, rule: &RulePlan) -> bool {
+    if code.heads(rule).len() != 2 {
         return false;
     }
-    let a = &rule.heads[0].args;
-    let b = &rule.heads[1].args;
+    let a = code.args(&code.heads(rule)[0]);
+    let b = code.args(&code.heads(rule)[1]);
     !a.is_empty()
         && !b.is_empty()
         && a[0] == b[0]
@@ -152,13 +162,13 @@ impl Constructors {
             .collect();
         for rule in &code.rules {
             let mut uses = vec![0; rule.head_variables];
-            for h in &rule.heads {
-                for &slot in &h.args {
+            for h in code.heads(rule) {
+                for &slot in code.args(h) {
                     uses[slot] += 1;
                 }
             }
-            for h in &rule.heads {
-                for (port, &slot) in h.args.iter().enumerate() {
+            for h in code.heads(rule) {
+                for (port, &slot) in code.args(h).iter().enumerate() {
                     ports[h.relation][port] |= uses[slot] > 1;
                 }
             }
@@ -184,16 +194,19 @@ impl Constructors {
         let mut by_relation = BTreeMap::new();
         let mut rules = BTreeSet::new();
         for (i, r) in code.rules.iter().enumerate() {
-            if r.kept != 1 || !pair(r) || r.heads[0].relation != r.heads[1].relation {
+            if r.kept != 1
+                || !pair(code, r)
+                || code.heads(r)[0].relation != code.heads(r)[1].relation
+            {
                 continue;
             }
             let mut actual = vec![];
             if !equalities(code, r.body, &mut actual) {
                 return Err("unsupported consistency body".into());
             }
-            let mut expected: Vec<_> = r.heads[0].args[1..]
+            let mut expected: Vec<_> = code.args(&code.heads(r)[0])[1..]
                 .iter()
-                .zip(&r.heads[1].args[1..])
+                .zip(&code.args(&code.heads(r)[1])[1..])
                 .map(|(&a, &b)| (a.min(b), a.max(b)))
                 .collect();
             actual.sort();
@@ -201,7 +214,7 @@ impl Constructors {
             if actual != expected || r.head_variables != r.variables.len() {
                 return Err("consistency must equate exactly corresponding fields".into());
             }
-            if by_relation.insert(r.heads[0].relation, i).is_some() {
+            if by_relation.insert(code.heads(r)[0].relation, i).is_some() {
                 return Err("duplicate consistency definitions".into());
             }
             rules.insert(i);
@@ -212,10 +225,13 @@ impl Constructors {
         let relations: BTreeSet<_> = by_relation.keys().copied().collect();
         let mut clashes = BTreeMap::new();
         for (i, r) in code.rules.iter().enumerate() {
-            if r.kept != 0 || !pair(r) || !matches!(code.instructions[r.body], Instruction::Fail) {
+            if r.kept != 0
+                || !pair(code, r)
+                || !matches!(code.instructions[r.body], Instruction::Fail)
+            {
                 continue;
             }
-            let (a, b) = (r.heads[0].relation, r.heads[1].relation);
+            let (a, b) = (code.heads(r)[0].relation, code.heads(r)[1].relation);
             if a != b && relations.contains(&a) && relations.contains(&b) {
                 if clashes.insert((a.min(b), a.max(b)), i).is_some() {
                     return Err("duplicate constructor clash".into());
@@ -261,8 +277,8 @@ impl Constructors {
             if rules.contains(&i) {
                 continue;
             }
-            let uses: Vec<_> = r
-                .heads
+            let uses: Vec<_> = code
+                .heads(r)
                 .iter()
                 .enumerate()
                 .filter(|(_, h)| relations.contains(&h.relation))
@@ -271,7 +287,7 @@ impl Constructors {
                 return Err("consumer observes multiple constructor occurrences".into());
             }
             if let Some(&(position, _)) = uses.first() {
-                if r.kept == r.heads.len() {
+                if r.kept == code.heads(r).len() {
                     return Err("propagation observes constructor occurrence history".into());
                 }
                 if position >= r.kept {
@@ -294,6 +310,7 @@ impl Constructors {
             let Instruction::Or(items) = instruction else {
                 continue;
             };
+            let items = code.operands(*items);
             if items.len() < 2 {
                 continue;
             }
@@ -303,7 +320,9 @@ impl Constructors {
             let mut rejection = BTreeMap::new();
             let supported = items.iter().all(|&arm| {
                 let leading = match &code.instructions[arm] {
-                    Instruction::And(items) => items.first().copied().unwrap_or(arm),
+                    Instruction::And(items) => {
+                        code.operands(*items).first().copied().unwrap_or(arm)
+                    }
                     _ => arm,
                 };
                 let Instruction::Post(atom) = &code.instructions[leading] else {
@@ -317,7 +336,7 @@ impl Constructors {
                     return false;
                 }
                 family = Some(current_family);
-                let Some(&root) = atom.args.first() else {
+                let Some(&root) = code.args(atom).first() else {
                     return false;
                 };
                 if key.is_some_and(|key| key != root) {
@@ -351,14 +370,5 @@ impl Constructors {
             clashes,
             choices,
         })
-    }
-    pub(crate) fn lower_triggers(&self, result: &mut Prepared) {
-        for ts in result
-            .triggers
-            .iter_mut()
-            .chain(result.merge_triggers.iter_mut())
-        {
-            ts.retain(|(r, _)| !self.rules.contains(r));
-        }
     }
 }

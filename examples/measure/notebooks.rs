@@ -4,7 +4,6 @@ use crate::{memory, ms, observation};
 use chr::{
     engine::Engine,
     observe::Output,
-    program::prepare,
     syntax::{Atom, Body, Program},
 };
 use std::{
@@ -623,12 +622,14 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
     };
     let parse_time = start.elapsed();
     let start = Instant::now();
-    let code = during(Phase::Setup, || prepare(&program, &query).map(Arc::new))
-        .map_err(|e| format!("prepare: {e:?}"))?;
+    let code = during(Phase::Setup, || {
+        crate::allocation::prepare(&program, &query).map(Arc::new)
+    })
+    .map_err(|e| format!("prepare: {e:?}"))?;
     let prepare_time = start.elapsed();
     let prepared_owner = Arc::downgrade(&code);
     let start = Instant::now();
-    let mut e = during(Phase::Setup, || Engine::new(code));
+    let mut e = during(Phase::Setup, || Engine::new(code.clone()));
     let init_time = start.elapsed();
     let detailed = observation::detailed();
     let mut reader = Reader::default();
@@ -804,9 +805,10 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
         error = Some(format!("cleanup retained unowned state: {after:?}"));
     }
     let drop_start = Instant::now();
-    during(Phase::Cleanup, || drop(e));
+    during(Phase::EngineDrop, || drop(e));
+    during(Phase::PreparedDrop, || drop(code));
     let prepared_released = prepared_owner.strong_count() == 0;
-    during(Phase::Cleanup, || drop(prepared_owner));
+    during(Phase::PreparedDrop, || drop(prepared_owner));
     let engine_and_prepared_drop = drop_start.elapsed();
     if !prepared_released {
         error = Some("final engine destruction retained the prepared plan".into());
@@ -921,7 +923,9 @@ mod tests {
     fn lambda_answer(inner_first: bool) -> (Engine, Answer) {
         let doc: serde_json::Value = serde_json::from_str(include_str!("../lambda.chrnb")).unwrap();
         let program: Program = serde_json::from_value(doc["program"].clone()).unwrap();
-        let e = Engine::new(Arc::new(prepare(&program, &lambda_query(2)).unwrap()));
+        let e = Engine::new(Arc::new(
+            crate::allocation::prepare(&program, &lambda_query(2)).unwrap(),
+        ));
         let variables = e
             .program()
             .query_variables()

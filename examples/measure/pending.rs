@@ -87,15 +87,14 @@ pub(super) fn run(case: &str, n: usize, limit: u64, timeout: Duration) -> Result
     let query = vec![format!("hold({ports})"); n].join(",");
     let code = during(Phase::Setup, || -> Result<_, String> {
         Ok(Arc::new(
-            prepare(
+            crate::allocation::prepare(
                 &parse_program("").map_err(|e| e.to_string())?,
                 &parse_query(&query).map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?,
         ))
     })?;
-    let owner = Arc::downgrade(&code);
-    let mut e = during(Phase::Setup, || Engine::new(code));
+    let mut e = during(Phase::Setup, || Engine::new(code.clone()));
     checkpoint("pending_setup", &e, start.elapsed());
     let mut b = Budget::new(limit, timeout);
     while e.pending_tasks() < n {
@@ -139,11 +138,7 @@ pub(super) fn run(case: &str, n: usize, limit: u64, timeout: Duration) -> Result
         return Ok(false);
     }
     let start = Instant::now();
-    during(Phase::Cleanup, || drop(e));
-    check(
-        owner.upgrade().is_none(),
-        "pending probe retained prepared owner",
-    )?;
+    super::drop_prepared_engine(e, code)?;
     crate::report::emit(
         "phase",
         json!({

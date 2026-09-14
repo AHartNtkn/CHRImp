@@ -585,12 +585,14 @@ impl Engine {
         let mut parts = [Some(base), None];
         match &self.code.instructions[body.instruction] {
             Instruction::And(items) => {
+                let items = self.code.operands(*items);
                 parts[0] = (body.index < items.len()).then_some(Obligation {
                     start: body.index,
                     ..base
                 });
             }
             Instruction::Or(items) => {
+                let items = self.code.operands(*items);
                 let end = body.end.unwrap_or(items.len());
                 let split = body.index + (end - body.index) / 2;
                 let part = |start, end, guard| {
@@ -790,9 +792,10 @@ impl Projection {
                     });
                 }
                 let slot = match instruction {
-                    Instruction::Post(atom) => atom.args.get(frame.index).copied(),
+                    Instruction::Post(atom) => code.args(atom).get(frame.index).copied(),
                     Instruction::Equal(x, y) => [*x, *y].get(frame.index).copied(),
                     Instruction::And(items) | Instruction::Or(items) => {
+                        let items = code.operands(*items);
                         if let Some(&instruction) = items
                             .get(frame.index)
                             .filter(|_| frame.index < frame.end.unwrap_or(items.len()))

@@ -398,7 +398,7 @@ pub(super) fn run(
         query.push_str(",turn()");
     }
     let code = Arc::new(
-        prepare(
+        crate::allocation::prepare(
             &parse_program(if conditional && held {
                 CONDITIONAL_HELD_RULE
             } else if conditional {
@@ -415,7 +415,7 @@ pub(super) fn run(
         )
         .map_err(|e| e.to_string())?,
     );
-    let mut e = Engine::new(code);
+    let mut e = Engine::new(code.clone());
     let mut b = Budget::new(limit, timeout);
     let mut views = VecDeque::new();
     let mut readers = Vec::new();
@@ -683,6 +683,7 @@ pub(super) fn run(
     } else {
         false
     };
+    super::drop_prepared_engine(e, code)?;
     result.map(|complete| complete && clean)
 }
 
@@ -750,7 +751,7 @@ mod tests {
     }
     fn conditional_source() -> Engine {
         Engine::new(Arc::new(
-            prepare(
+            crate::allocation::prepare(
                 &parse_program(CONDITIONAL_RULE).unwrap(),
                 &parse_query("keep(A),loop(A),turn()").unwrap(),
             )
@@ -768,7 +769,7 @@ mod tests {
 
     #[test]
     fn failing_arm_leaves_one_known_answer_and_one_application() {
-        let code = prepare(
+        let code = crate::allocation::prepare(
             &parse_program("once(X) <=> (fail;done(X)).").unwrap(),
             &parse_query("keep(A),once(A)").unwrap(),
         )
@@ -889,7 +890,7 @@ mod tests {
     }
     #[test]
     fn cancellation_releases_partly_unread_inspection_owners() {
-        let code = prepare(
+        let code = crate::allocation::prepare(
             &parse_program("loop(X) <=> loop(X).").unwrap(),
             &parse_query("keep(A),loop(A)").unwrap(),
         )

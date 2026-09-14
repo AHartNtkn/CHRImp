@@ -30,7 +30,7 @@ use crate::{
 };
 use chr::{
     engine::Engine,
-    program::{Prepared, prepare},
+    program::Prepared,
     syntax::{parse_program, parse_query},
 };
 use serde::Serialize;
@@ -100,6 +100,8 @@ pub struct Measurement {
     pub parse_program_ms: Option<f64>,
     pub parse_query_ms: Option<f64>,
     pub prepare_ms: Vec<f64>,
+    #[cfg(feature = "diagnostics")]
+    pub representation_bytes: Vec<usize>,
     pub uses: Vec<Use>,
     pub prepared_drop_ms: Vec<f64>,
     pub prepared_released: bool,
@@ -237,7 +239,7 @@ fn execute(
     let complete = e.delivery_done() && error.is_none() && start.elapsed() < timeout;
     let use_ms = ms(use_start.elapsed());
     let applications = e.applications();
-    let (_, engine_drop_ms) = timed(Phase::Cleanup, || drop(e));
+    let (_, engine_drop_ms) = timed(Phase::EngineDrop, || drop(e));
     let owners = Arc::strong_count(code);
     if owners != 1 {
         error = Some("engine destruction retained Prepared ownership".into());
@@ -260,7 +262,7 @@ fn execute(
 }
 fn drop_prepared(code: Arc<Prepared>, m: &mut Measurement) {
     let weak = Arc::downgrade(&code);
-    let (released, elapsed) = timed(Phase::Cleanup, || {
+    let (released, elapsed) = timed(Phase::PreparedDrop, || {
         drop(code);
         let released = weak.strong_count() == 0;
         // Include the final Arc allocation release in this destruction phase.
@@ -301,6 +303,8 @@ pub fn run(
         parse_program_ms: None,
         parse_query_ms: None,
         prepare_ms: vec![],
+        #[cfg(feature = "diagnostics")]
+        representation_bytes: vec![],
         uses: vec![],
         prepared_drop_ms: vec![],
         prepared_released: true,
@@ -327,9 +331,14 @@ pub fn run(
         }
         if shared.is_none() {
             let (prepared, elapsed) = timed(Phase::Setup, || {
-                prepare(ast.as_ref().unwrap(), query_ast.as_ref().unwrap()).map(Arc::new)
+                crate::allocation::prepare(ast.as_ref().unwrap(), query_ast.as_ref().unwrap())
+                    .map(Arc::new)
             });
             m.prepare_ms.push(elapsed);
+            #[cfg(feature = "diagnostics")]
+            if let Ok(code) = &prepared {
+                m.representation_bytes.push(code.representation_bytes());
+            }
             match prepared {
                 Ok(code) => shared = Some(code),
                 Err(e) => {
@@ -399,14 +408,16 @@ mod tests {
             ..Options::default()
         };
         let (p, q) = source(2, options).unwrap();
-        let code = prepare(&parse_program(&p).unwrap(), &parse_query(q).unwrap()).unwrap();
+        let code =
+            crate::allocation::prepare(&parse_program(&p).unwrap(), &parse_query(q).unwrap())
+                .unwrap();
         assert_eq!(code.rules().len(), 2);
         for rule in code.rules() {
             assert_eq!(rule.heads.len(), 3);
             assert_eq!(
-                rule.heads
+                code.heads(rule)
                     .iter()
-                    .map(|h| h.args.clone())
+                    .map(|h| code.args(h).to_vec())
                     .collect::<Vec<_>>(),
                 [vec![0, 0], vec![0, 0], vec![1, 2]]
             );
@@ -415,12 +426,14 @@ mod tests {
                 let Instruction::And(items) = &code.instructions()[body] else {
                     panic!("missing nesting");
                 };
+                let items = code.operands(*items);
                 assert_eq!(items.len(), 1);
                 body = items[0];
             }
             let Instruction::And(items) = &code.instructions()[body] else {
                 panic!("missing width");
             };
+            let items = code.operands(*items);
             assert_eq!(items.len(), 4);
         }
         assert!(
@@ -453,7 +466,10 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(prepare(&parse_program(&p).unwrap(), &parse_query(q).unwrap()).is_ok());
+        assert!(
+            crate::allocation::prepare(&parse_program(&p).unwrap(), &parse_query(q).unwrap())
+                .is_ok()
+        );
     }
 
     #[test]
@@ -523,7 +539,7 @@ mod tests {
     #[test]
     fn work_oracle_rejects_redundant_application_with_same_residual() {
         let code = Arc::new(
-            prepare(
+            crate::allocation::prepare(
                 &parse_program("start(X) <=> p(X). p(X) ==> true.").unwrap(),
                 &parse_query("start(A)").unwrap(),
             )
@@ -544,7 +560,7 @@ mod tests {
     #[test]
     fn semantic_oracle_rejects_an_extra_residual() {
         let code = Arc::new(
-            prepare(
+            crate::allocation::prepare(
                 &parse_program("start(X) <=> p(X),leak().").unwrap(),
                 &parse_query("start(A)").unwrap(),
             )

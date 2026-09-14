@@ -400,6 +400,18 @@ Two unchanged seven-sample `rewrite 512` campaigns gave native peak medians 6,93
 
 ## Preparation shape, reuse and direct destruction
 
+Round 022 packs Prepared operands, heads and trigger records into shared flat
+arenas. The measure allocator now separates `prepare`, `engine_drop` and
+`prepared_drop` from setup/cleanup. `prepare` excludes parsing and the caller's
+outer Arc allocation. Lifecycle archive/inspection/pending probes report
+`final_drop` with separate drop clocks and the final Prepared ownership check.
+Diagnostic `representation_bytes` in preparation results (and
+`plan_representation_bytes` in engine checkpoints) includes the changed backing
+buffers, their capacities/padding and the complete Prepared header; unchanged
+name/signature and constructor/update backing is excluded from that gauge but
+included in allocator measurements. See the
+[Round 022 evidence](optimization-evidence/rehearse/round022-prepared-arena/README.md).
+
 ```sh
 python3 examples/perf.py --out /tmp/prep-reuse --repeat 5 --seconds 5 --total-seconds 40 -- prepare-reuse 64 5000000 5 --heads 4 --arity 4 --repeats 4 --width 16 --depth 8 --uses 8
 python3 examples/perf.py --out /tmp/prep-independent --repeat 5 --seconds 5 --total-seconds 40 -- prepare-independent 64 5000000 5 --heads 4 --arity 4 --repeats 4 --width 16 --depth 8 --uses 8

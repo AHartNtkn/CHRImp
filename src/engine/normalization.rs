@@ -323,7 +323,7 @@ impl Normalizer {
                             self.config.plan.clashes[&(left.min(right), left.max(right))]
                         };
                         let r = &self.config.source.rules[rule];
-                        let heads = if r.heads[0].relation == left {
+                        let heads = if self.config.source.heads(r)[0].relation == left {
                             [other, *id]
                         } else {
                             [*id, other]
@@ -376,14 +376,14 @@ impl Normalizer {
                     return (false, None);
                 }
                 if app.head < 2 {
-                    let head = &rule.heads[app.head];
+                    let head = &self.config.source.heads(rule)[app.head];
                     if app.port == head.args.len() {
                         app.head += 1;
                         app.port = 0;
                     } else {
                         // Only the key is shared between the recognized heads.
                         if app.head == 0 || app.port != 0 {
-                            app.variables[head.args[app.port]] =
+                            app.variables[self.config.source.args(head)[app.port]] =
                                 g.arguments(app.heads[app.head])[app.port];
                         }
                         app.port += 1;
@@ -416,7 +416,8 @@ impl Normalizer {
                 self.stats.applications += 1;
                 if rule.kept == 1 {
                     self.stats.coalescences += 1;
-                    self.stats.field_equalities += (rule.heads[0].args.len() - 1) as u64;
+                    self.stats.field_equalities +=
+                        (self.config.source.heads(rule)[0].args.len() - 1) as u64;
                 } else {
                     self.stats.clashes += 1;
                     self.work.push_front(Work::Fail(app.scope, None));

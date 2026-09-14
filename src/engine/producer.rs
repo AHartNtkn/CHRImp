@@ -77,6 +77,7 @@ impl Split {
         let Instruction::Or(items) = &code.instructions[b.instruction] else {
             unreachable!()
         };
+        let items = code.operands(*items);
         let end = b.end.unwrap_or(items.len());
         Self {
             root,
@@ -115,6 +116,7 @@ impl Split {
         let Instruction::Or(items) = &self.code.instructions[self.instruction] else {
             unreachable!()
         };
+        let items = self.code.operands(*items);
         self.plan
             .rejection
             .get(&items[self.arm])

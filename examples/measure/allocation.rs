@@ -14,6 +14,9 @@ pub enum Phase {
     Inspection,
     #[cfg(all(test, feature = "diagnostics"))]
     Calibration,
+    Prepare = 8,
+    EngineDrop,
+    PreparedDrop,
 }
 
 #[inline]
@@ -33,7 +36,7 @@ mod enabled {
         cell::Cell,
         sync::atomic::{AtomicU64, Ordering::Relaxed},
     };
-    const NAMES: [&str; 8] = [
+    const NAMES: [&str; 11] = [
         "other",
         "setup",
         "engine",
@@ -42,6 +45,9 @@ mod enabled {
         "cleanup",
         "inspection",
         "calibration",
+        "prepare",
+        "engine_drop",
+        "prepared_drop",
     ];
     thread_local! { static PHASE: Cell<usize> = const { Cell::new(0) }; }
     struct Counters {
@@ -60,7 +66,7 @@ mod enabled {
             }
         }
     }
-    static COUNTERS: [Counters; 8] = [const { Counters::new() }; 8];
+    static COUNTERS: [Counters; 11] = [const { Counters::new() }; 11];
     static LIVE: AtomicU64 = AtomicU64::new(0);
     static PEAK: AtomicU64 = AtomicU64::new(0);
     pub(super) struct Scope(usize);
@@ -131,7 +137,7 @@ mod enabled {
     }
     #[derive(Clone, Copy, serde::Serialize)]
     pub struct Snapshot {
-        pub phases: [Counts; 8],
+        pub phases: [Counts; 11],
         pub process_live_requested_bytes: u64,
         pub process_peak_requested_bytes: u64,
     }
@@ -286,3 +292,11 @@ mod enabled {
 static ALLOCATOR: enabled::Allocator = enabled::Allocator;
 #[cfg(feature = "diagnostics")]
 pub use enabled::snapshot;
+
+/// Scope preparation itself, excluding parsing and the caller's Arc allocation.
+pub fn prepare(
+    program: &chr::syntax::Program,
+    query: &chr::syntax::Body,
+) -> Result<chr::program::Prepared, chr::syntax::ParseError> {
+    during(Phase::Prepare, || chr::program::prepare(program, query))
+}

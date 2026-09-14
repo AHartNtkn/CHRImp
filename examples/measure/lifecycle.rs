@@ -5,7 +5,7 @@ use chr::{
     engine::{Engine, InspectionError, Memory, ViewId},
     notebook::Runtime,
     observe::Output,
-    program::{Signature, prepare},
+    program::Signature,
     syntax::{parse_program, parse_query},
 };
 use serde_json::{Value, json};
@@ -27,6 +27,32 @@ pub const CASES: &str = "life-alias life-propagation life-dependent life-snapsho
 const REWRITE: &str = "p(X) <=> q(X). q(X) <=> done(X).";
 fn check(ok: bool, why: &str) -> Result<(), String> {
     if ok { Ok(()) } else { Err(why.into()) }
+}
+
+fn drop_prepared_engine(e: Engine, code: Arc<chr::program::Prepared>) -> Result<(), String> {
+    let start = Instant::now();
+    during(Phase::EngineDrop, || drop(e));
+    let engine_drop_ms = ms(start.elapsed());
+    check(
+        Arc::strong_count(&code) == 1,
+        "engine drop retained Prepared ownership",
+    )?;
+    let weak = Arc::downgrade(&code);
+    let start = Instant::now();
+    let released = during(Phase::PreparedDrop, || {
+        drop(code);
+        let released = weak.strong_count() == 0;
+        drop(weak);
+        released
+    });
+    let prepared_drop_ms = ms(start.elapsed());
+    check(released, "final Prepared owner retained")?;
+    crate::report::emit(
+        "phase",
+        json!({ "phase": "final_drop", "engine_drop_ms": engine_drop_ms,
+        "prepared_drop_ms": prepared_drop_ms, "prepared_released": released }),
+    );
+    Ok(())
 }
 
 struct Budget {
@@ -383,7 +409,7 @@ fn stream(case: &str, n: usize, limit: u64, timeout: Duration) -> Result<bool, S
     };
     let t = Instant::now();
     let code = Arc::new(
-        prepare(
+        crate::allocation::prepare(
             &parse_program(program).map_err(|e| e.to_string())?,
             &parse_query(query).map_err(|e| e.to_string())?,
         )
@@ -561,13 +587,13 @@ fn stream(case: &str, n: usize, limit: u64, timeout: Duration) -> Result<bool, S
 // execution. Captures use public APIs; automatic history remains off throughout.
 fn archive(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
     let code = Arc::new(
-        prepare(
+        crate::allocation::prepare(
             &parse_program("loop(X) <=> loop(X).").map_err(|e| e.to_string())?,
             &parse_query("keep(A),loop(A)").map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())?,
     );
-    let mut e = Engine::new(code);
+    let mut e = Engine::new(code.clone());
     let relation = e
         .program()
         .signatures()
@@ -651,6 +677,7 @@ fn archive(n: usize, limit: u64, timeout: Duration) -> Result<bool, String> {
             clean &= release(&mut e, limit, timeout)?;
         }
     }
+    drop_prepared_engine(e, code)?;
     Ok(complete && clean)
 }
 

@@ -186,10 +186,11 @@ fn actual_behavior_evaluator_rejects_constant_before_its_binary_subsplit() {
         .rules()
         .iter()
         .find(|r| {
-            r.heads
+            code.heads(r)
                 .iter()
                 .any(|h| code.signatures()[h.relation].name == "nil")
-                && r.heads
+                && code
+                    .heads(r)
                     .iter()
                     .any(|h| code.signatures()[h.relation].name == "eval")
         })

@@ -369,7 +369,7 @@ impl Matches {
         self.phase = Phase::Select;
     }
     fn push_frame(&mut self, g: &Graph, head: usize, lookup: Lookup, anchor: Option<u64>) {
-        let atom = &self.code.rules[self.rule].heads[head];
+        let atom = &self.code.heads(&self.code.rules[self.rule])[head];
         let scope = self.frames.last().map_or(self.scope, |f| f.hit);
         let verified_port = match lookup {
             Lookup::Port { port, .. } => Some(port),
@@ -381,7 +381,7 @@ impl Matches {
             && let Lookup::Port { port, .. } = lookup
         {
             let mut bound = [None; crate::graph::restriction::MAX_PORTS];
-            for (i, &slot) in atom.args.iter().enumerate() {
+            for (i, &slot) in self.code.args(atom).iter().enumerate() {
                 bound[i] = self.bindings[slot];
             }
             if let Some(subscriber) = g.restriction(&self.root, atom.relation, port, bound) {
@@ -463,7 +463,7 @@ impl Matches {
                 } else if self.occurrences[self.select_head].is_some() {
                     self.select_head += 1;
                 } else {
-                    let atom = &self.code.rules[self.rule].heads[self.select_head];
+                    let atom = &self.code.heads(&self.code.rules[self.rule])[self.select_head];
                     if self.select_port == 0 && self.select_members.is_none() {
                         self.relation_count = g.relation_count(&self.root, atom.relation);
                         self.key_count = self.relation_count;
@@ -505,7 +505,8 @@ impl Matches {
                                     if self.select_count < self.key_count {
                                         self.lookup = Lookup::Port {
                                             port: self.select_port,
-                                            variable: self.bindings[atom.args[self.select_port]]
+                                            variable: self.bindings
+                                                [self.code.args(atom)[self.select_port]]
                                                 .unwrap(),
                                         };
                                         self.key_count = self.select_count;
@@ -515,7 +516,9 @@ impl Matches {
                                 }
                                 ResolveStatus::Pending => {}
                             }
-                        } else if let Some(variable) = self.bindings[atom.args[self.select_port]] {
+                        } else if let Some(variable) =
+                            self.bindings[self.code.args(atom)[self.select_port]]
+                        {
                             self.score += 1;
                             self.tuple_hash = crate::graph::tuple_hash(self.tuple_hash, variable);
                             self.tuple_bound &= g.singleton(&self.root, variable);
@@ -583,14 +586,14 @@ impl Matches {
             }
             Phase::Ports => {
                 let frame = self.frames.last_mut().expect("current head");
-                let atom = &self.code.rules[self.rule].heads[frame.head];
+                let atom = &self.code.heads(&self.code.rules[self.rule])[frame.head];
                 if self.position == atom.args.len() {
                     self.occurrences[frame.head] = Some(self.candidate);
                     frame.hit = self.current;
                     self.arguments = None;
                     self.select();
                 } else {
-                    let slot = atom.args[self.position];
+                    let slot = self.code.args(atom)[self.position];
                     let actual = self.arguments.as_ref().expect("candidate ports")[self.position];
                     if let Some(expected) = self.bindings[slot] {
                         // The indexed membership lookup already proved its chosen

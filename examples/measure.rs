@@ -2,7 +2,6 @@
 use chr::{
     engine::Engine,
     observe::Output,
-    program::prepare,
     syntax::{parse_program, parse_query},
 };
 use std::{
@@ -409,7 +408,7 @@ fn run_workload(
     let parse_query_time = start.elapsed();
     let start = Instant::now();
     let code = during(Phase::Setup, || {
-        prepare(&parsed_program, &parsed_query).map(Arc::new)
+        crate::allocation::prepare(&parsed_program, &parsed_query).map(Arc::new)
     })
     .map_err(|e| format!("prepare: {e:?}"))?;
     let prepare_time = start.elapsed();
@@ -562,10 +561,10 @@ fn run_workload(
     let reclaimed = std::array::from_fn::<_, 13, _>(|i| before[i].saturating_sub(after[i]));
     report_diagnostics("after_cancel", &e);
     let drop_start = Instant::now();
-    during(Phase::Cleanup, || drop(e));
+    during(Phase::EngineDrop, || drop(e));
     let engine_drop = drop_start.elapsed();
     let drop_start = Instant::now();
-    during(Phase::Cleanup, || drop(code));
+    during(Phase::PreparedDrop, || drop(code));
     let prepared_drop = drop_start.elapsed();
     let success = reached && !timed_out && cleanup_done && cleanup_in_time && error.is_none();
     let status = if error.is_some() {
@@ -670,7 +669,7 @@ fn report_diagnostics(phase: &str, e: &Engine) {
         let allocation = allocation::snapshot();
         report::emit(
             "diagnostics",
-            serde_json::json!({"phase": phase, "condition_slab": e.arena().slab_diagnostics(), "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "prefix_lookup": e.graph().index_prefix_counts(), "prefix_memo": e.graph().index_prefix_memo_counts(), "normalization": e.normalization_stats(), "field_updates": e.graph().field_update_diagnostics(), "preparation": e.program().preparation_diagnostics(), "store_mutations": e.mutation_counts(), "store_batches": e.batch_diagnostics(), "graph_allocations": e.graph().index_allocations(), "graph_pages": e.graph().index_page_counts(), "allocation": allocation, "memory_counts": report::memory(memory(e))}),
+            serde_json::json!({"phase": phase, "condition_slab": e.arena().slab_diagnostics(), "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "prefix_lookup": e.graph().index_prefix_counts(), "prefix_memo": e.graph().index_prefix_memo_counts(), "normalization": e.normalization_stats(), "field_updates": e.graph().field_update_diagnostics(), "preparation": e.program().preparation_diagnostics(), "plan_representation_bytes": e.program().representation_bytes(), "store_mutations": e.mutation_counts(), "store_batches": e.batch_diagnostics(), "graph_allocations": e.graph().index_allocations(), "graph_pages": e.graph().index_page_counts(), "allocation": allocation, "memory_counts": report::memory(memory(e))}),
         );
         println!(
             "diagnostics={}",
@@ -1160,7 +1159,7 @@ mod tests {
         let mut w = families::make("common", 1, 1).unwrap();
         let (program, query) = (&w.program, &w.query);
         let e = Engine::new(Arc::new(
-            prepare(
+            crate::allocation::prepare(
                 &parse_program(&program).unwrap(),
                 &parse_query(&query).unwrap(),
             )
@@ -1204,7 +1203,7 @@ mod tests {
         let mut w = families::make("common-wide", n, 1).unwrap();
         let (program, query, applications) = (&w.program, &w.query, w.apps.unwrap());
         let mut e = Engine::new(Arc::new(
-            prepare(
+            crate::allocation::prepare(
                 &parse_program(&program).unwrap(),
                 &parse_query(&query).unwrap(),
             )
@@ -1233,7 +1232,7 @@ mod tests {
             let expected_answers = w.answers.unwrap();
             let expected_apps = w.apps.unwrap();
             let mut e = Engine::new(Arc::new(
-                prepare(
+                crate::allocation::prepare(
                     &parse_program(&w.program).unwrap(),
                     &parse_query(&w.query).unwrap(),
                 )

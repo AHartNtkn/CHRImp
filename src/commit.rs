@@ -232,7 +232,7 @@ impl Commit {
                     let Some(fact) = g.fact(self.base.graph.clone(), id) else {
                         return self.reject();
                     };
-                    let head = &self.code.rules[self.rule].heads[self.head];
+                    let head = &self.code.heads(&self.code.rules[self.rule])[self.head];
                     if fact.relation != head.relation || fact.args.len() != head.args.len() {
                         return self.reject();
                     }
@@ -247,7 +247,7 @@ impl Commit {
                 }
             }
             Phase::Port => {
-                let head = &self.code.rules[self.rule].heads[self.head];
+                let head = &self.code.heads(&self.code.rules[self.rule])[self.head];
                 if self.port == head.args.len() {
                     self.head += 1;
                     self.phase = Phase::Head;
@@ -256,7 +256,7 @@ impl Commit {
                         .fact(self.base.graph.clone(), self.heads[self.head])
                         .expect("retained base")
                         .args[self.port];
-                    let expected = self.variables[head.args[self.port]];
+                    let expected = self.variables[self.code.args(head)[self.port]];
                     if actual == expected {
                         self.port += 1;
                     } else {

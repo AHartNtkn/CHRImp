@@ -560,6 +560,7 @@ impl Engine {
         let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
             unreachable!()
         };
+        let items = self.code.operands(*items);
         assert!(start < end && end <= items.len());
         if end - start == 1 {
             self.body(b.event, items[start], b.variables.clone(), scope);
@@ -904,16 +905,16 @@ impl Engine {
                 next,
             } => {
                 let triggers = if *identity_only {
-                    &self.code.merge_triggers[*relation]
+                    self.code.targets(self.code.merge_triggers[*relation])
                 } else {
-                    &self.code.triggers[*relation]
+                    self.code.targets(self.code.triggers[*relation])
                 };
                 if *next == triggers.len() {
                     true
                 } else {
                     let (rule, head) = triggers[*next];
                     *next += 1;
-                    let matches = if self.code.rules[rule].direct_anchor() {
+                    let matches = if self.code.rules[rule].direct_anchor(&self.code) {
                         Discovery::anchor(arguments.clone(), *occurrence, *reader_scope)
                     } else {
                         Discovery::Indexed(Box::new(
@@ -1129,7 +1130,7 @@ impl Engine {
                 if b.index == atom.args.len() {
                     b.phase = BodyPhase::Acquire;
                 } else {
-                    b.args.push(b.variables[atom.args[b.index]]);
+                    b.args.push(b.variables[self.code.args(atom)[b.index]]);
                     b.index += 1;
                 }
             }
@@ -1137,6 +1138,7 @@ impl Engine {
                 let Instruction::And(items) = &self.code.instructions[b.instruction] else {
                     unreachable!()
                 };
+                let items = self.code.operands(*items);
                 if b.index == items.len() {
                     return true;
                 }
@@ -1316,6 +1318,7 @@ impl Engine {
                 let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
                     unreachable!()
                 };
+                let items = self.code.operands(*items);
                 let end = b.end.unwrap_or(items.len());
                 if b.index + 1 == end {
                     let instruction = items[b.index];
@@ -1379,6 +1382,7 @@ impl Engine {
                         let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
                             unreachable!()
                         };
+                        let items = self.code.operands(*items);
                         let end = b.end.unwrap_or(items.len());
                         self.births.insert(
                             choice,
@@ -1407,6 +1411,7 @@ impl Engine {
                 let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
                     unreachable!()
                 };
+                let items = self.code.operands(*items);
                 let end = b.end.unwrap_or(items.len());
                 self.body_range(b, b.index, b.index + (end - b.index) / 2, b.split_scopes[0]);
                 b.phase = BodyPhase::GuardRight;
@@ -1415,6 +1420,7 @@ impl Engine {
                 let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
                     unreachable!()
                 };
+                let items = self.code.operands(*items);
                 let end = b.end.unwrap_or(items.len());
                 self.body_range(b, b.index + (end - b.index) / 2, end, b.split_scopes[1]);
                 return true;
@@ -1424,6 +1430,7 @@ impl Engine {
                     let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
                         unreachable!()
                     };
+                    let items = self.code.operands(*items);
                     let end = b.end.unwrap_or(items.len());
                     let split = b.index + (end - b.index) / 2;
                     self.body_range(b, b.index, split, c);
@@ -1436,6 +1443,7 @@ impl Engine {
                     let Instruction::Or(items) = &self.code.instructions[b.instruction] else {
                         unreachable!()
                     };
+                    let items = self.code.operands(*items);
                     let end = b.end.unwrap_or(items.len());
                     let split = b.index + (end - b.index) / 2;
                     self.body_range(b, split, end, c);

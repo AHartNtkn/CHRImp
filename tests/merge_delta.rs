@@ -223,7 +223,7 @@ fn opposite_conditional_losers_cover_every_new_multihead_match_on_frozen_root() 
         let mut covered = Tuples::new();
         for (&id, &scope) in &found {
             let fact = g.fact(frozen.clone(), id).unwrap();
-            for (head, atom) in code.rules()[rule].heads.iter().enumerate() {
+            for (head, atom) in code.heads(&code.rules()[rule]).iter().enumerate() {
                 if atom.relation == fact.relation {
                     for (tuple, c) in matches(
                         &g,
