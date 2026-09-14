@@ -328,13 +328,14 @@ impl Engine {
                 let task = if matches!(c.phase, Phase::Tasks) {
                     self.queue.get(c.index)
                 } else {
-                    match c.after {
-                        Some(id) => self.parked.range((Excluded(id), Unbounded)).next(),
-                        None => self.parked.first_key_value(),
-                    }
-                    .map(|(_, task)| task)
+                    skip_waiting_scalars(&self.waiting, &mut c.index);
+                    self.waiting.get(c.index).and_then(Waiting::task)
                 };
                 if let Some(task) = task {
+                    #[cfg(feature = "diagnostics")]
+                    if matches!(c.phase, Phase::Parked) {
+                        self.diagnostics.waiters.trace_steps += 1;
+                    }
                     if !c.task_roots {
                         if let Task::Body(b) = &task.task
                             && let Some(n) = &b.normalizer
@@ -402,10 +403,10 @@ impl Engine {
                             Step::Root(root) => retain_condition(&mut c.conditions, root),
                             Step::Pending => {}
                             Step::Done => {
-                                if matches!(c.phase, Phase::Tasks) {
-                                    c.index += 1;
-                                } else {
-                                    c.after = Some(task.id);
+                                c.index += 1;
+                                #[cfg(feature = "diagnostics")]
+                                if matches!(c.phase, Phase::Parked) {
+                                    self.diagnostics.waiters.trace_tasks += 1;
                                 }
                                 c.task_roots = false;
                                 c.trace = TraceCursor::default();
@@ -419,6 +420,7 @@ impl Engine {
                         Phase::Births
                     };
                     c.after = None;
+                    c.index = 0;
                 }
             }
             Phase::Births => {
@@ -963,7 +965,7 @@ mod tests {
                         assert_eq!(
                             e.waiting
                                 .iter()
-                                .filter(|owner| **owner == Owner::Collection)
+                                .filter(|entry| entry.owner() == Owner::Collection)
                                 .count(),
                             1
                         );

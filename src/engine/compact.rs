@@ -340,14 +340,8 @@ impl Compact {
                 let scheduled = if matches!(self.phase, Phase::Tasks) {
                     e.queue.get_mut(self.task)
                 } else {
-                    match self.after {
-                        Some(id) => e
-                            .parked
-                            .range_mut((Excluded(id), Unbounded))
-                            .next()
-                            .map(|(_, task)| task),
-                        None => e.parked.values_mut().next(),
-                    }
+                    skip_waiting_scalars(&e.waiting, &mut self.task);
+                    e.waiting.get_mut(self.task).and_then(Waiting::task_mut)
                 };
                 if let Some(scheduled) = scheduled {
                     if self.slot == 0 {
@@ -384,6 +378,7 @@ impl Compact {
                     };
                     self.after = None;
                     self.slot = 0;
+                    self.task = 0;
                 }
             }
             Phase::Births => {

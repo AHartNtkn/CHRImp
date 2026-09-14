@@ -939,11 +939,15 @@ mod progress_tests {
                 e.request_collection();
             }
             e.advance(1);
-            old_reader |= e.queue.iter().chain(e.parked.values()).any(|s| {
-                s.epoch
-                    .as_ref()
-                    .is_some_and(|epoch| epoch.id < e.coordinates.current.id)
-            });
+            old_reader |= e
+                .queue
+                .iter()
+                .chain(e.waiting.iter().filter_map(Waiting::task))
+                .any(|s| {
+                    s.epoch
+                        .as_ref()
+                        .is_some_and(|epoch| epoch.id < e.coordinates.current.id)
+                });
             match e.take_output() {
                 Some(Output::Fact { relation, .. }) if relation == pair => pairs += 1,
                 Some(Output::End) => {

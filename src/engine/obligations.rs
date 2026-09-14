@@ -30,7 +30,7 @@ pub(super) struct Pending {
 pub(super) struct Promotion {
     queue: usize,
     parked: bool,
-    after: Option<u64>,
+    waiting: usize,
 }
 struct Descriptor {
     variables: Arc<Vec<u64>>,
@@ -427,11 +427,10 @@ impl Engine {
             return true;
         }
         let scheduled = if self.syntax_promotion.parked {
-            match self.syntax_promotion.after {
-                Some(id) => self.parked.range((Excluded(id), Unbounded)).next(),
-                None => self.parked.first_key_value(),
-            }
-            .map(|(_, scheduled)| scheduled)
+            skip_waiting_scalars(&self.waiting, &mut self.syntax_promotion.waiting);
+            self.waiting
+                .get(self.syntax_promotion.waiting)
+                .and_then(Waiting::task)
         } else {
             self.queue.get(self.syntax_promotion.queue)
         };
@@ -465,7 +464,7 @@ impl Engine {
                 }
             }
             if self.syntax_promotion.parked {
-                self.syntax_promotion.after = Some(id);
+                self.syntax_promotion.waiting += 1;
             } else {
                 self.syntax_promotion.queue += 1;
             }

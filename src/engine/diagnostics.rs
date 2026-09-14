@@ -128,6 +128,17 @@ pub struct WaiterDiagnostics {
     pub granted: [u64; 3],
     pub entries: usize,
     pub peak_entries: usize,
+    pub capacity_bytes: usize,
+    pub peak_capacity_bytes: usize,
+    pub capacity_changes: u64,
+    pub growth_move_bytes_bound: u64,
+    pub shrink_move_bytes_bound: u64,
+    pub payload_moves: u64,
+    pub direct_handoffs: u64,
+    pub trace_tasks: u64,
+    pub trace_steps: u64,
+    pub discard_steps: u64,
+    pub discarded_tasks: u64,
 }
 
 /// Continuation calls and structural Job/Transform work. Calls include identity,

@@ -79,9 +79,25 @@ impl Engine {
                 }
             }
             Phase::Parked => {
-                if let Some(mut entry) = self.parked.first_entry() {
-                    if entry.get_mut().task.discard_tick() {
-                        entry.remove_entry();
+                if let Some(entry) = self.waiting.front_mut() {
+                    let done = if let Waiting::Task(task) = entry {
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            self.diagnostics.waiters.discard_steps += 1;
+                        }
+                        task.task.discard_tick()
+                    } else {
+                        true
+                    };
+                    if done {
+                        let entry = self.dequeue_waiting().unwrap();
+                        self.clear_waiting(entry.owner());
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            self.diagnostics.waiters.entries = self.waiting.len();
+                            self.diagnostics.waiters.discarded_tasks +=
+                                u64::from(matches!(entry, Waiting::Task(_)));
+                        }
                     }
                 } else {
                     self.cancellation.phase = Phase::Ready;
@@ -139,10 +155,12 @@ impl Engine {
                 }
             }
             Phase::Waiters => {
-                self.waiting = VecDeque::new(); // Scalar owner IDs only.
+                debug_assert!(self.waiting.is_empty()); // Payload discard is complete.
+                self.waiting = WaitingQueue::new();
                 #[cfg(feature = "diagnostics")]
                 {
                     self.diagnostics.waiters.entries = 0;
+                    self.diagnostics.waiters.capacity_bytes = 0;
                 }
                 self.completion_waiting = false;
                 self.collection_waiting = false;
@@ -256,7 +274,7 @@ mod tests {
         }
         assert!(e.cancel_done());
         assert!(!e.completion_waiting && !e.collection_waiting);
-        assert!(e.lane.is_none() && e.waiting.is_empty() && e.parked.is_empty());
+        assert!(e.lane.is_none() && e.waiting.is_empty());
     }
 
     #[test]

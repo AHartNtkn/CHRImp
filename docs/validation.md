@@ -26,7 +26,11 @@ every source suspension, repeated non-task acquisition in both owner orders,
 and immediate/deferred flag clearing. It validates identical frozen inspection
 events before and after cancellation at 64 parked-frontier offsets, complete
 release after snapshots are dropped, and direct Engine destruction while tasks
-remain parked. Existing collection tests cover physical GC while collection
+remain parked. Round 021 stores those payloads directly in the FIFO. Its added
+tests verify 485 ordered handoffs with nonmonotonic task IDs, stable payload
+addresses through wrapped directory growth/contraction, bounded capacity, and
+64 collection-trace suspensions followed by incremental discard, frozen-view
+readback, and complete release. Existing collection tests cover physical GC while collection
 waits for a writer, followed by semantic handoff.
 
 Coordinate unit tests exhaust every source/target pair through 19 sparse

@@ -43,7 +43,11 @@ impl Engine {
     /// Includes work in unfinished normalization transactions.
     pub fn normalization_stats(&self) -> NormalizationStats {
         let mut stats = self.normalization_stats.clone();
-        for s in self.queue.iter().chain(self.parked.values()) {
+        for s in self
+            .queue
+            .iter()
+            .chain(self.waiting.iter().filter_map(Waiting::task))
+        {
             if let Task::Body(b) = &s.task
                 && let Some(n) = &b.normalizer
             {

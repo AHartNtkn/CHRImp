@@ -49,9 +49,11 @@ mod inspection;
 mod obligations;
 mod restriction;
 mod step;
+mod waiting;
 pub use collection::Memory;
 pub use inspection::{InspectionError, InspectionStatus, SnapshotInfo, SnapshotKind, ViewId};
 pub use step::StepStatus;
+use waiting::WaitingQueue;
 
 use crate::commit::{Commit, CommitStatus, FreshIds, StateRoot};
 use crate::condition::{Arena, Condition, Job, Operation, Progress, poll};
@@ -109,6 +111,44 @@ struct Scheduled {
     id: u64,
     scope: Condition,
     task: Task,
+}
+// A failed task acquisition is completed by the scheduler before the next
+// dispatch. Suspended payloads have exactly one owner: this FIFO entry.
+enum Waiting {
+    Task(Scheduled),
+    Completion,
+    Collection,
+}
+impl Waiting {
+    fn owner(&self) -> Owner {
+        match self {
+            Self::Task(task) => Owner::Task(task.id),
+            Self::Completion => Owner::Completion,
+            Self::Collection => Owner::Collection,
+        }
+    }
+    fn task(&self) -> Option<&Scheduled> {
+        match self {
+            Self::Task(task) => Some(task),
+            _ => None,
+        }
+    }
+    fn task_mut(&mut self) -> Option<&mut Scheduled> {
+        match self {
+            Self::Task(task) => Some(task),
+            _ => None,
+        }
+    }
+}
+// At most two scalar entries can occur in the entire FIFO. Scans keep their
+// array position while source execution is frozen; no task-ID tree lookup.
+fn skip_waiting_scalars(waiting: &WaitingQueue, index: &mut usize) {
+    while waiting
+        .get(*index)
+        .is_some_and(|entry| entry.task().is_none())
+    {
+        *index += 1;
+    }
 }
 enum Task {
     Init(Vec<u64>),
@@ -229,10 +269,10 @@ pub struct Engine {
     variables: Arc<Vec<u64>>,
     active: Condition,
     queue: VecDeque<Scheduled>,
-    parked: BTreeMap<u64, Scheduled>,
     next_task: u64,
     lane: Option<Owner>,
-    waiting: VecDeque<Owner>,
+    waiting: WaitingQueue,
+    park_task: bool,
     completion_waiting: bool,
     collection_waiting: bool,
     pending_root: PendingRoot,
@@ -313,10 +353,10 @@ impl Engine {
             variables: Arc::new(vec![]),
             active: Condition::TRUE,
             queue: VecDeque::new(),
-            parked: BTreeMap::new(),
             next_task: 0,
             lane: None,
-            waiting: VecDeque::new(),
+            waiting: WaitingQueue::new(),
+            park_task: false,
             completion_waiting: false,
             collection_waiting: false,
             ready: None,
@@ -464,7 +504,12 @@ impl Engine {
         self.active == Condition::FALSE
     }
     pub fn pending_tasks(&self) -> usize {
-        self.queue.len() + self.parked.len()
+        self.queue.len() + self.waiting_tasks()
+    }
+    fn waiting_tasks(&self) -> usize {
+        self.waiting.len()
+            - usize::from(self.completion_waiting)
+            - usize::from(self.collection_waiting)
     }
     /// Output is a stream of owned scalar events; taking an event retains no
     /// execution snapshot. The receiver builds or stores the requested graph.
@@ -533,41 +578,87 @@ impl Engine {
         if self.lane == Some(owner) {
             return true;
         }
-        // A task calls acquire at most once per dispatch. On failure the
-        // scheduler parks it immediately, and only FIFO handoff can wake it.
-        // Thus runnable tasks cannot already have a waiter. The two independently
-        // serviced non-task owners can retry while waiting and need flags.
+        // Immediate acquisition needs no FIFO backing. Keep logical request
+        // diagnostics comparable with the former enqueue-and-pop path.
+        if self.lane.is_none() && self.waiting.is_empty() {
+            self.lane = Some(owner);
+            self.clear_waiting(owner);
+            #[cfg(feature = "diagnostics")]
+            {
+                let d = &mut self.diagnostics.waiters;
+                d.enqueued[owner.diagnostic_slot()] += 1;
+                d.granted[owner.diagnostic_slot()] += 1;
+                d.peak_entries = d.peak_entries.max(1);
+            }
+            return true;
+        }
         let enqueue = match owner {
-            Owner::Task(id) => {
-                debug_assert!(!self.parked.contains_key(&id));
-                debug_assert!(self.waiting.back() != Some(&owner));
-                true
+            Owner::Task(_) => {
+                debug_assert!(!self.park_task);
+                self.park_task = true;
+                // The caller still borrows the Scheduled payload. No other
+                // acquisition or service may occur before the scheduler parks it.
+                return false;
             }
             Owner::Completion => !std::mem::replace(&mut self.completion_waiting, true),
             Owner::Collection => !std::mem::replace(&mut self.collection_waiting, true),
         };
         if enqueue {
-            self.waiting.push_back(owner);
-            #[cfg(feature = "diagnostics")]
-            {
-                let d = &mut self.diagnostics.waiters;
-                d.enqueued[owner.diagnostic_slot()] += 1;
-                d.entries = self.waiting.len();
-                d.peak_entries = d.peak_entries.max(d.entries);
-            }
-        }
-        if self.lane.is_none() && self.waiting.front() == Some(&owner) {
-            self.waiting.pop_front();
-            self.clear_waiting(owner);
-            self.lane = Some(owner);
-            #[cfg(feature = "diagnostics")]
-            {
-                self.diagnostics.waiters.granted[owner.diagnostic_slot()] += 1;
-                self.diagnostics.waiters.entries = self.waiting.len();
-            }
-            return true;
+            self.enqueue_waiting(match owner {
+                Owner::Completion => Waiting::Completion,
+                Owner::Collection => Waiting::Collection,
+                Owner::Task(_) => unreachable!(),
+            });
         }
         false
+    }
+    fn enqueue_waiting(&mut self, entry: Waiting) {
+        #[cfg(feature = "diagnostics")]
+        let (owner, capacity, len, bytes) = (
+            entry.owner(),
+            self.waiting.directory_capacity(),
+            self.waiting.directory_len(),
+            self.waiting.capacity_bytes(),
+        );
+        self.waiting.push_back(entry);
+        #[cfg(feature = "diagnostics")]
+        {
+            let d = &mut self.diagnostics.waiters;
+            d.enqueued[owner.diagnostic_slot()] += 1;
+            d.entries = self.waiting.len();
+            d.peak_entries = d.peak_entries.max(d.entries);
+            d.payload_moves += u64::from(matches!(owner, Owner::Task(_)));
+            if bytes != self.waiting.capacity_bytes() {
+                d.capacity_changes += 1;
+            }
+            if capacity != self.waiting.directory_capacity() {
+                // Only directory pointers can move on growth, never payloads.
+                d.growth_move_bytes_bound += (2 * len * size_of::<usize>()) as u64;
+            }
+            d.capacity_bytes = self.waiting.capacity_bytes();
+            d.peak_capacity_bytes = d.peak_capacity_bytes.max(d.capacity_bytes);
+        }
+    }
+    fn dequeue_waiting(&mut self) -> Option<Waiting> {
+        #[cfg(feature = "diagnostics")]
+        let (capacity, len, bytes) = (
+            self.waiting.directory_capacity(),
+            self.waiting.directory_len(),
+            self.waiting.capacity_bytes(),
+        );
+        let entry = self.waiting.pop_front();
+        #[cfg(feature = "diagnostics")]
+        {
+            let d = &mut self.diagnostics.waiters;
+            if bytes != self.waiting.capacity_bytes() {
+                d.capacity_changes += 1;
+            }
+            if capacity != self.waiting.directory_capacity() {
+                d.shrink_move_bytes_bound += (2 * len * size_of::<usize>()) as u64;
+            }
+            d.capacity_bytes = self.waiting.capacity_bytes();
+        }
+        entry
     }
     fn clear_waiting(&mut self, owner: Owner) {
         match owner {
@@ -577,7 +668,8 @@ impl Engine {
         }
     }
     fn release_lane(&mut self) {
-        self.lane = self.waiting.pop_front();
+        let entry = self.dequeue_waiting();
+        self.lane = entry.as_ref().map(Waiting::owner);
         if let Some(owner) = self.lane {
             self.clear_waiting(owner);
             #[cfg(feature = "diagnostics")]
@@ -585,13 +677,14 @@ impl Engine {
                 self.diagnostics.waiters.granted[owner.diagnostic_slot()] += 1;
                 self.diagnostics.waiters.entries = self.waiting.len();
             }
-            if let Owner::Task(id) = owner {
+            if let Some(Waiting::Task(task)) = entry {
                 #[cfg(feature = "diagnostics")]
                 {
                     self.diagnostics.task_wakes += 1;
+                    self.diagnostics.waiters.direct_handoffs += 1;
+                    self.diagnostics.waiters.payload_moves += 1;
                 }
-                self.queue
-                    .push_back(self.parked.remove(&id).expect("waiting task is suspended"));
+                self.queue.push_back(task);
             }
         }
     }
@@ -640,13 +733,12 @@ impl Engine {
             }
             if self.cancellation.requested {
                 #[cfg(feature = "diagnostics")]
-                let tasks_before = self.queue.len() + self.parked.len();
+                let tasks_before = self.pending_tasks();
                 self.cancel_tick();
                 #[cfg(feature = "diagnostics")]
                 {
                     self.diagnostics.dispatch.cancellation += 1;
-                    self.diagnostics.tasks_canceled +=
-                        (tasks_before - self.queue.len() - self.parked.len()) as u64;
+                    self.diagnostics.tasks_canceled += (tasks_before - self.pending_tasks()) as u64;
                 }
             } else if !self.inspections.is_empty() && self.ticks % 4 == 3 {
                 #[cfg(feature = "diagnostics")]
@@ -670,7 +762,7 @@ impl Engine {
                 // Keep each runnable class's reserved share. Fill other slots
                 // with source work first, then completion or observation.
                 if let Some(mut task) = self.queue.pop_front() {
-                    debug_assert!(!self.parked.contains_key(&task.id));
+                    debug_assert!(!self.park_task);
                     #[cfg(feature = "diagnostics")]
                     {
                         let d = &mut self.diagnostics.dispatch;
@@ -693,7 +785,7 @@ impl Engine {
                     // A failed acquire appends this task and returns unfinished.
                     // Nothing else may enqueue an owner before we park it here.
                     if done {
-                        debug_assert!(self.waiting.back() != Some(&Owner::Task(task.id)));
+                        debug_assert!(!self.park_task);
                         #[cfg(feature = "diagnostics")]
                         {
                             self.diagnostics.tasks_completed += 1;
@@ -705,13 +797,12 @@ impl Engine {
                         if self.lane == Some(Owner::Task(task.id)) {
                             self.release_lane();
                         }
-                    } else if self.waiting.back() == Some(&Owner::Task(task.id)) {
+                    } else if std::mem::take(&mut self.park_task) {
                         #[cfg(feature = "diagnostics")]
                         {
                             self.diagnostics.task_parks += 1;
                         }
-                        let previous = self.parked.insert(task.id, task);
-                        debug_assert!(previous.is_none());
+                        self.enqueue_waiting(Waiting::Task(task));
                     } else {
                         #[cfg(feature = "diagnostics")]
                         {
@@ -1535,7 +1626,11 @@ mod balanced_phase_tests {
         let mut answers = 0;
         for _ in 0..100000 {
             e.advance(1);
-            for s in e.queue.iter().chain(e.parked.values()) {
+            for s in e
+                .queue
+                .iter()
+                .chain(e.waiting.iter().filter_map(Waiting::task))
+            {
                 if let Task::Body(b) = &s.task
                     && matches!(e.code.instructions[b.instruction], Instruction::Or(_))
                 {
@@ -1578,8 +1673,120 @@ mod balanced_phase_tests {
 mod parking_tail_tests {
     use super::*;
 
+    #[test]
+    fn fifo_payload_growth_wrap_handoff_and_contraction() {
+        let code = Arc::new(
+            crate::program::prepare(
+                &crate::syntax::parse_program("").unwrap(),
+                &crate::syntax::parse_query("true").unwrap(),
+            )
+            .unwrap(),
+        );
+        let mut e = Engine::new(code);
+        e.queue.clear();
+        e.lane = Some(Owner::Completion);
+        let payload = Arc::new(vec![7, 11]);
+        let mut expected = VecDeque::new();
+        let mut addresses = BTreeMap::new();
+        // Deliberately nonmonotonic task IDs: queue order is acquisition order.
+        // Repeated partial drains wrap the buffer before its next growth.
+        for round in 0..5 {
+            for n in 0..97 {
+                let id = 10000 - (round * 97 + n);
+                assert!(!e.acquire(Owner::Task(id)));
+                assert!(std::mem::take(&mut e.park_task));
+                e.enqueue_waiting(Waiting::Task(Scheduled {
+                    epoch: None,
+                    id,
+                    scope: Condition::TRUE,
+                    task: Task::Activate {
+                        identity_only: false,
+                        root: None,
+                        relation: 0,
+                        arguments: payload.clone(),
+                        occurrence: id,
+                        reader_scope: Condition::TRUE,
+                        next: 0,
+                    },
+                }));
+                addresses.insert(
+                    id,
+                    e.waiting.get(e.waiting.len() - 1).unwrap().task().unwrap() as *const Scheduled
+                        as usize,
+                );
+                expected.push_back(Owner::Task(id));
+            }
+            if round == 0 {
+                assert!(!e.acquire(Owner::Collection));
+                expected.push_back(Owner::Collection);
+            }
+            for _ in 0..53 {
+                if let Some(task) = e.waiting.front().and_then(Waiting::task) {
+                    assert_eq!(addresses[&task.id], task as *const Scheduled as usize);
+                }
+                e.release_lane();
+                let owner = expected.pop_front().unwrap();
+                assert!(e.lane == Some(owner));
+                if let Owner::Task(id) = owner {
+                    let task = e.queue.pop_front().unwrap();
+                    assert_eq!(task.id, id);
+                    let Task::Activate {
+                        arguments,
+                        occurrence,
+                        ..
+                    } = task.task
+                    else {
+                        panic!()
+                    };
+                    assert!(Arc::ptr_eq(&payload, &arguments));
+                    assert_eq!(occurrence, id);
+                }
+                assert_waiters(&e);
+                assert!(e.waiting.capacity() <= e.waiting.len() + 14);
+            }
+        }
+        while let Some(owner) = expected.pop_front() {
+            if let Some(task) = e.waiting.front().and_then(Waiting::task) {
+                assert_eq!(addresses[&task.id], task as *const Scheduled as usize);
+            }
+            e.release_lane();
+            assert!(e.lane == Some(owner));
+            if let Owner::Task(id) = owner {
+                assert_eq!(e.queue.pop_front().unwrap().id, id);
+            }
+            assert_waiters(&e);
+            assert!(e.waiting.capacity() <= e.waiting.len() + 14);
+        }
+        assert_eq!(Arc::strong_count(&payload), 1);
+        assert_eq!(e.waiting.capacity(), 8);
+        println!(
+            "FIFO sizes: Scheduled={} Waiting={} Engine={}",
+            size_of::<Scheduled>(),
+            size_of::<Waiting>(),
+            size_of::<Engine>()
+        );
+        #[cfg(feature = "diagnostics")]
+        {
+            let d = &e.diagnostics.waiters;
+            assert_eq!(d.direct_handoffs, 485);
+            assert_eq!(d.payload_moves, 970);
+            assert!(d.growth_move_bytes_bound > 0 && d.shrink_move_bytes_bound > 0);
+            assert_eq!(d.capacity_bytes, e.waiting.capacity_bytes());
+            println!(
+                "FIFO Scheduled={} Waiting={} Engine={} diagnostics={d:?}",
+                size_of::<Scheduled>(),
+                size_of::<Waiting>(),
+                size_of::<Engine>()
+            );
+        }
+    }
+
     fn assert_waiters(e: &Engine) {
-        let waiting = e.waiting.iter().copied().collect::<BTreeSet<_>>();
+        let waiting = e
+            .waiting
+            .iter()
+            .map(Waiting::owner)
+            .collect::<BTreeSet<_>>();
         assert_eq!(waiting.len(), e.waiting.len());
         assert_eq!(e.completion_waiting, waiting.contains(&Owner::Completion));
         assert_eq!(e.collection_waiting, waiting.contains(&Owner::Collection));
@@ -1588,15 +1795,11 @@ mod parking_tail_tests {
                 .iter()
                 .all(|s| !waiting.contains(&Owner::Task(s.id)))
         );
-        assert!(e.queue.iter().all(|s| !e.parked.contains_key(&s.id)));
-        for owner in &waiting {
-            if let Owner::Task(id) = owner {
-                assert!(e.parked.contains_key(id));
-            }
-        }
-        for id in e.parked.keys() {
-            assert!(waiting.contains(&Owner::Task(*id)));
-        }
+        assert_eq!(
+            e.waiting_tasks(),
+            e.waiting.iter().filter_map(Waiting::task).count()
+        );
+        assert!(!e.park_task);
         if let Some(owner) = e.lane {
             assert!(!waiting.contains(&owner));
         }
@@ -1661,6 +1864,67 @@ mod parking_tail_tests {
         panic!("snapshot inspection did not finish");
     }
 
+    #[cfg(feature = "diagnostics")]
+    #[test]
+    fn fifo_trace_suspensions_keep_payloads_until_budgeted_discard_finishes() {
+        let code = Arc::new(
+            crate::program::prepare(
+                &crate::syntax::parse_program("p(X) <=> done(X).").unwrap(),
+                &crate::syntax::parse_query("p(A),p(B),p(C),p(D),p(E),p(F),p(G),p(H)").unwrap(),
+            )
+            .unwrap(),
+        );
+        for offset in 0..64 {
+            let mut e = Engine::new(code.clone());
+            for _ in 0..10000 {
+                e.advance(1);
+                if e.waiting_tasks() >= 4 {
+                    break;
+                }
+            }
+            assert!(e.waiting_tasks() >= 4);
+            let snapshot = e.capture_snapshot().unwrap();
+            let expected = inspect_snapshot(&mut e, snapshot);
+            let applications = e.applications();
+            e.request_collection();
+            for _ in 0..100000 {
+                e.maintain(1);
+                if e.diagnostics.waiters.trace_steps > 0 {
+                    break;
+                }
+            }
+            assert!(e.diagnostics.waiters.trace_steps > 0);
+            e.maintain(offset);
+            e.cancel();
+            let waiting = e.waiting_tasks();
+            for _ in 0..100000 {
+                let discarded = e.diagnostics.waiters.discarded_tasks;
+                e.advance(1);
+                assert!(e.diagnostics.waiters.discarded_tasks - discarded <= 1);
+                assert_eq!(e.applications(), applications);
+                if e.cancel_done() {
+                    break;
+                }
+            }
+            assert!(e.cancel_done());
+            assert_eq!(e.diagnostics.waiters.discarded_tasks, waiting as u64);
+            assert!(e.diagnostics.waiters.discard_steps >= waiting as u64);
+            assert!(e.diagnostics.waiters.trace_tasks >= waiting as u64);
+            assert_eq!(e.diagnostics.waiters.capacity_bytes, 0);
+            assert_eq!(e.waiting.capacity(), 0);
+            assert_eq!(inspect_snapshot(&mut e, snapshot), expected);
+            e.release_snapshot(snapshot).unwrap();
+            e.maintain(100000);
+            assert!(e.cancel_done());
+            assert_eq!(e.memory().graph_nodes, 0);
+            assert_eq!(e.memory().conditions, 0);
+            assert_eq!(e.memory().pending_nodes, 0);
+            assert_eq!(e.memory().obligation_descriptors, 0);
+            drop(e);
+            assert_eq!(Arc::strong_count(&code), 1);
+        }
+    }
+
     #[test]
     fn parked_frontier_snapshots_cancel_and_zero_owner_drop() {
         let code = Arc::new(
@@ -1677,11 +1941,11 @@ mod parking_tail_tests {
             for _ in 0..10_000 {
                 e.advance(1);
                 assert_waiters(&e);
-                if e.parked.len() >= 4 {
+                if e.waiting_tasks() >= 4 {
                     break;
                 }
             }
-            assert!(e.parked.len() >= 4);
+            assert!(e.waiting_tasks() >= 4);
             for _ in 0..offset {
                 e.advance(1);
                 assert_waiters(&e);
@@ -1701,7 +1965,7 @@ mod parking_tail_tests {
             }
             assert!(e.cancel_done());
             assert_waiters(&e);
-            assert!(e.lane.is_none() && e.waiting.is_empty() && e.parked.is_empty());
+            assert!(e.lane.is_none() && e.waiting.is_empty());
             assert_eq!(inspect_snapshot(&mut e, snapshot), expected);
             e.release_snapshot(snapshot).unwrap();
             for _ in 0..100_000 {
@@ -1730,12 +1994,12 @@ mod parking_tail_tests {
         // Direct destruction with active parked tasks must release ownership too.
         let mut e = Engine::new(code.clone());
         for _ in 0..10_000 {
-            if e.parked.len() >= 4 {
+            if e.waiting_tasks() >= 4 {
                 break;
             }
             e.advance(1);
         }
-        assert!(e.parked.len() >= 4);
+        assert!(e.waiting_tasks() >= 4);
         drop(code);
         drop(e);
         assert!(owner.upgrade().is_none());
@@ -1756,12 +2020,12 @@ mod parking_tail_tests {
         let mut ports = Vec::new();
         let mut facts = 0;
         for _ in 0..100000 {
-            if !collected && e.parked.len() >= 2 {
+            if !collected && e.waiting_tasks() >= 2 {
                 e.request_collection();
                 collected = true;
             }
             let previous_lane = e.lane;
-            let first = e.waiting.front().copied();
+            let first = e.waiting.front().map(Waiting::owner);
             e.advance(1);
             if previous_lane.is_some() && previous_lane != e.lane && first.is_some() {
                 assert!(
@@ -1830,7 +2094,8 @@ mod body_direct_tests {
             assert!(matches!(b.phase, BodyPhase::Acquire));
             assert!(b.job.is_none());
             assert_eq!(b.scope, scope);
-            assert!(e.waiting.pop_front() == Some(Owner::Task(99)));
+            assert!(std::mem::take(&mut e.park_task));
+            assert!(e.waiting.is_empty());
             e.lane = Some(Owner::Task(99));
             assert!(!e.body_tick(99, &mut b));
             if let Some(expected) = expected {

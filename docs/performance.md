@@ -1,5 +1,38 @@
 # Performance tools
 
+## Mutation-lane payload FIFO (Round 021)
+
+Suspended `Scheduled` values live directly in typed FIFO entries alongside
+Completion and Collection. The FIFO uses four-entry payload blocks and a small
+pointer directory; two empty blocks can be reused. Payload addresses do not
+change while queued. Fully retired blocks and excess directory capacity are
+released as the frontier drains, and cancellation releases all remaining backing.
+There is no parked-task tree or duplicate requested-owner index.
+
+`work.waiters` retains the Round 020 logical request/enqueue/grant counters,
+including an immediate acquisition as an enqueue followed by a grant even though
+it now needs no FIFO allocation. `entries` is actual occupancy; `peak_entries`
+also includes those logical immediate acquisitions. Task parks/wakes are unchanged.
+Additional diagnostics report current/peak `capacity_bytes` (all block slots,
+two possible spares, and pointer-directory backing), `capacity_changes`, and
+`growth_move_bytes_bound` / `shrink_move_bytes_bound`. The move bounds charge
+twice the old directory length in pointer bytes at resizing, covering relocation
+and wrapped-segment movement; actual realloc can extend in place. They do not
+count CPU instructions or movement within the unchanged runnable queue.
+
+`payload_moves` counts task transfers into and out of the FIFO, excluding final
+discard; `direct_handoffs` counts transfers directly to the runnable queue.
+`trace_steps` counts collection service calls on FIFO tasks, `trace_tasks`
+completed task traces, `discard_steps` cancellation task-discard calls, and
+`discarded_tasks` released payloads. All instrumentation compiles out normally.
+The matched baseline patch counts the same events; its capacity/move fields
+describe only its scalar FIFO, **excluding its separate parked tree**. Whole
+phase allocations and live/peak checkpoints charge both representations.
+
+The [Round 021 evidence](optimization-evidence/rehearse/round021-lane-payload/README.md)
+includes the full paired matrix, conditional-archive controls, replacement costs,
+and complete release checks. Pending-syntax controls perform no acquisitions.
+
 ## Mutation-lane waiter diagnostics (Round 020)
 
 Engine diagnostic checkpoints include `work.waiters`: `requests`, `enqueued`
@@ -10,8 +43,8 @@ task wakes still count only parked-to-runnable transitions. Cancellation clears
 the entry gauge when it releases the scalar FIFO. Instrumentation adds no queue
 scan, allocation, or ordinary-build fields.
 
-Tasks park immediately after a failed acquire, so the FIFO and parked map are
-their unique waiting representation. Completion and collection retry through
+In Round 020, tasks parked immediately after a failed acquire, with the FIFO and
+parked map as their waiting representation. Completion and collection retry through
 separate flags, cleared on dequeue. The old duplicate BTreeSet is removed.
 The [Round 020 report](optimization-evidence/rehearse/round020-waiter-index/README.md)
 includes paired phase allocations and equal-work checks. The existing `rewrite`
