@@ -2605,8 +2605,10 @@ mod archive_ownership_tests {
     #[test]
     fn epoch_handles_keep_full_serial_width_and_reject_retired_payloads() {
         for start in [u32::MAX as u64, u64::MAX - 2] {
-            let mut a = Arena::default();
-            a.next_node = start;
+            let mut a = Arena {
+                next_node: start,
+                ..Arena::default()
+            };
             let old = a.fresh_choice().1;
             collect(&mut a, vec![], vec![]);
             let new = a.fresh_choice().1;
