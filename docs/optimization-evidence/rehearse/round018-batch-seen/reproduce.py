@@ -21,7 +21,8 @@ def run(command, path, env=None):
 def probes(binary, out, repeats):
     cases = set()
     for n in [0, 1, 2, 8, 9, 16, 64, 256]:
-        for distinct in [1, max(1, n // 4), max(1, n)]:
+        for distinct in {1, max(1, n // 4), max(1, n),
+                         min(max(n, 1), 7), min(max(n, 1), 8), min(max(n, 1), 9)}:
             for layout in ["dense", "sparse"]:
                 for mode in ["insert", "mixed", "noop", "delete"]:
                     cases.add(f"{n}/{distinct}/{layout}/{mode}")

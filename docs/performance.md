@@ -1,5 +1,41 @@
 # Performance tools
 
+## Store batch coalescing (Round 018)
+
+Store batch preparation scans writes in reverse, keeps up to eight exact keys
+inline, then promotes on a ninth distinct key to a temporary HashSet. Final
+no-op writes enter the seen set too. Retained writes compact into the already
+read suffix, move to the caller's prefix, and use the existing sort/application.
+The table and its randomized hasher are created only on promotion and the table
+is dropped before sorting/application. The stack holds eight 32-byte keys;
+there is no persistent scratch table or extra root ownership.
+
+Diagnostic checkpoints add `store_batches`: graph, propagation-history and
+pending Stores in the same order as `store_mutations`. Each entry reports
+`calls`, `input_writes`, `comparisons`, `hash_requests`,
+`membership_checks`, `retained_writes`, `scratch_tables`,
+`max_input_writes`, `scratch_peak_capacity` and `scratch_peak_bytes`.
+Comparisons count full-key equality calls (inline or HashSet), not individual
+words. Hash requests include actual calls during promotion and growth rehashing,
+not just insert requests; bucket probes and hash instructions are not counted.
+Scratch table bytes estimate the current standard-library bucket/control layout.
+They exclude the fixed stack array and table header. These are per-call peaks,
+never retained-storage gauges; the requested-allocation runner charges all real
+table growth allocations/frees. The counters and their lock are diagnostics-only.
+
+`tests/batch_coalescing.rs` reuses the maintained measure allocator and checks
+ordered final rows, compacted writes, exact no-op root reuse, retained snapshots,
+cursor pins through collection, and bounded release against a forward BTreeMap
+oracle. `CHRIMP_BATCH_CASE=N/DISTINCT/dense|sparse/insert|mixed|noop|delete`
+selects a single fixture in a fresh prebuilt test process. Invoke
+`--exact batch_order_and_lifecycle_matrix --nocapture --test-threads=1` under
+`timeout --kill-after=5s 60s`. The Round 018 reproduction script sweeps
+0/1/2/8/9/16/64/256 writes and both sides of the eight-key promotion boundary.
+The audit reports every phase and keeps test-harness `other` traffic separate
+from the scoped fixture's release balance. Final process peaks can be dominated
+by validation/reporting; inspect the update checkpoint and scratch allocation
+traffic as well. See the Round 018 report for promoted-table costs and controls.
+
 ## Adaptive shared-restriction partitions (Round 017)
 
 Each row producer keeps up to two distinct projected keys in a sorted inline

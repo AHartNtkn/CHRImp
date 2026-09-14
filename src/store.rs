@@ -38,6 +38,8 @@ struct Stats {
 }
 /// Cumulative batch preparation work; scratch peaks are per call, not retained
 /// storage. Comparisons count complete exact keys, not individual words.
+/// Hash requests count calls to the key's Hash implementation, including
+/// promotion and growth rehashing, but not internal bucket probes.
 #[cfg(feature = "diagnostics")]
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct BatchDiagnostics {
@@ -59,6 +61,7 @@ struct BatchKey(Key);
 #[cfg(feature = "diagnostics")]
 thread_local! {
     static BATCH_COMPARISONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static BATCH_HASH_REQUESTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 impl PartialEq for BatchKey {
     fn eq(&self, other: &Self) -> bool {
@@ -69,6 +72,8 @@ impl PartialEq for BatchKey {
 }
 impl std::hash::Hash for BatchKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        #[cfg(feature = "diagnostics")]
+        BATCH_HASH_REQUESTS.with(|c| c.set(c.get() + 1));
         self.0.hash(state);
     }
 }
@@ -758,17 +763,45 @@ impl<V: Value> Store<V> {
             d.input_writes += writes.len();
             d.max_input_writes = d.max_input_writes.max(writes.len());
         }
-        let mut seen = HashSet::new();
+        // Eight exact keys stay on the stack: Graph's bounded update batches
+        // need no table, and long runs over a few keys need no hashing either.
+        let mut inline = [[0; 4]; 8];
+        let mut inline_len = 0;
+        let mut seen: Option<HashSet<BatchKey>> = None;
         #[cfg(feature = "diagnostics")]
         BATCH_COMPARISONS.with(|c| c.set(0));
+        #[cfg(feature = "diagnostics")]
+        BATCH_HASH_REQUESTS.with(|c| c.set(0));
         for i in (0..writes.len()).rev() {
             let (key, value) = writes[i];
-            #[cfg(feature = "diagnostics")]
-            {
-                d.hash_requests += 1;
-            }
+            let fresh = if let Some(seen) = seen.as_mut() {
+                seen.insert(BatchKey(key))
+            } else {
+                if inline[..inline_len].iter().any(|k| {
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        d.comparisons += 1;
+                    }
+                    *k == key
+                }) {
+                    false
+                } else if inline_len < inline.len() {
+                    inline[inline_len] = key;
+                    inline_len += 1;
+                    true
+                } else {
+                    // Construct the randomized hasher only on promotion.
+                    let mut promoted = HashSet::with_capacity(inline.len() + 1);
+                    for k in inline {
+                        promoted.insert(BatchKey(k));
+                    }
+                    promoted.insert(BatchKey(key));
+                    seen = Some(promoted);
+                    true
+                }
+            };
             // Include final no-ops: they still supersede earlier writes.
-            if !seen.insert(BatchKey(key)) {
+            if !fresh {
                 continue;
             }
             #[cfg(feature = "diagnostics")]
@@ -786,7 +819,8 @@ impl<V: Value> Store<V> {
         #[cfg(feature = "diagnostics")]
         {
             d.comparisons += BATCH_COMPARISONS.with(std::cell::Cell::get);
-            let capacity = seen.capacity();
+            d.hash_requests += BATCH_HASH_REQUESTS.with(std::cell::Cell::get);
+            let capacity = seen.as_ref().map_or(0, HashSet::capacity);
             d.scratch_tables += usize::from(capacity != 0);
             d.scratch_peak_capacity = d.scratch_peak_capacity.max(capacity);
             // Current std HashSet bucket/control layout estimate. The measured

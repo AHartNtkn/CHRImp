@@ -52,6 +52,16 @@ root rejection before deferred progress. `tests/cancel.rs` includes a wide
 conditional rewrite. The maintained `wide-rewrite` oracle checks every ordered
 port, distinct query identities and duplicate occurrence multiplicity.
 
+`tests/batch_coalescing.rs` adds a diagnostic forward ordered-map oracle for
+reverse Store batch coalescing: dense and full-width keys, duplicate overwrite
+order, final no-ops, insert/delete transitions, empty inputs, both sides of
+eight-key promotion, immutable snapshots/cursor pins through collection, and
+complete bounded release. Its resource checks reject repeated quadratic suffix
+scans and heap/hash work for long batches over at most eight distinct keys.
+The maintained allocator covers preparation, batch work, validation and drops;
+Round 018's paired audit charges table growth and preserves unscoped harness
+traffic separately.
+
 Persistent indexes pack multiple entries from one aligned eight-key final-word
 interval into a page. Three-word prefix certificates remain exact; sparse
 boundaries retain crit-bit branches. `tests/store.rs` checks dense storage,

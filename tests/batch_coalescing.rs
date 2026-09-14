@@ -182,3 +182,14 @@ fn large_batch_coalescing_work_scales_linearly() {
         }
     }
 }
+
+#[test]
+fn repeated_small_key_sets_need_no_hash_storage() {
+    for distinct in [1, 4, 8] {
+        let d = probe(256, distinct, false, "noop");
+        assert_eq!(d.hash_requests, 0);
+        assert_eq!(d.scratch_tables, 0);
+        assert_eq!(d.scratch_peak_bytes, 0);
+        assert_eq!(d.retained_writes, 0);
+    }
+}
