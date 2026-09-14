@@ -1,0 +1,15 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/compaction-826073a49e779aac"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 9 tests
+test compaction_preserves_duplicate_surviving_answers_and_propagation ... ok
+test independent_continuing_alternatives_reclaim_their_local_choices ... ok
+test continuing_single_survivor_reclaims_completed_choices ... ok
+test continuing_dependent_choices_are_bounded_after_collection ... ok
+test dependent_choices_preserve_finite_answers_and_duplicates ... ok
+test xor_dependent_choices_preserve_four_finite_answers ... ok
+test automatic_collection_bounds_a_continuing_choice_stream ... ok
+test continuing_xor_dependent_choices_are_bounded_after_collection ... ok
+test xor_snapshot_pins_choices_until_released ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+

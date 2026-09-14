@@ -1,0 +1,17 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/diagnostics-8bbab8a8b782a215"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 11 tests
+test competing_commits_count_rejections_without_inventing_applications ... ok
+test collection_request_and_step_gate_have_honest_iteration_accounting ... ok
+test choices_scan_obligations_and_held_output_is_counted_once ... ok
+test explicit_choices_failures_and_duplicate_answers_are_not_deduplicated ... ok
+test direct_rules_report_real_applications_and_output ... ok
+test indexed_candidates_are_distinct_from_direct_anchors ... ok
+test inspection_dispatch_does_not_inflate_source_output ... ok
+test physical_maintenance_counts_actual_collection_without_source_dispatch ... ok
+test merges_and_scheduler_transitions_count_actual_work ... ok
+test counters_survive_cancellation_and_belong_to_each_engine ... ok
+test continuing_choice_reduction_reports_substitution_and_reclaims_coordinates ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

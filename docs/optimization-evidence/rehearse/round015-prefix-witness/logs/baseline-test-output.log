@@ -1,0 +1,14 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/output-a2cc5b6f8d70b9c8"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 8 tests
+test conditional_identity_is_projected_in_query_variables_and_ordered_ports ... ok
+test outputs_keep_duplicate_occurrences_and_nullary_relations ... ok
+test choices_in_distinct_rule_applications_remain_independent ... ok
+test duplicate_successes_and_inactive_nested_choices_have_exact_multiplicity ... ok
+test repeated_collection_requests_cannot_starve_duplicate_delivery ... ok
+test wide_shared_answers_finish_within_the_delivery_service_budget ... ok
+test indexed_delivery_keeps_aliases_and_duplicate_histories_under_collection_and_backpressure ... ok
+test output_backpressure_keeps_only_one_scalar_event_and_resumes_wide_ports ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

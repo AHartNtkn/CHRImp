@@ -1,0 +1,10 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/program-a5f4a5fe854dfa4e"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 4 tests
+test dispatch_retains_every_head_position_and_relation_arity ... ok
+test prepares_ordered_heads_and_fresh_body_slots_once ... ok
+test preparation_rejects_invalid_graph_editor_models ... ok
+test preparation_preserves_explicit_choice_structure_and_duplicate_arms ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

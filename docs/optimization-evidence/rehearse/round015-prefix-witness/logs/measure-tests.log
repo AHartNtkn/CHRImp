@@ -1,0 +1,55 @@
+
+running 50 tests
+test fresh::tests::contracted_groups_cannot_share_fresh_levels ... ok
+test fresh::tests::invalid_dimensions_and_orders_are_rejected ... ok
+test fresh::tests::contraction_oracle_checks_identity_consumption_and_exact_multisets ... ok
+test fresh::tests::unmerged_control_requires_disjoint_produced_chains ... ok
+test generated::tests::duplicate_heads_require_fresh_distinct_witnesses_in_each_group ... ok
+test generated::tests::diamond_counts_proofs_instead_of_reachable_pairs ... ok
+test generated::tests::partial_join_checks_unbound_payload_and_exact_probe ... ok
+test generated::tests::self_loop_requires_two_distinct_occurrences ... ok
+test generated::tests::seeds_reproduce_source_and_preserve_analytic_topologies ... ok
+test generated::tests::boolean_oracle_enumerates_disconnected_and_unsatisfiable_states ... ok
+test generated::tests::walks_check_order_multiplicity_and_aliases ... ok
+test lifecycle::sessions::tests::initial_deadline_is_censored_without_admission ... ok
+test lifecycle::tests::oracle_rejects_duplicate_answer_and_wrong_ports ... ok
+test lifecycle::sessions::tests::censored_admission_still_closes_spool_and_owner ... ok
+test lifecycle::interactions::tests::cancellation_releases_partly_unread_inspection_owners ... ok
+test lifecycle::interactions::tests::failing_arm_leaves_one_known_answer_and_one_application ... ok
+test generated::tests::checked_dimensions_and_inapplicable_shapes ... ok
+test notebooks::tests::independent_oracles_reject_wrong_terms_and_preserve_unused_holes ... ok
+test allocation::enabled::tests::counts_real_allocations_reallocation_and_nested_scopes ... ok
+test notebooks::tests::additional_synthesis_targets_have_independent_behavior_and_type_oracles ... ok
+test preparation::tests::both_modes_validate_every_fresh_engine_and_release_prepared ... ok
+test preparation::tests::semantic_oracle_rejects_an_extra_residual ... ok
+test preparation::tests::expired_generation_does_not_admit_parsing ... ok
+test preparation::tests::shape_axes_reach_public_preparation_plans ... ok
+test preparation::tests::work_oracle_rejects_redundant_application_with_same_residual ... ok
+test preparation::tests::zero_rule_control_does_not_construct_unused_body ... ok
+test tests::aliases_and_selective_join_are_checked ... ok
+test tests::common_reader_resets_tuples_but_requires_exact_answer_multiplicity ... ok
+test tests::cyclic_accepts_only_directed_rotations ... ok
+test tests::dense_rejects_reversed_ports_and_duplicate_tuples ... ok
+test notebooks::tests::lambda_oracle_checks_exact_residuals_and_both_reduction_orders ... ok
+test tests::common_and_alias_consumption_controls_check_complete_outputs_and_sharing ... ok
+test tests::family_oracles_reject_mixed_bits_wrong_consumption_and_duplicate_rows ... ok
+test lifecycle::interactions::tests::structural_payloads_survive_held_output_and_retained_readers ... ok
+test tests::wide_common_work_runs_once_and_delivers_every_alternative ... ok
+test lifecycle::pending::tests::exact_unposted_prefix_survives_first_capture_cancel_projection_and_release ... ok
+test tests::empty_answers_prefixes_and_limits_are_distinct ... ok
+test report::tests::native_peak_tracks_touched_memory_and_survives_release ... ok
+test tests::wide_rewrite_oracle_checks_order_aliases_and_duplicate_occurrences ... ok
+test lifecycle::interactions::tests::unread_inspection_pins_without_snapshot_and_cancel_reclaims ... ok
+test lifecycle::interactions::tests::independent_interaction_dimensions_and_censoring ... ok
+test fresh::tests::independent_dimensions_and_orders_execute_against_the_oracle ... ok
+test generated::tests::generated_sources_execute_against_the_oracles ... ok
+test tests::distinguishing_families_validate_small_runs ... ok
+test notebooks::tests::finite_notebook_arithmetic ... ok
+test lifecycle::sessions::tests::independent_populations_batches_replay_and_continuing_work ... ok
+test lifecycle::tests::lifecycle_and_runtime_smoke ... ok
+test lifecycle::sessions::tests::budget_at_tiny_answer_preserves_validated_progress ... ok
+test lifecycle::interactions::tests::rotating_conditional_prefix_is_pinned_then_reclaimed_before_cancel ... ok
+test notebooks::tests::lambda_measures_a_validated_first_answer_prefix ... ok
+
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+

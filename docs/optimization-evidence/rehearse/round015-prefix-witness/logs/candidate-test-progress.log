@@ -1,0 +1,10 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/progress-4427ee402ec0fbc1"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 4 tests
+test failure_and_completion_leave_no_stranded_work_or_lane_request ... ok
+test queued_output_does_not_stop_source_progress_and_delivery_resumes ... ok
+test growing_alias_chain_activates_deltas_instead_of_rewalking_the_winner ... ok
+test growing_search_does_not_block_a_finite_sibling_or_budget_return ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

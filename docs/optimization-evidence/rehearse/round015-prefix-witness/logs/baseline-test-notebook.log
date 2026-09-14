@@ -1,0 +1,40 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/notebook-900599a3335db509"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 101}
+
+running 21 tests
+test deep_containers_are_rejected_as_ids_without_recursive_buffering ... ok
+test close_replay_after_reclamation_is_terminal_and_still_validates_requests ... ok
+test closing_discards_inspections_created_after_source_cancellation ... ok
+test owner_requests_validate_boot_and_safe_ids_before_admission ... ok
+test logical_step_inspection_streams_the_pending_rhs_with_string_variable_ids ... ok
+test owner_reservations_and_control_replay_are_admitted_once ... ok
+test lost_control_responses_replay_without_new_inspections_or_step_controllers ... ok
+test notebook_protocol_executes_and_replays_a_recorded_graph_in_bounded_batches ... ok
+test loopback_http_serves_the_notebook_and_enforces_request_boundaries ... FAILED
+test owner_retirement_fences_reservations_and_cross_owner_execution ... ok
+test snapshot_capture_and_release_replay_after_lost_responses ... ok
+test releasing_inspection_zero_preserves_source_recovery ... ok
+test concurrent_capture_retries_allocate_one_snapshot_per_run ... ok
+test flat_choice_metadata_labels_the_actual_contiguous_partitions ... ok
+test server_incarnation_rejects_stale_execution_requests_before_lookup_or_mutation ... ok
+test unacknowledged_output_batches_are_replayed_exactly_after_response_loss ... ok
+test specialized_source_step_keeps_named_rule_and_pending_equality_in_notebook ... ok
+test malformed_requests_are_rejected_before_creating_or_mutating_a_run ... ok
+test metadata_pages_round_trip_without_replaying_prefixes ... ok
+test step_stops_at_a_logical_application_and_cancel_progresses_without_client_polling ... ok
+test releasing_a_recorded_execution_reclaims_its_run_without_losing_other_runs ... ok
+
+failures:
+
+---- loopback_http_serves_the_notebook_and_enforces_request_boundaries stdout ----
+
+thread 'loopback_http_serves_the_notebook_and_enforces_request_boundaries' (544) panicked at tests/notebook.rs:320:65:
+called `Option::unwrap()` on a `None` value
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    loopback_http_serves_the_notebook_and_enforces_request_boundaries
+
+test result: FAILED. 20 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+
+Operation not permitted (os error 1)

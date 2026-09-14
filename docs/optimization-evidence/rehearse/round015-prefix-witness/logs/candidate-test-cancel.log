@@ -1,0 +1,12 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/cancel-3ddb314427f89e16"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 6 tests
+test maintenance_is_collection_only_and_post_cancel_inspections_are_not_canceled ... ok
+test snapshots_survive_cancel_and_release_triggers_physical_reclamation ... ok
+test queued_scalar_survives_source_cancellation_without_finishing_projection ... ok
+test physical_collection_between_cancel_steps_keeps_staged_owners_valid ... ok
+test cancellation_at_task_and_gc_boundaries_never_resumes_source_or_leaks_scratch ... ok
+test wide_wake_and_matching_children_discard_incrementally_and_remain_traceable ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+

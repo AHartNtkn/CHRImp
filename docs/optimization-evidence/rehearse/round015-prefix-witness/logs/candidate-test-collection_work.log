@@ -1,0 +1,8 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/collection_work-f4bf09a421b74674"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 2 tests
+test repeated_support_substitution_scales_with_leaves_plus_distinct_conditions ... ok
+test fixed_and_rotating_snapshots_preserve_the_working_set_reclamation_bound ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+

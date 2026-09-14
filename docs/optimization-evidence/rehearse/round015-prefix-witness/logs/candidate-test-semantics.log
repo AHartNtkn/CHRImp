@@ -1,0 +1,20 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/semantics-3654ace6ee7c3062"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 14 tests
+test failure_is_explicit_and_budget_exhaustion_is_unfinished ... ok
+test executes_all_head_modes_and_reaches_residual_normal_form ... ok
+test disconnected_failure_excludes_exactly_its_alternative ... ok
+test finite_sibling_completes_during_divergent_execution ... ok
+test explicit_merge_reactivates_nonbinding_cross_predicate_heads ... ok
+test fresh_locals_and_duplicate_occurrences_survive_real_execution ... ok
+test cyclic_multihead_join_checks_every_ordered_port ... ok
+test merge_activation_keeps_repeated_ports_and_consuming_partner_heads ... ok
+test only_explicit_choices_create_search_and_common_work_is_shared ... ok
+test proof_example_preserves_direct_and_composed_derivations ... ok
+test independent_choices_do_not_multiply_common_rewrite_execution ... ok
+test synthesis_example_filters_explicit_program_choices_by_examples ... ok
+test merges_do_not_reconsider_identity_independent_propagation ... ok
+test high_degree_merge_activates_every_cross_predicate_partner ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

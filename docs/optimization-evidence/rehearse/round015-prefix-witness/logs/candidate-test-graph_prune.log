@@ -1,0 +1,13 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/graph_prune-0387a170f845256f"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 7 tests
+test noop_nullary_occurrences_and_owned_protocol_checks ... ok
+test active_filter_updates_all_occurrence_indexes_and_old_snapshots_remain_valid ... ok
+test explicit_pending_variables_are_seeded_conditionally_and_duplicates_union ... ok
+test certified_true_keeps_conditional_facts_and_gc_roots ... ok
+test live_raw_arguments_keep_bridge_ancestors_and_only_reachable_reverse_members ... ok
+test conditional_opposite_parent_directions_reach_a_support_fixedpoint ... ok
+test certified_no_identity_prune_work_is_independent_of_occurrence_count ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

@@ -1,0 +1,14 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/index_restriction-b69bb8a810fc953d"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 8 tests
+test functional_images_survive_gc_before_first_leaf_and_while_draining ... ok
+test no_op_reuses_the_exact_root_without_allocating ... ok
+test graph_namespaces_cofactor_preserves_old_snapshot_and_sharing ... ok
+test owner_and_freeze_checks_precede_any_store_or_arena_mutation ... ok
+test newly_built_conditions_and_staged_subtrees_survive_every_tick_gc ... ok
+test broad_rewrite_allocates_at_most_one_node_per_original_node ... ok
+test discard_nested_substitutions_is_traceable_without_finishing_the_index ... ok
+test false_leaves_are_removed_and_last_assignment_owner_is_drained ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

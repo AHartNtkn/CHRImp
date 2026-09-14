@@ -1,0 +1,16 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/pending_body-d06d9ae4a2998cac"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 10 tests
+test committed_rewrite_snapshot_keeps_the_unposted_rhs_after_resume_gc_and_cancel ... ok
+test a_shared_application_projects_the_same_remaining_body_in_each_selected_sibling ... ok
+test initial_and_completed_operation_records_have_coherent_pending_bodies ... ok
+test original_nested_groups_remain_structurally_visible_in_initial_projection ... ok
+test ordinary_bodies_do_not_retain_duplicate_syntax_and_still_deliver_both_answers ... ok
+test first_view_during_cancellation_preserves_syntax_after_bodies_are_discarded ... ok
+test first_syntax_capture_at_each_early_suspension_survives_collection_and_cancel ... ok
+test large_body_projection_is_scalar_backpressured_and_cancellation_releases_its_roots ... ok
+test every_partial_nested_and_or_snapshot_contains_exact_remaining_expressions ... ok
+test balanced_ranges_project_original_flat_arms_at_each_suspension ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+

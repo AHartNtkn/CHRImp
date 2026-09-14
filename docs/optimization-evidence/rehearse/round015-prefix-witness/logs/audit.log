@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/tmp/chrimp-opt-round015-prefix-witness/docs/optimization-evidence/rehearse/round015-prefix-witness/audit.py", line 33, in <module>
+    assert bw.get('rules') == cw.get('rules'), point.name
+AssertionError: partial-partial-join-1024

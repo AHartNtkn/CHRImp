@@ -1,0 +1,8 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/singlehead-7f7462a9329b485a"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 2 tests
+test single_head_rejects_unmerged_repeated_ports ... ok
+test single_head_conditional_repetition_freshness_and_history_under_gc ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,12 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/commit-9d76d12312c48f08"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 6 tests
+test duplicate_head_ids_and_failed_regions_cannot_apply ... ok
+test malformed_identity_claim_cannot_bind_variables_or_consume_facts ... ok
+test propagation_records_tuple_once_and_allocates_fresh_locals_only_when_applying ... ok
+test additional_support_gets_a_distinct_fresh_event_without_replaying_overlap ... ok
+test stale_kept_heads_shrink_commitment_and_only_removed_heads_are_consumed ... ok
+test collection_at_every_commit_boundary_preserves_staged_updates_and_guards ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

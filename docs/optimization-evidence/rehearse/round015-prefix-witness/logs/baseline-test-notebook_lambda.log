@@ -1,0 +1,15 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/notebook_lambda-dddeeefb1b48bcf2"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 9 tests
+test norm_reintroduces_the_companion_var_occurrence ... ok
+test same_roots_unify_ports_and_shared_substructure_is_acyclic ... ok
+test norm_requires_companions_and_traverses_lambdas_and_application_spines ... ok
+test invalid_constraints_and_cyclic_structures_fail_without_search ... ok
+test backwards_search_produces_a_residual_constant_family ... ok
+test normal_form_equality_unifies_shared_binder_and_body_ports ... ok
+test unscoped_wires_can_merge_or_retain_disequality ... ok
+test binder_and_argument_ports_preserve_distinct_and_shared_wire_identities ... ok
+test forward_steps_preserve_structure_sharing_and_residual_restrictions ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.02s
+

@@ -1,0 +1,20 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/matching-bc5843329a6c829b"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 14 tests
+test repeated_variables_only_match_identity_that_already_holds ... ok
+test indexed_port_does_not_replace_other_repeated_variable_guards ... ok
+test alias_sensitive_cross_predicate_join_retains_its_condition_through_collection ... ok
+test equal_rows_still_require_distinct_occurrences_and_preserve_head_order ... ok
+test selective_join_uses_bound_ports_instead_of_scanning_the_relation ... ok
+test interrupted_alias_planning_discards_incrementally_under_collection ... ok
+test small_relation_lookup_does_not_enumerate_large_alias_class ... ok
+test output_only_binary_rewrite_preserves_linear_work_without_unused_indexes ... ok
+test fully_bound_correlation_lookup_does_not_scan_individual_port_buckets ... ok
+test three_head_joins_restore_bindings_after_failed_prefixes_and_allow_any_anchor ... ok
+test rejected_three_head_prefix_uses_empty_partner_before_broad_partner ... ok
+test selective_alias_buckets_preserve_all_port_and_row_supports_during_collection ... ok
+test tuple_buckets_recheck_collisions_swapped_ports_and_conditional_aliases ... ok
+test skewed_multi_bound_join_selects_small_buckets_in_either_port_order ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+

@@ -1,0 +1,14 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/lifecycle-e5bc224db3d39c9b"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 8 tests
+test delivered_results_do_not_pin_execution_occurrences ... ok
+test an_owned_output_event_survives_collection_and_later_projection ... ok
+test history_pruning_does_not_replay_a_live_tuple ... ok
+test whole_heap_collection_reclaims_stable_rewriting_across_budget_returns ... ok
+test collecting_suspended_jobs_preserves_conditional_execution_and_projection ... ok
+test propagation_churn_releases_obsolete_tuples_during_execution ... ok
+test graph_pruning_preserves_body_locals_stale_candidates_wakes_and_observers ... ok
+test continuing_alias_rewrites_reclaim_unreferenced_identity_members ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+

@@ -1,0 +1,15 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/history-37eeafaf64a29a6e"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 9 tests
+test absent_false_does_not_allocate_or_intern ... ok
+test collection_preserves_snapshots_then_releases_metadata_store_and_conditions ... ok
+test entries_retain_ordered_shared_tuples_and_frozen_roots ... ok
+test ordered_tuples_rules_and_snapshot_supports_are_distinct ... ok
+test foreign_nonempty_roots_are_rejected_even_for_missing_keys ... ok
+test semantic_pruning_keeps_only_active_regions_where_all_tuple_heads_remain_live ... ok
+test unique_tuple_churn_keeps_only_live_metadata ... ok
+test owned_collection_freezes_interning_through_metadata_sweep ... ok
+test collection_after_a_large_peak_retains_only_the_surviving_tuple ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

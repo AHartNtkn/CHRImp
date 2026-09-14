@@ -1,0 +1,8 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/wide_gate-895ee4c6ae908e6b"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 2 tests
+test wide_source_condition_gate ... ok
+test complete_delivery_scales_with_supported_alternatives_and_rows ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s
+

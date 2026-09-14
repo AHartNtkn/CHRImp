@@ -1,0 +1,16 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/identity-4f1e0430c55fa812"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 10 tests
+test identity_tests_are_nonbinding_and_merges_are_conditional ... ok
+test opposite_parent_directions_in_siblings_do_not_create_a_logical_cycle ... ok
+test uniform_resolution_validates_scope_and_releases_discarded_frontiers ... ok
+test uniform_parent_walks_yield_per_edge_and_preserve_conditional_boundaries ... ok
+test staged_union_survives_graph_and_condition_collection_at_every_tick ... ok
+test nested_identity_traces_survive_gc_through_all_merge_equal_and_resolve_phases ... ok
+test resolve_discard_drains_large_pending_and_visited_maps_with_gc_each_step ... ok
+test rank_prevents_adversarial_descending_alias_chains ... ok
+test resolve_large_visited_map_cleanup_yields_one_record_per_tick ... ok
+test projected_equivalence_matches_independent_union_find_oracles ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

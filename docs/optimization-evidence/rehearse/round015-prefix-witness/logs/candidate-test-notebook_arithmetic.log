@@ -1,0 +1,8 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/notebook_arithmetic-7ae476ba1c1ad7ab"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 2 tests
+test successor_cycles_fail_while_unknown_tails_remain_open ... ok
+test arithmetic_notebook_queries_execute_to_exhaustion_with_retained_graphs ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+

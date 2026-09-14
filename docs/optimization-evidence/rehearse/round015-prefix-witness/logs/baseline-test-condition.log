@@ -1,0 +1,35 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/condition-e1ea2fc8e6eca8ab"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 29 tests
+test boolean_operations_match_truth_tables_and_are_canonical ... ok
+test collection_preserves_complemented_descendants_and_drops_weak_cache ... ok
+test discard_active_frames_and_completed_jobs_never_publish_a_result ... ok
+test interleaved_jobs_and_transforms_preserve_handles ... ok
+test job_trace_matches_inventory_then_gc_and_resume_at_every_phase ... ok
+test projection_quantifies_the_inclusive_cutoff_suffix ... ok
+test simultaneous_images_preserve_truth_tables_and_order ... ok
+test suspended_jobs_share_nodes_and_survive_collection ... ok
+test transform_new_nonterminal_result_survives_every_collection_phase ... ok
+test image_map_roots_survive_last_owner_drain_and_images_validate_on_use ... ok
+test transform_substitutes_only_the_given_choices_and_preserves_canonical_results ... ok
+test transform_rejects_foreign_stale_and_unknown_operands ... ok
+test owned_collection_freezes_choices_and_jobs_until_dropped ... ok
+test uniform_operations_and_negation_need_no_apply_work_or_nodes ... ok
+test reclamation_does_not_revive_retired_identities ... ok
+test large_job_memo_traces_scalars_and_cleans_up_before_completion ... ok
+test transform_all_three_variable_functions_and_partial_assignments ... ok
+test an_empty_arena_does_not_keep_scanning_its_historical_peak ... ok
+test established_grouped_choices_adapt_without_changing_exposed_functions ... ok
+test transforms_match_every_three_choice_function_with_mixed_images_and_projection ... ok
+test transform_survives_collection_and_cancellation_at_every_phase ... ok
+test image_composition_and_projection_survive_gc_and_discard_at_every_tick ... ok
+test discard_large_memo_is_incremental_traceable_and_never_evaluates_more_work ... ok
+test compact_shared_suffixes_are_not_recomputed_after_cache_eviction ... ok
+test engine_grouped_correlations_remain_compact_after_collection ... ok
+test deep_operations_and_collection_do_not_use_the_call_stack ... ok
+test transform_deep_shared_dag_and_last_assignment_owner_cleanup_are_bounded ... ok
+test all_three_choice_functions_have_unique_truth_table_representatives ... ok
+test local_relations_stay_compact_across_choice_birth_orders ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+

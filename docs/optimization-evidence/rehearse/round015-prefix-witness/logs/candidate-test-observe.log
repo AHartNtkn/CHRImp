@@ -1,0 +1,14 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/observe-7bf6d9dc56fc2632"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 8 tests
+test output_json_has_scalar_tagged_events ... ok
+test incomplete_history_cannot_silently_select_one_representative - should panic ... ok
+test inactive_nested_birth_does_not_multiply_answers ... ok
+test first_output_does_not_materialize_independent_choice_product ... ok
+test empty_graph_preserves_active_duplicate_choices_and_empty_scope ... ok
+test conditional_query_variables_and_ordered_ports_are_resolved_in_each_history ... ok
+test correlated_births_prune_by_completion_support_and_ignore_future_births ... ok
+test discard_cancels_nested_projection_without_enumerating_remaining_alternatives ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,22 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/store-d6d7ac112ea38c60"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 16 tests
+test batch_rejects_frozen_foreign_and_stale_roots_before_mutation ... ok
+test collection_rejects_foreign_and_reclaimed_roots_before_marking ... ok
+test filter_collapses_to_the_existing_child_without_allocating ... ok
+test filter_protocol_owner_freeze_and_stale_checks_precede_progress ... ok
+test collection_preserves_snapshot_and_cursor_roots_and_reclaims_dead_versions ... ok
+test owned_collection_freezes_mutators_and_drop_releases_the_owner ... ok
+test filter_full_width_keys_reuses_noop_and_rebuilds_each_changed_node_once ... ok
+test roots_share_unchanged_paths_and_preserve_old_values ... ok
+test filter_survives_gc_between_every_transition_and_traces_pending_values ... ok
+test dense_tail_pages_preserve_snapshots_ranges_and_bounded_reclamation ... ok
+test a_maximal_key_path_remains_bounded_under_update_and_deletion ... ok
+test dense_page_filter_keeps_pending_payloads_through_every_collection_and_discard ... ok
+test mixed_updates_and_prefix_ranges_match_an_ordered_map ... ok
+test batch_preserves_order_snapshots_counts_and_reclaims_discarded_results ... ok
+test batch_new_prefixes_and_delete_all_preserve_pins_without_path_copies ... ok
+test boundary_bits_and_sparse_range_seek_do_not_scan_unrelated_rows ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

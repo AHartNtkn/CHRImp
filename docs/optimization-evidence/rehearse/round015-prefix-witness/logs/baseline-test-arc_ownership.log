@@ -1,0 +1,11 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/arc_ownership-630eb2524e89d520"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 5 tests
+test engine_and_owners_remain_send ... ok
+test aborted_epoch_does_not_stale_and_completed_epoch_cannot_revive ... ok
+test unique_updates_cow_pins_and_bounded_release ... ok
+test cached_interval_counts_follow_unique_and_shared_paths ... ok
+test physical_root_may_outlive_owner_without_recursive_destruction ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

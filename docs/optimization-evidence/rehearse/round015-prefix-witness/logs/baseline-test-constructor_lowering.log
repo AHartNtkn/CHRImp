@@ -1,0 +1,33 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/constructor_lowering-6c82af950244706f"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 27 tests
+test conditional_clashes_leave_independent_family_and_compatible_arms_live ... ok
+test incomplete_clash_component_does_not_make_compatible_tags_exclusive ... ok
+test independent_families_do_not_bypass_multiplicity_observers ... ok
+test independent_families_coalesce_at_shared_keys_and_after_conditional_merges ... ok
+test independent_family_normalization_preserves_finite_progress_and_release ... ok
+test independent_family_choices_preserve_alternatives_and_local_exclusion ... ok
+test structural_field_consumers_keep_join_and_repeated_identity_tests ... ok
+test structural_occurrence_versions_preserve_unary_and_cyclic_alternatives ... ok
+test dispatch_preserves_terminal_no_c_consumer_failure ... ok
+test known_dispatch_keeps_the_original_leading_post ... ok
+test dispatch_preserves_independent_fresh_choice_products ... ok
+test recognition_is_invariant_under_source_renaming_and_order ... ok
+test finite_sibling_progresses_beside_actual_divergent_evaluator ... ok
+test whole_program_admission_rejects_interference ... ok
+test malformed_consistency_cannot_silently_admit_a_smaller_family ... ok
+test dispatch_retains_conditional_field_equalities_without_cross_partition_merges ... ok
+test selected_original_fields_can_still_make_the_known_arm_fail ... ok
+test conditional_field_merges_enable_real_consumers ... ok
+test dispatch_preserves_duplicate_arms_and_rejects_only_supported_clashes ... ok
+test source_normalization_is_shared_across_independent_choices ... ok
+test dispatch_runtime_chain_matches_parent_partition_oracles ... ok
+test terminal_consumer_failure_does_not_escape_its_arm ... ok
+test constructor_attachments_follow_active_support_through_compaction ... ok
+test pm_partition_oracles_preserve_support_and_identity ... ok
+test repeated_conditional_and_cyclic_unions_agree_with_source_execution ... ok
+test unrestricted_identity_synthesis_runs_the_actual_evaluator ... ok
+test suspended_normalization_survives_collection_and_cancellation ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+

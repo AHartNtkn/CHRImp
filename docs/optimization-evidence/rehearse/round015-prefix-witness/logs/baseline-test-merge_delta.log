@@ -1,0 +1,11 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/merge_delta-e2fd58b8369b990f"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 5 tests
+test unchanged_merge_has_no_activation_token ... ok
+test partially_canceled_delta_cannot_be_used_to_activate - should panic ... ok
+test detached_delta_owns_graph_and_conditions_through_incremental_cancel ... ok
+test delta_discard_traces_remaining_supported_seeds_until_released ... ok
+test opposite_conditional_losers_cover_every_new_multihead_match_on_frozen_root ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

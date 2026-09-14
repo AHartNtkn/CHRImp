@@ -1,0 +1,13 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/graph-1fa5303be2669686"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 7 tests
+test an_unpublished_post_survives_collection_and_finishes_its_indexes ... ok
+test collection_traces_live_conditions_and_retained_inspections_only ... ok
+test conditional_consumption_updates_every_index_without_changing_sibling_support ... ok
+test invalid_posts_are_rejected_before_allocating_occurrences ... ok
+test posting_preserves_port_order_multiplicity_and_coherent_snapshots ... ok
+test unchanged_liveness_does_not_rewalk_ports_or_allocate_index_versions ... ok
+test owned_collection_freezes_metadata_and_pending_updates_until_drop ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

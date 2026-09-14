@@ -1,0 +1,11 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/store_inline-7536dcd73ce7f94c"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 5 tests
+test page_range_transport_is_allocation_free_and_keeps_snapshot_identity ... ok
+test shared_page_append_does_not_reallocate_the_copied_payload ... ok
+test unique_dense_updates_allocate_only_the_page_promotion ... ok
+test identical_page_values_keep_distinct_keys_and_active_runs_reject_invalid_roots ... ok
+test interrupted_page_ranges_and_filters_release_every_owner ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

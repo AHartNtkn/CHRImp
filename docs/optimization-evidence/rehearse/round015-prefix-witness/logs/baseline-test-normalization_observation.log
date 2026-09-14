@@ -1,0 +1,12 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/normalization_observation-c945ce86cf4cb5c0"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 6 tests
+test dispatch_admission_does_not_duplicate_pending_source_alternatives ... ok
+test construction_automatically_specializes_and_steps_original_rules ... ok
+test consistency_step_exposes_pending_source_equalities_before_executing_them ... ok
+test prepared_plan_is_reused_by_normal_and_recording_engines ... ok
+test independent_family_steps_preserve_source_equalities_and_held_snapshots ... ok
+test lowered_and_terminal_consumer_failures_pause_before_rhs_and_record_failure ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

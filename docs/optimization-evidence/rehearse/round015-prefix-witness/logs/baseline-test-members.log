@@ -1,0 +1,13 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-round015-baseline-harness/target/release/deps/members-28c608223e589474"], "cwd": "/tmp/chrimp-round015-baseline-harness", "returncode": 0}
+
+running 7 tests
+test frozen_root_survives_later_merges_and_collection ... ok
+test uninvolved_variable_is_its_own_member_only_on_scope ... ok
+test transitive_class_keeps_overlapping_child_supports ... ok
+test opposite_parent_directions_in_siblings_terminate_without_duplicate_overlap ... ok
+test completed_enumeration_releases_at_most_one_map_entry_per_tick ... ok
+test sparse_class_visits_do_not_scale_with_unrelated_variables ... ok
+test membership_matches_equal_on_multiple_scopes_with_collection_every_tick ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+

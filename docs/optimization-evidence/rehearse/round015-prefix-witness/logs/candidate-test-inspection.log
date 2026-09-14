@@ -1,0 +1,17 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/inspection-0085a985cd3b52ab"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 11 tests
+test collection_defers_view_mutations_but_allows_owned_scalar_delivery ... ok
+test explicit_failed_alternatives_remain_distinct_in_recorded_history ... ok
+test history_is_opt_in_and_recorded_roots_survive_until_explicit_release ... ok
+test recorded_failure_preserves_the_rejected_region_until_its_view_is_released ... ok
+test stale_cross_run_and_future_choice_ids_fail_without_projection ... ok
+test selections_respect_birth_regions_and_preserve_duplicate_alternatives ... ok
+test blocked_inspections_do_not_starve_source_or_primary_answer_delivery ... ok
+test held_view_preserves_its_choice_prefix_while_later_choices_are_compacted ... ok
+test rotating_conditional_archives_transfer_to_independent_inspections_without_losing_answers ... ok
+test inspection_backpressure_and_cancellation_do_not_enumerate_remaining_answers ... ok
+test selected_independent_choices_retain_linear_state_while_output_is_held ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

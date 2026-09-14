@@ -1,0 +1,21 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/shared_restrictions-9b02cd3b0cab813f"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 15 tests
+test empty_bucket_dependency_changes_when_its_first_row_arrives ... ok
+test allocation::enabled::tests::counts_real_allocations_reallocation_and_nested_scopes ... ok
+test different_productive_values_share_partitions_with_independent_positions_and_support ... ok
+test paused_subscriber_survives_other_progress_cancellation_and_collection ... ok
+test late_conditional_alias_uses_general_matching_without_poisoning_old_restriction ... ok
+test unrelated_posts_share_the_correlated_scan_across_graph_versions ... ok
+test unfinished_producer_is_protected_by_surviving_subscribers_different_snapshot ... ok
+test relevant_insertions_and_liveness_changes_preserve_old_snapshots ... ok
+test distinct_binding_values_share_one_projection_per_bucket ... ok
+test abandoned_partial_producer_is_never_a_completed_negative_answer ... ok
+test registry_eviction_keeps_live_consumers_valid_and_bounds_retention ... ok
+test large_prefix_lagging_reader_keeps_shared_production_after_cache_clear ... ok
+test large_prefix_readers_survive_interrupted_service_and_collection ... ok
+test growing_prefix_versions_preserve_order_cutoffs_and_release ... ok
+test wider_and_larger_restrictions_continue_through_the_general_matcher ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+

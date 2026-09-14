@@ -1,0 +1,10 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/wake-b857468362ec854f"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 4 tests
+test suspended_wake_keeps_its_frozen_root_and_collects_between_every_tick ... ok
+test repeated_ports_and_overlapping_members_emit_only_novel_contexts ... ok
+test conditional_merge_wakes_cross_predicate_incidence_on_live_overlap ... ok
+test unrelated_occurrences_do_not_add_wake_work ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

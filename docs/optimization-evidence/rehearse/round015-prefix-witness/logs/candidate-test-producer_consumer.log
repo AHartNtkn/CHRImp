@@ -1,0 +1,18 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/producer_consumer-44b452fcfef5d650"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 12 tests
+test incompatible_kept_tag_certifies_surviving_marker_retirement ... ok
+test renamed_consumer_rejects_before_birth_and_keeps_original_surviving_body ... ok
+test conditional_identity_rejects_only_the_supported_arm ... ok
+test source_step_exposes_original_disjunction_before_compiled_rejection ... ok
+test conditional_all_failed_scope_does_not_escape_to_siblings ... ok
+test duplicate_source_arms_and_empty_context_keep_all_alternatives ... ok
+test consumer_field_and_repeated_local_tests_never_bind_identities ... ok
+test mutable_marker_disqualifies_guard_even_when_eraser_is_not_enabled_yet ... ok
+test compatible_family_cannot_certify_marker_retirement_as_failure ... ok
+test rhs_or_wrong_key_constructor_does_not_certify_marker_retirement ... ok
+test actual_behavior_evaluator_rejects_constant_before_its_binary_subsplit ... ok
+test conditional_rejection_survives_collection_with_retained_history ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

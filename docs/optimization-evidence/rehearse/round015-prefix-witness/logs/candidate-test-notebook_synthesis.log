@@ -1,0 +1,10 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/notebook_synthesis-bc375c14a106d2ad"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 4 tests
+test behavior_program_accepts_cyclic_relational_structures ... ok
+test forward_queries_and_finite_type_failure_execute ... ok
+test all_type_and_behavior_targets_accept_independently_checked_combinators ... ok
+test unrestricted_synthesis_returns_new_programs_and_can_continue ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.08s
+

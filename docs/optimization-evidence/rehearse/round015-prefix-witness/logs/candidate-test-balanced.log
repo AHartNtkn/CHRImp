@@ -1,0 +1,10 @@
+{"command": ["timeout", "--kill-after=5s", "60s", "/tmp/chrimp-opt-round015-prefix-witness/target/release/deps/balanced-4e0c21fd666449d3"], "cwd": "/tmp/chrimp-opt-round015-prefix-witness", "returncode": 0}
+
+running 4 tests
+test two_flat_choices_cross_product_and_common_work_are_preserved ... ok
+test nested_duplicate_failure_and_fresh_correlated_arms ... ok
+test conditional_identity_stays_correlated_with_selected_arms ... ok
+test flat_finite_siblings_are_fair_and_cancel_reclaims_each_prefix ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
