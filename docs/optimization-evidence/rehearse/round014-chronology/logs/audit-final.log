@@ -1,0 +1,3 @@
+PASS: all paired rule/dispatch vectors, five aligned synthesis frontiers,
+projection-only progress, history release, and zero unowned post-cancel slab backing.
+Native observations: {'completed': 150, 'censored': 30}

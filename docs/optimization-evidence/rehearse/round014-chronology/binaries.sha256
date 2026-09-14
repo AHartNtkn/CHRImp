@@ -1,0 +1,4 @@
+740f74e0c898b9062a64cdbbba9a6c2cbcd0f2b8b77883d4a19b757775f485b5  /tmp/round012-baseline-bin/measure-matched
+15bd03084275474a59649f8c1fb0dd6738af22eca3cafa1ea5c87520892c2379  /tmp/round012-baseline-bin/measure-ordinary
+f331c89be49658ccd450d24c34094dd528be5a415556a51e4a2b82a513f23afd  target/release/examples/measure-58b83fa010c345bc
+6d7c7f09212da80cd8b972c9cfd6b382e0dd7909ed1d23937acab0cfed59a733  target/release/examples/measure-50f933eb7bc48467

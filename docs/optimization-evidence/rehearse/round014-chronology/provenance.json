@@ -1,0 +1,20 @@
+{
+  "baseline": "225fe302fa45c7667684107ba96cba357cf103dd",
+  "implementation": "7e7b1f48ae0f3422ad21a1355ee214332629758c",
+  "baseline_diagnostics_harness": "ca8a55d8bed1835c2174c87f8bc40c78128f8053",
+  "worktree": "/tmp/chrimp-opt-round014-chronology",
+  "branch": "codex/opt/round014-chronology",
+  "diagnostics_binary": "target/release/examples/measure-58b83fa010c345bc",
+  "ordinary_binary": "target/release/examples/measure-50f933eb7bc48467",
+  "diagnostics_build": "cargo build --offline --release --features diagnostics --all-targets",
+  "ordinary_build": "cargo build --offline --release --all-targets",
+  "toolchain": "rustc 1.95.0-nightly (18d13b533 2026-02-09), cargo 1.95.0-nightly (fe2f314ae 2026-01-30), x86_64-unknown-linux-gnu",
+  "baseline_binary_reuse": "Saved Round 012 matched and ordinary binaries; SHA256 verified against previously committed manifests",
+  "measured_source_note": "After diagnostic measurements, only cfg(test) and documentation changed. The final library tests exercise serial exhaustion and interruptions of both archive and ordinary sweeps. Production source is identical to the evaluated implementation.",
+  "samples": "20 diagnostic points and 5 ordinary controls, three samples per side, no warmups; 30 additional overlapping ordinary control observations preserved but excluded from the reported comparison",
+  "alignment": "B/C/W/T/M stop at exactly 500000 non-collection dispatches on both sides; rule and other dispatch vectors checked independently",
+  "limits": "50000000 total ticks, 3 source seconds, maintained perf.py external supervision and cleanup bounds",
+  "raw_observations": {"completed": 150, "censored": 30, "native_oracle_failures": 0},
+  "tests": {"diagnostics": 518, "ordinary": 488, "binaries_per_configuration": 44, "timeouts": 0, "initial_sandbox_socket_failures": 2, "socket_retries_passed": true},
+  "landing": "No checkout edits, integration, campaign control changes, history record, or rwLog rerun"
+}
