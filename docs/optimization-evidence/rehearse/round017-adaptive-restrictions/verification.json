@@ -1,0 +1,560 @@
+{
+  "baseline": {
+    "passed": 35,
+    "ignored": 1,
+    "binaries": [
+      {
+        "binary": "/tmp/chrimp-round017-baseline-harness/target/release/deps/store-d6d7ac112ea38c60",
+        "log": "baseline-test-store.log",
+        "passed": 16,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-round017-baseline-harness/target/release/deps/shared_restrictions-9b02cd3b0cab813f",
+        "log": "baseline-test-shared_restrictions.log",
+        "passed": 19,
+        "ignored": 1
+      }
+    ]
+  },
+  "candidate": {
+    "passed": 530,
+    "ignored": 0,
+    "binaries": [
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/store_inline-7536dcd73ce7f94c",
+        "log": "candidate-test-store_inline.log",
+        "passed": 5,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/wide_gate-895ee4c6ae908e6b",
+        "log": "candidate-test-wide_gate.log",
+        "passed": 2,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/chr-c3caca7f2213860a",
+        "log": "candidate-unit-chr-c3caca7f2213860a.log",
+        "passed": 118,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/progress-4427ee402ec0fbc1",
+        "log": "candidate-test-progress.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/graph-1fa5303be2669686",
+        "log": "candidate-test-graph.log",
+        "passed": 7,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/collection_work-f4bf09a421b74674",
+        "log": "candidate-test-collection_work.log",
+        "passed": 2,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/normalization_observation-c945ce86cf4cb5c0",
+        "log": "candidate-test-normalization_observation.log",
+        "passed": 6,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/lifecycle-e5bc224db3d39c9b",
+        "log": "candidate-test-lifecycle.log",
+        "passed": 8,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/compaction-826073a49e779aac",
+        "log": "candidate-test-compaction.log",
+        "passed": 9,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/merge_delta-e2fd58b8369b990f",
+        "log": "candidate-test-merge_delta.log",
+        "passed": 5,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/graph_prune-0387a170f845256f",
+        "log": "candidate-test-graph_prune.log",
+        "passed": 7,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/members-28c608223e589474",
+        "log": "candidate-test-members.log",
+        "passed": 7,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/examples/constructor_probe-9ea84dde139b732b",
+        "log": "candidate-test-constructor_probe.log",
+        "passed": 1,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/step-25dc5d57865498e9",
+        "log": "candidate-test-step.log",
+        "passed": 9,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/syntax-0f4399b4c7a35aea",
+        "log": "candidate-test-syntax.log",
+        "passed": 11,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/identity-4f1e0430c55fa812",
+        "log": "candidate-test-identity.log",
+        "passed": 10,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/observe-7bf6d9dc56fc2632",
+        "log": "candidate-test-observe.log",
+        "passed": 8,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/history-37eeafaf64a29a6e",
+        "log": "candidate-test-history.log",
+        "passed": 9,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/arc_ownership-630eb2524e89d520",
+        "log": "candidate-test-arc_ownership.log",
+        "passed": 5,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/semantics-3654ace6ee7c3062",
+        "log": "candidate-test-semantics.log",
+        "passed": 14,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/diagnostics-8bbab8a8b782a215",
+        "log": "candidate-test-diagnostics.log",
+        "passed": 11,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/store-d6d7ac112ea38c60",
+        "log": "candidate-test-store.log",
+        "passed": 16,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/notebook_arithmetic-7ae476ba1c1ad7ab",
+        "log": "candidate-test-notebook_arithmetic.log",
+        "passed": 2,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/wake-b857468362ec854f",
+        "log": "candidate-test-wake.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/cancel-3ddb314427f89e16",
+        "log": "candidate-test-cancel.log",
+        "passed": 6,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/shared_restrictions-9b02cd3b0cab813f",
+        "log": "candidate-focused-final.log",
+        "passed": 20,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/notebook_lambda-dddeeefb1b48bcf2",
+        "log": "candidate-test-notebook_lambda.log",
+        "passed": 9,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/balanced-4e0c21fd666449d3",
+        "log": "candidate-test-balanced.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/program-a5f4a5fe854dfa4e",
+        "log": "candidate-test-program.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/singlehead-7f7462a9329b485a",
+        "log": "candidate-test-singlehead.log",
+        "passed": 2,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/notebook_synthesis-bc375c14a106d2ad",
+        "log": "candidate-test-notebook_synthesis.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/pending_body-d06d9ae4a2998cac",
+        "log": "candidate-test-pending_body.log",
+        "passed": 10,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/chr-7dd3924609ad1f78",
+        "log": "candidate-unit-chr-7dd3924609ad1f78.log",
+        "passed": 1,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/commit-9d76d12312c48f08",
+        "log": "candidate-test-commit.log",
+        "passed": 6,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/index_restriction-b69bb8a810fc953d",
+        "log": "candidate-test-index_restriction.log",
+        "passed": 8,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/cli-346cf51f2471214e",
+        "log": "candidate-loopback-restored-cli.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/output-a2cc5b6f8d70b9c8",
+        "log": "candidate-test-output.log",
+        "passed": 8,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/notebook-900599a3335db509",
+        "log": "candidate-loopback-notebook.log",
+        "passed": 21,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/inspection-0085a985cd3b52ab",
+        "log": "candidate-test-inspection.log",
+        "passed": 11,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/producer_consumer-44b452fcfef5d650",
+        "log": "candidate-test-producer_consumer.log",
+        "passed": 12,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/constructor_lowering-6c82af950244706f",
+        "log": "candidate-test-constructor_lowering.log",
+        "passed": 27,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/matching-bc5843329a6c829b",
+        "log": "candidate-test-matching.log",
+        "passed": 14,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/condition-e1ea2fc8e6eca8ab",
+        "log": "candidate-test-condition.log",
+        "passed": 29,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/examples/measure-078fb96d8cd90370",
+        "log": "candidate-test-measure.log",
+        "passed": 50,
+        "ignored": 0
+      }
+    ]
+  },
+  "ordinary": {
+    "passed": 491,
+    "ignored": 0,
+    "binaries": [
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/examples/constructor_probe-326ae526214318cb",
+        "log": "ordinary-constructor_probe-326ae526214318cb.log",
+        "passed": 0,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/wide_gate-88da4867b827a29d",
+        "log": "ordinary-wide_gate-88da4867b827a29d.log",
+        "passed": 2,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/chr-b5b07d024a3c67e2",
+        "log": "ordinary-chr-b5b07d024a3c67e2.log",
+        "passed": 112,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/balanced-90bdeba9eae94be5",
+        "log": "ordinary-balanced-90bdeba9eae94be5.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/singlehead-41bd0782a39d652b",
+        "log": "ordinary-singlehead-41bd0782a39d652b.log",
+        "passed": 2,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/normalization_observation-c94ea565fe0c5402",
+        "log": "ordinary-normalization_observation-c94ea565fe0c5402.log",
+        "passed": 6,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/notebook_arithmetic-ed9a369491fbcd3f",
+        "log": "ordinary-notebook_arithmetic-ed9a369491fbcd3f.log",
+        "passed": 2,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/shared_restrictions-c5ca3b45e249a8c9",
+        "log": "ordinary-shared_restrictions-c5ca3b45e249a8c9.log",
+        "passed": 0,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/lifecycle-49a63f3e043317bc",
+        "log": "ordinary-lifecycle-49a63f3e043317bc.log",
+        "passed": 8,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/semantics-812c6f15981541c6",
+        "log": "ordinary-semantics-812c6f15981541c6.log",
+        "passed": 14,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/inspection-177b8966480aed63",
+        "log": "ordinary-inspection-177b8966480aed63.log",
+        "passed": 11,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/program-8e274617a15885e6",
+        "log": "ordinary-program-8e274617a15885e6.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/producer_consumer-85353eab979aaf6e",
+        "log": "ordinary-producer_consumer-85353eab979aaf6e.log",
+        "passed": 12,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/graph_prune-4329e7a19a5caeef",
+        "log": "ordinary-graph_prune-4329e7a19a5caeef.log",
+        "passed": 7,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/store_inline-e98b49ca4bf6a152",
+        "log": "ordinary-store_inline-e98b49ca4bf6a152.log",
+        "passed": 5,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/progress-f21e14dce900d0d0",
+        "log": "ordinary-progress-f21e14dce900d0d0.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/diagnostics-b9eede19d512a78f",
+        "log": "ordinary-diagnostics-b9eede19d512a78f.log",
+        "passed": 0,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/step-4f628ad8f0e5a31d",
+        "log": "ordinary-step-4f628ad8f0e5a31d.log",
+        "passed": 9,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/notebook_lambda-3d4874a284fd0727",
+        "log": "ordinary-notebook_lambda-3d4874a284fd0727.log",
+        "passed": 9,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/graph-440f0f0a7ff735da",
+        "log": "ordinary-graph-440f0f0a7ff735da.log",
+        "passed": 7,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/commit-2dfacffaa033dff1",
+        "log": "ordinary-commit-2dfacffaa033dff1.log",
+        "passed": 6,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/merge_delta-c155fa51ae27e801",
+        "log": "ordinary-merge_delta-c155fa51ae27e801.log",
+        "passed": 5,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/history-4349329a0a8eb7fd",
+        "log": "ordinary-history-4349329a0a8eb7fd.log",
+        "passed": 9,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/cli-a1ec6b78568a9305",
+        "log": "ordinary-loopback-cli.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/arc_ownership-8e0666e6d46027da",
+        "log": "ordinary-arc_ownership-8e0666e6d46027da.log",
+        "passed": 5,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/index_restriction-b24f06ac1c209709",
+        "log": "ordinary-index_restriction-b24f06ac1c209709.log",
+        "passed": 8,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/pending_body-1876e7bf74c09048",
+        "log": "ordinary-pending_body-1876e7bf74c09048.log",
+        "passed": 10,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/compaction-75bcd628277315e9",
+        "log": "ordinary-compaction-75bcd628277315e9.log",
+        "passed": 9,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/store-c49f6ad62dd0dcf0",
+        "log": "ordinary-store-c49f6ad62dd0dcf0.log",
+        "passed": 16,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/members-e6a892a5350e68b5",
+        "log": "ordinary-members-e6a892a5350e68b5.log",
+        "passed": 7,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/output-38538029d67b97e2",
+        "log": "ordinary-output-38538029d67b97e2.log",
+        "passed": 8,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/observe-90ed990fd8c27f44",
+        "log": "ordinary-observe-90ed990fd8c27f44.log",
+        "passed": 8,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/notebook_synthesis-da39fa5648af680e",
+        "log": "ordinary-notebook_synthesis-da39fa5648af680e.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/collection_work-29b902eb2c94ecb5",
+        "log": "ordinary-collection_work-29b902eb2c94ecb5.log",
+        "passed": 2,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/notebook-16d3c912bbb4c991",
+        "log": "ordinary-loopback-notebook.log",
+        "passed": 21,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/syntax-67652f301bfb53ba",
+        "log": "ordinary-syntax-67652f301bfb53ba.log",
+        "passed": 11,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/constructor_lowering-1159f516c7a7f8c5",
+        "log": "ordinary-constructor_lowering-1159f516c7a7f8c5.log",
+        "passed": 27,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/chr-c111d6749b03a23a",
+        "log": "ordinary-chr-c111d6749b03a23a.log",
+        "passed": 1,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/wake-99c3b59cd1fcc5db",
+        "log": "ordinary-wake-99c3b59cd1fcc5db.log",
+        "passed": 4,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/identity-6ccdd7f4093f02f1",
+        "log": "ordinary-identity-6ccdd7f4093f02f1.log",
+        "passed": 10,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/cancel-bc549e42bc5ff7ec",
+        "log": "ordinary-cancel-bc549e42bc5ff7ec.log",
+        "passed": 6,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/condition-97476da1f1b720b0",
+        "log": "ordinary-condition-97476da1f1b720b0.log",
+        "passed": 29,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/deps/matching-0cd455fb366c225c",
+        "log": "ordinary-matching-0cd455fb366c225c.log",
+        "passed": 14,
+        "ignored": 0
+      },
+      {
+        "binary": "/tmp/chrimp-opt-round017-adaptive-restrictions/target/release/examples/measure-0362928c4711afd6",
+        "log": "ordinary-measure-0362928c4711afd6.log",
+        "passed": 49,
+        "ignored": 0
+      }
+    ]
+  }
+}
