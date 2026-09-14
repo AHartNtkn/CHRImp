@@ -149,6 +149,7 @@ fn growing_prefix_versions_preserve_order_cutoffs_and_release() {
             serde_json::to_string(&g.restriction_diagnostics()).unwrap()
         );
         allocation_checkpoint(n, "readback");
+        println!("prefix_lookup n={n} counts={:?}", g.index_prefix_counts());
         drop(root);
         let mut collector = g.collect(std::iter::empty());
         let mut cleanup_ticks = 0;

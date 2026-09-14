@@ -27,6 +27,8 @@ struct Stats {
     page_shifts: AtomicUsize,
     page_runs: AtomicUsize,
     page_fallback_visits: AtomicUsize,
+    prefix_calls: AtomicUsize,
+    prefix_steps: AtomicUsize,
 }
 // Pages never cross a whole-word prefix or an aligned eight-key interval.
 // Thus classification, copying, shifts, destruction and each update are bounded;
@@ -511,6 +513,13 @@ impl<V: Value> Store<V> {
         ]
         .map(|counter| counter.load(Relaxed))
     }
+    /// Prefix requests and actual path-node inspections (cumulative).
+    pub fn prefix_counts(&self) -> [usize; 2] {
+        [
+            self.stats.prefix_calls.load(Relaxed),
+            self.stats.prefix_steps.load(Relaxed),
+        ]
+    }
     fn record<'a>(&self, root: &'a Root<V>) -> &'a Record<V> {
         assert!(
             self.contains(root) && !root.is_empty(),
@@ -866,8 +875,10 @@ impl<V: Value> Store<V> {
     /// Unrelated prefix updates preserve its identity even when the root changes.
     pub(crate) fn prefix_root(&self, root: &Root<V>, prefix: Key, words: usize) -> Root<V> {
         assert!(words <= 3 && self.contains(root));
+        self.stats.prefix_calls.fetch_add(1, Relaxed);
         let mut node = root;
         while !node.is_empty() {
+            self.stats.prefix_steps.fetch_add(1, Relaxed);
             let (key, bit) = match &self.record(node).node {
                 Node::Leaf { key, .. } => (*key, 256),
                 Node::Page { prefix, .. } => (*prefix, PAGE_BIT),
