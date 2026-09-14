@@ -11,6 +11,9 @@ fn finish(arena: &mut Arena, op: Operation) -> Condition {
 }
 
 #[test]
+// Keep the source formula expanded: this is the independent truth-table oracle
+// for canonicalizing Difference(Or(And(x, y), z), y), not production logic.
+#[allow(clippy::overly_complex_bool_expr)]
 fn boolean_operations_match_truth_tables_and_are_canonical() {
     let mut a = Arena::default();
     let (_, x) = a.fresh_choice();
