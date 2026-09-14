@@ -682,4 +682,3 @@ test lifecycle::interactions::tests::rotating_conditional_prefix_is_pinned_then_
 test notebooks::tests::lambda_measures_a_validated_first_answer_prefix ... ok
 
 test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
-

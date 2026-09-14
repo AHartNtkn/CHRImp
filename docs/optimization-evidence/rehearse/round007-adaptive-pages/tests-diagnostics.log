@@ -708,4 +708,3 @@ test batch_new_prefixes_and_delete_all_preserve_pins_without_path_copies ... ok
 test boundary_bits_and_sparse_range_seek_do_not_scan_unrelated_rows ... ok
 
 test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
-
