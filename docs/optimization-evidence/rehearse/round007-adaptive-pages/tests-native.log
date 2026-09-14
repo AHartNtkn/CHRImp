@@ -1,0 +1,685 @@
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test engine_and_owners_remain_send ... ok
+test aborted_epoch_does_not_stale_and_completed_epoch_cannot_revive ... ok
+test unique_updates_cow_pins_and_bounded_release ... ok
+test cached_interval_counts_follow_unique_and_shared_paths ... ok
+test physical_root_may_outlive_owner_without_recursive_destruction ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 98 tests
+test condition::archive_ownership_tests::overlapping_complemented_owners_release_in_any_order_with_a_suspended_reader ... ok
+test condition::direct_tests::direct_checks_authority_before_false_or_identical_shortcuts ... ok
+test condition::direct_tests::direct_identities_match_truth_tables_and_leave_mixed_operands_resumable ... ok
+test condition::direct_tests::direct_rejects_frozen_arena_for_simple_and_mixed_operands ... ok
+test condition::direct_tests::mixed_direct_fallback_resumes_and_discards_with_collection_each_tick ... ok
+test condition::direct_tests::order_metadata_is_collected_with_its_last_node ... ok
+test engine::body_direct_tests::acquired_body_uses_exact_identities_and_resumes_mixed_support ... ok
+test engine::cancel::tests::cancellation_does_not_wait_for_a_reserved_semantic_lane ... ok
+test engine::collection::frontier_tests::semantic_pruning_and_explicit_collection_preserve_retained_roots ... ok
+test engine::collection::frontier_tests::exact_frontier_boundary_and_explicit_region_requests_are_preserved ... ok
+test engine::collection::tests::an_unposted_body_local_keeps_its_identity_through_pruning ... ok
+test engine::collection::tests::collection_status_covers_waiting_for_a_history_writer ... ok
+test engine::coordinates::boundary_tests::certificate_is_transported_before_current_active_intersection ... ok
+test engine::coordinates::boundary_tests::transport_survives_collection_at_every_restriction_tick ... ok
+test engine::coordinates::engine_tests::immutable_matcher_candidates_use_current_coordinates_before_commit ... ok
+test engine::coordinates::boundary_tests::cancellation_drains_an_inflight_transport_and_coordinate_log ... ok
+test engine::coordinates::functional_image_tests::functional_images_compose_across_epochs_with_gc_at_every_transport_tick ... ok
+test engine::coordinates::functional_image_tests::retiring_a_partly_traced_epoch_resets_the_next_maps_child_cursor ... ok
+test engine::coordinates::functional_image_tests::unstarted_transport_images_and_incremental_log_drain_are_roots ... ok
+test engine::coordinates::maintenance_tests::maintenance_spends_its_budget_draining_unowned_coordinate_records ... ok
+test condition::reorder_tests::path_prefix_collection_stays_linear_without_branching_pressure ... ok
+test condition::archive_ownership_tests::releasing_a_large_archive_reclaims_its_canonical_table_storage ... ok
+test engine::coordinates::functional_image_tests::engine_collection_roots_functional_images_during_log_cleanup ... ok
+test engine::coordinates::tests::old_reader_crosses_multiple_publications_without_changing_target ... ok
+test engine::discovery::tests::consumed_anchor_row_can_be_collected_before_commit ... ok
+test engine::coordinates::tests::log_retention_follows_reader_leases ... ok
+test condition::archive_ownership_tests::rotating_owner_work_is_independent_of_unchanged_boolean_closure ... ok
+test engine::coordinates::rejected_reader_tests::false_pending_scope_discards_a_large_old_join_without_enumerating_it ... ok
+test engine::discovery::tests::direct_anchor_builds_one_binding_per_tick_without_pinning_graph ... ok
+test engine::discovery::tests::mixed_trigger_cutoff_includes_identity_sensitive_single_heads ... ok
+test engine::discovery::tests::direct_anchor_scope_survives_gc_and_transports_before_commit ... ok
+test engine::inspection::cutoff_tests::capture_order_bounds_cutoffs_through_collection_release_and_old_inspection_clones ... ok
+test condition::reorder_tests::archived_closures_keep_exact_sift_references_and_rebuild_after_reordering ... ok
+test engine::inspection::shared_restriction_lifetime_tests::invalid_and_canceled_partial_paths_release_without_executing_selection_jobs ... ok
+test engine::coordinates::progress_tests::old_finite_join_releases_broad_pending_scope_beside_divergence ... ok
+test engine::collection::archive_cancel_tests::cancel_during_archive_registration_or_rebuild_preserves_views_until_release ... ok
+test condition::reorder_tests::scoped_sifting_respects_causal_bounds_without_retaining_scope_graphs ... ok
+test engine::inspection::tests::continuing_admissions_cannot_overtake_a_waiting_cancellation ... ok
+test engine::inspection::shared_restriction_lifetime_tests::cancellation_transfers_inflight_work_and_releases_all_cache_ownership ... ok
+test engine::normalization::structural_field_tests::certified_fields_preserve_conditional_identity_and_raw_observation_without_port_index ... ok
+test engine::obligations::tests::captures_freeze_syntax_but_certificate_roots_do_not_version_progress ... ok
+test engine::obligations::tests::functional_substitution_preserves_historical_descriptor_and_image_roots ... ok
+test engine::inspection::shared_restriction_lifetime_tests::shared_selection_respects_each_snapshot_scope_and_future_cutoff ... ok
+test engine::obligations::tests::aliased_unposted_local_is_retained_by_an_inspection_alone ... ok
+test engine::inspection::restriction_tests::live_successive_prefixes_execute_fewer_restriction_jobs ... ok
+test engine::obligations::tests::pending_substitution_projects_current_and_historical_alternatives ... ok
+test engine::obligations::tests::pending_substitution_reuses_unaffected_root ... ok
+test engine::parking_tail_tests::failed_acquires_park_and_fifo_handoffs_survive_collection ... ok
+test engine::obligations::tests::pending_substitution_preserves_old_roots_and_descriptors_through_every_gc_phase ... ok
+test engine::obligations::substitution_work_tests::repeated_pending_support_is_transformed_once_per_pass ... ok
+test engine::inspection::shared_restriction_lifetime_tests::late_shorter_longer_and_identical_readers_survive_pruned_prefixes_and_gc ... ok
+test engine::obligations::tests::pending_substitution_drains_last_assignment_owner_incrementally ... ok
+test gc::tests::occupied_discard_spends_the_tick_even_when_it_finishes ... ok
+test engine::step::coordinate_tests::step_pins_coordinates_through_done_until_selection_ownership_ends ... ok
+test engine::producer::tests::split_snapshots_preserve_exact_pending_arms_after_progress_and_cancel ... ok
+test graph::prune::certificate_tests::every_identity_namespace_defeats_certificate ... ok
+test graph::prune::certificate_tests::certificate_seed_checks_freeze_and_owner_remain_enforced ... ok
+test graph::prune::certificate_tests::failed_support_cannot_retain_a_constructor_attachment ... ok
+test graph::tuple_index_tests::tuple_support_tracks_updates_pruning_and_reclamation_without_language_ports ... ok
+test graph::update_ownership_tests::certified_field_lookup_filters_incidence_and_retains_old_conditional_occurrences ... ok
+test graph::update_ownership_tests::certified_occurrence_versions_share_one_support_record_and_pin_payloads ... ok
+test graph::update_ownership_tests::deferred_batch_tick_rejects_an_untraced_root_before_progress ... ok
+test graph::pressure_checks::semantic_debt_counts_support_changes_independently_of_cow ... ok
+test graph::update_ownership_tests::empty_update_preserves_owner_and_collector_authority ... ok
+test commit::private_update_tests::multi_consume_gc_and_discard_preserve_coherent_base_and_sibling_support ... ok
+test graph::update_ownership_tests::staged_fact_or_owned_arguments_suffice_through_collection_each_tick ... ok
+test graph::update_ownership_tests::unique_changed_support_updates_all_indexes_without_copying ... ok
+test graph::update_ownership_tests::wide_support_update_coalesces_shared_path_work ... ok
+test notebook::owner_tests::busy_control_does_not_consume_its_command_and_owner_ids_never_wrap ... ok
+test notebook::owner_tests::continuing_a_completed_step_preserves_its_boundary ... ok
+test notebook::owner_tests::engine_entry_without_published_owner_mapping_is_never_executable ... ok
+test notebook::owner_tests::independent_owners_and_reservation_do_not_wait_for_a_busy_owner ... ok
+test notebook::owner_tests::output_reads_never_drive_source_and_spool_flush_failure_is_reported ... ok
+test notebook::owner_tests::scheduler_executes_without_output_requests_and_retains_results ... ok
+test graph::prune::certificate_tests::certificate_probe_uses_bounded_key_paths ... ok
+test condition::archive_ownership_tests::interrupted_owner_changes_resume_without_retaining_unowned_nodes ... ok
+test engine::dispatch::tests::every_dispatch_phase_keeps_its_owner_through_collection_and_cancel ... ok
+test engine::balanced_phase_tests::disjunction_ranges_survive_physical_gc_at_every_phase ... ok
+test program::tuple_plan_tests::tuple_indexes_require_every_variable_from_other_heads ... ok
+test runtime::tests::fallible_sink_stops_source_execution_and_returns_original_error ... ok
+test store::page_archive_tests::interrupted_page_registration_retraces_all_values_and_releases_final_archive ... ok
+test store::prefix_identity_tests::exact_prefix_witness_survives_other_updates_and_detects_unique_mutation ... ok
+test notebook::owner_tests::waiting_requests_defer_only_their_owners_maintenance ... ok
+test engine::producer::tests::every_rejection_phase_survives_collection_and_bounded_cancellation ... ok
+test store::filter_tests::maximal_filter_stack_is_bounded_and_completion_releases_capacity ... ok
+test store::release_block_tests::queue_preserves_lifo_and_frees_every_empty_overflow_block ... ok
+test store::release_block_tests::concurrent_root_drops_and_collection_keep_pinned_authority ... ok
+test notebook::owner_tests::receipts_and_reservation_storage_stay_bounded_and_do_not_pin_closed_runs ... ok
+test notebook::owner_tests::retirement_and_start_are_fenced_under_the_same_owner_lock ... ok
+test condition::reorder_tests::restarted_job_has_stable_order_until_completion_or_cancellation ... ok
+test graph::update_ownership_tests::abandoning_each_wide_batch_boundary_preserves_the_published_snapshot ... ok
+test engine::collection::tests::routine_pressure_preserves_fifo_and_emergency_or_explicit_gc_bounds_writer_growth ... ok
+test notebook::owner_tests::spool_retains_more_than_ram_capacity_and_pages_exactly ... ok
+test condition::reorder_tests::collection_reordering_can_be_interrupted_in_every_structural_phase ... ok
+test engine::collection::archive_work_tests::fixed_archive_collection_tracks_the_working_frontier ... ok
+test engine::obligations::tests::ordinary_alias_churn_keeps_descriptor_storage_bounded ... ok
+test engine::inspection::shared_restriction_lifetime_tests::repeated_cancellation_at_every_selection_step_preserves_waiting_reader ... ok
+test engine::collection::retained_work_tests::retained_history_does_not_make_each_semantic_pass_walk_the_archive ... ok
+
+test result: ok. 98 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+
+running 9 tests
+test no_application_finishes_for_normal_form_failure_and_contradictory_selection ... ok
+test nested_choice_selection_excludes_its_inactive_sibling ... ok
+test shared_application_reports_support_outside_selection ... ok
+test selected_normal_form_finishes_with_a_diverging_sibling_and_unread_output ... ok
+test source_cancellation_drains_both_unfinished_and_paused_steps ... ok
+test paused_selected_step_can_be_inspected_after_collection_until_resume ... ok
+test unrelated_applications_do_not_finish_the_selected_step ... ok
+test one_application_is_not_one_service_tick_and_done_stays_paused ... ok
+test suspended_step_survives_collection_and_can_resume_before_finishing ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 2 tests
+test repeated_support_substitution_scales_with_leaves_plus_distinct_conditions ... ok
+test fixed_and_rotating_snapshots_preserve_the_working_set_reclamation_bound ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+
+running 6 tests
+test dispatch_admission_does_not_duplicate_pending_source_alternatives ... ok
+test construction_automatically_specializes_and_steps_original_rules ... ok
+test consistency_step_exposes_pending_source_equalities_before_executing_them ... ok
+test prepared_plan_is_reused_by_normal_and_recording_engines ... ok
+test independent_family_steps_preserve_source_equalities_and_held_snapshots ... ok
+test lowered_and_terminal_consumer_failures_pause_before_rhs_and_record_failure ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test program_files_run_as_a_language_and_stream_complete_graphs ... ok
+test native_query_diagnostics_are_opt_in_and_preserve_answers ... ok
+test full_source_cli_preserves_conditional_fields_and_terminal_consumers ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 2 tests
+test successor_cycles_fail_while_unknown_tails_remain_open ... ok
+test arithmetic_notebook_queries_execute_to_exhaustion_with_retained_graphs ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+
+running 9 tests
+test compaction_preserves_duplicate_surviving_answers_and_propagation ... ok
+test independent_continuing_alternatives_reclaim_their_local_choices ... ok
+test continuing_single_survivor_reclaims_completed_choices ... ok
+test continuing_dependent_choices_are_bounded_after_collection ... ok
+test automatic_collection_bounds_a_continuing_choice_stream ... ok
+test dependent_choices_preserve_finite_answers_and_duplicates ... ok
+test xor_dependent_choices_preserve_four_finite_answers ... ok
+test continuing_xor_dependent_choices_are_bounded_after_collection ... ok
+test xor_snapshot_pins_choices_until_released ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+
+running 14 tests
+test failure_is_explicit_and_budget_exhaustion_is_unfinished ... ok
+test executes_all_head_modes_and_reaches_residual_normal_form ... ok
+test disconnected_failure_excludes_exactly_its_alternative ... ok
+test finite_sibling_completes_during_divergent_execution ... ok
+test fresh_locals_and_duplicate_occurrences_survive_real_execution ... ok
+test explicit_merge_reactivates_nonbinding_cross_predicate_heads ... ok
+test merge_activation_keeps_repeated_ports_and_consuming_partner_heads ... ok
+test cyclic_multihead_join_checks_every_ordered_port ... ok
+test proof_example_preserves_direct_and_composed_derivations ... ok
+test only_explicit_choices_create_search_and_common_work_is_shared ... ok
+test independent_choices_do_not_multiply_common_rewrite_execution ... ok
+test synthesis_example_filters_explicit_program_choices_by_examples ... ok
+test merges_do_not_reconsider_identity_independent_propagation ... ok
+test high_degree_merge_activates_every_cross_predicate_partner ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 11 tests
+test collection_defers_view_mutations_but_allows_owned_scalar_delivery ... ok
+test explicit_failed_alternatives_remain_distinct_in_recorded_history ... ok
+test history_is_opt_in_and_recorded_roots_survive_until_explicit_release ... ok
+test stale_cross_run_and_future_choice_ids_fail_without_projection ... ok
+test recorded_failure_preserves_the_rejected_region_until_its_view_is_released ... ok
+test selections_respect_birth_regions_and_preserve_duplicate_alternatives ... ok
+test rotating_conditional_archives_transfer_to_independent_inspections_without_losing_answers ... ok
+test blocked_inspections_do_not_starve_source_or_primary_answer_delivery ... ok
+test held_view_preserves_its_choice_prefix_while_later_choices_are_compacted ... ok
+test inspection_backpressure_and_cancellation_do_not_enumerate_remaining_answers ... ok
+test selected_independent_choices_retain_linear_state_while_output_is_held ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 6 tests
+test duplicate_head_ids_and_failed_regions_cannot_apply ... ok
+test additional_support_gets_a_distinct_fresh_event_without_replaying_overlap ... ok
+test malformed_identity_claim_cannot_bind_variables_or_consume_facts ... ok
+test propagation_records_tuple_once_and_allocates_fresh_locals_only_when_applying ... ok
+test stale_kept_heads_shrink_commitment_and_only_removed_heads_are_consumed ... ok
+test collection_at_every_commit_boundary_preserves_staged_updates_and_guards ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test single_head_rejects_unmerged_repeated_ports ... ok
+test single_head_conditional_repetition_freshness_and_history_under_gc ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test active_filter_updates_all_occurrence_indexes_and_old_snapshots_remain_valid ... ok
+test noop_nullary_occurrences_and_owned_protocol_checks ... ok
+test certified_true_keeps_conditional_facts_and_gc_roots ... ok
+test explicit_pending_variables_are_seeded_conditionally_and_duplicates_union ... ok
+test live_raw_arguments_keep_bridge_ancestors_and_only_reachable_reverse_members ... ok
+test conditional_opposite_parent_directions_reach_a_support_fixedpoint ... ok
+test certified_no_identity_prune_work_is_independent_of_occurrence_count ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 4 tests
+test failure_and_completion_leave_no_stranded_work_or_lane_request ... ok
+test queued_output_does_not_stop_source_progress_and_delivery_resumes ... ok
+test growing_alias_chain_activates_deltas_instead_of_rewalking_the_winner ... ok
+test growing_search_does_not_block_a_finite_sibling_or_budget_return ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 8 tests
+test functional_images_survive_gc_before_first_leaf_and_while_draining ... ok
+test graph_namespaces_cofactor_preserves_old_snapshot_and_sharing ... ok
+test owner_and_freeze_checks_precede_any_store_or_arena_mutation ... ok
+test no_op_reuses_the_exact_root_without_allocating ... ok
+test newly_built_conditions_and_staged_subtrees_survive_every_tick_gc ... ok
+test broad_rewrite_allocates_at_most_one_node_per_original_node ... ok
+test discard_nested_substitutions_is_traceable_without_finishing_the_index ... ok
+test false_leaves_are_removed_and_last_assignment_owner_is_drained ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test two_flat_choices_cross_product_and_common_work_are_preserved ... ok
+test nested_duplicate_failure_and_fresh_correlated_arms ... ok
+test conditional_identity_stays_correlated_with_selected_arms ... ok
+test flat_finite_siblings_are_fair_and_cancel_reclaims_each_prefix ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 4 tests
+test suspended_wake_keeps_its_frozen_root_and_collects_between_every_tick ... ok
+test repeated_ports_and_overlapping_members_emit_only_novel_contexts ... ok
+test conditional_merge_wakes_cross_predicate_incidence_on_live_overlap ... ok
+test unrelated_occurrences_do_not_add_wake_work ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 10 tests
+test identity_tests_are_nonbinding_and_merges_are_conditional ... ok
+test opposite_parent_directions_in_siblings_do_not_create_a_logical_cycle ... ok
+test uniform_resolution_validates_scope_and_releases_discarded_frontiers ... ok
+test uniform_parent_walks_yield_per_edge_and_preserve_conditional_boundaries ... ok
+test staged_union_survives_graph_and_condition_collection_at_every_tick ... ok
+test resolve_discard_drains_large_pending_and_visited_maps_with_gc_each_step ... ok
+test nested_identity_traces_survive_gc_through_all_merge_equal_and_resolve_phases ... ok
+test rank_prevents_adversarial_descending_alias_chains ... ok
+test resolve_large_visited_map_cleanup_yields_one_record_per_tick ... ok
+test projected_equivalence_matches_independent_union_find_oracles ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+test tests::cli_reclaims_execution_before_returning_on_success_or_output_error ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 4 tests
+test dispatch_retains_every_head_position_and_relation_arity ... ok
+test preparation_preserves_explicit_choice_structure_and_duplicate_arms ... ok
+test preparation_rejects_invalid_graph_editor_models ... ok
+test prepares_ordered_heads_and_fresh_body_slots_once ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 9 tests
+test absent_false_does_not_allocate_or_intern ... ok
+test collection_preserves_snapshots_then_releases_metadata_store_and_conditions ... ok
+test entries_retain_ordered_shared_tuples_and_frozen_roots ... ok
+test ordered_tuples_rules_and_snapshot_supports_are_distinct ... ok
+test foreign_nonempty_roots_are_rejected_even_for_missing_keys ... ok
+test semantic_pruning_keeps_only_active_regions_where_all_tuple_heads_remain_live ... ok
+test unique_tuple_churn_keeps_only_live_metadata ... ok
+test owned_collection_freezes_interning_through_metadata_sweep ... ok
+test collection_after_a_large_peak_retains_only_the_surviving_tuple ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 7 tests
+test conditional_consumption_updates_every_index_without_changing_sibling_support ... ok
+test an_unpublished_post_survives_collection_and_finishes_its_indexes ... ok
+test collection_traces_live_conditions_and_retained_inspections_only ... ok
+test invalid_posts_are_rejected_before_allocating_occurrences ... ok
+test posting_preserves_port_order_multiplicity_and_coherent_snapshots ... ok
+test unchanged_liveness_does_not_rewalk_ports_or_allocate_index_versions ... ok
+test owned_collection_freezes_metadata_and_pending_updates_until_drop ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test behavior_program_accepts_cyclic_relational_structures ... ok
+test forward_queries_and_finite_type_failure_execute ... ok
+test all_type_and_behavior_targets_accept_independently_checked_combinators ... ok
+test unrestricted_synthesis_returns_new_programs_and_can_continue ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.10s
+
+
+running 12 tests
+test incompatible_kept_tag_certifies_surviving_marker_retirement ... ok
+test renamed_consumer_rejects_before_birth_and_keeps_original_surviving_body ... ok
+test conditional_identity_rejects_only_the_supported_arm ... ok
+test consumer_field_and_repeated_local_tests_never_bind_identities ... ok
+test source_step_exposes_original_disjunction_before_compiled_rejection ... ok
+test compatible_family_cannot_certify_marker_retirement_as_failure ... ok
+test conditional_all_failed_scope_does_not_escape_to_siblings ... ok
+test mutable_marker_disqualifies_guard_even_when_eraser_is_not_enabled_yet ... ok
+test rhs_or_wrong_key_constructor_does_not_certify_marker_retirement ... ok
+test duplicate_source_arms_and_empty_context_keep_all_alternatives ... ok
+test actual_behavior_evaluator_rejects_constant_before_its_binary_subsplit ... ok
+test conditional_rejection_survives_collection_with_retained_history ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+test delivered_results_do_not_pin_execution_occurrences ... ok
+test an_owned_output_event_survives_collection_and_later_projection ... ok
+test history_pruning_does_not_replay_a_live_tuple ... ok
+test whole_heap_collection_reclaims_stable_rewriting_across_budget_returns ... ok
+test collecting_suspended_jobs_preserves_conditional_execution_and_projection ... ok
+test propagation_churn_releases_obsolete_tuples_during_execution ... ok
+test graph_pruning_preserves_body_locals_stale_candidates_wakes_and_observers ... ok
+test continuing_alias_rewrites_reclaim_unreferenced_identity_members ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+
+running 5 tests
+test unchanged_merge_has_no_activation_token ... ok
+test detached_delta_owns_graph_and_conditions_through_incremental_cancel ... ok
+test delta_discard_traces_remaining_supported_seeds_until_released ... ok
+test partially_canceled_delta_cannot_be_used_to_activate - should panic ... ok
+test opposite_conditional_losers_cover_every_new_multihead_match_on_frozen_root ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 8 tests
+test conditional_identity_is_projected_in_query_variables_and_ordered_ports ... ok
+test outputs_keep_duplicate_occurrences_and_nullary_relations ... ok
+test duplicate_successes_and_inactive_nested_choices_have_exact_multiplicity ... ok
+test choices_in_distinct_rule_applications_remain_independent ... ok
+test repeated_collection_requests_cannot_starve_duplicate_delivery ... ok
+test wide_shared_answers_finish_within_the_delivery_service_budget ... ok
+test indexed_delivery_keeps_aliases_and_duplicate_histories_under_collection_and_backpressure ... ok
+test output_backpressure_keeps_only_one_scalar_event_and_resumes_wide_ports ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 9 tests
+test norm_reintroduces_the_companion_var_occurrence ... ok
+test same_roots_unify_ports_and_shared_substructure_is_acyclic ... ok
+test norm_requires_companions_and_traverses_lambdas_and_application_spines ... ok
+test invalid_constraints_and_cyclic_structures_fail_without_search ... ok
+test backwards_search_produces_a_residual_constant_family ... ok
+test normal_form_equality_unifies_shared_binder_and_body_ports ... ok
+test unscoped_wires_can_merge_or_retain_disequality ... ok
+test binder_and_argument_ports_preserve_distinct_and_shared_wire_identities ... ok
+test forward_steps_preserve_structure_sharing_and_residual_restrictions ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.04s
+
+
+running 29 tests
+test collection_preserves_complemented_descendants_and_drops_weak_cache ... ok
+test boolean_operations_match_truth_tables_and_are_canonical ... ok
+test discard_active_frames_and_completed_jobs_never_publish_a_result ... ok
+test interleaved_jobs_and_transforms_preserve_handles ... ok
+test job_trace_matches_inventory_then_gc_and_resume_at_every_phase ... ok
+test projection_quantifies_the_inclusive_cutoff_suffix ... ok
+test simultaneous_images_preserve_truth_tables_and_order ... ok
+test suspended_jobs_share_nodes_and_survive_collection ... ok
+test image_map_roots_survive_last_owner_drain_and_images_validate_on_use ... ok
+test transform_new_nonterminal_result_survives_every_collection_phase ... ok
+test transform_rejects_foreign_stale_and_unknown_operands ... ok
+test transform_substitutes_only_the_given_choices_and_preserves_canonical_results ... ok
+test owned_collection_freezes_choices_and_jobs_until_dropped ... ok
+test reclamation_does_not_revive_retired_identities ... ok
+test large_job_memo_traces_scalars_and_cleans_up_before_completion ... ok
+test uniform_operations_and_negation_need_no_apply_work_or_nodes ... ok
+test transform_all_three_variable_functions_and_partial_assignments ... ok
+test transforms_match_every_three_choice_function_with_mixed_images_and_projection ... ok
+test an_empty_arena_does_not_keep_scanning_its_historical_peak ... ok
+test established_grouped_choices_adapt_without_changing_exposed_functions ... ok
+test transform_survives_collection_and_cancellation_at_every_phase ... ok
+test image_composition_and_projection_survive_gc_and_discard_at_every_tick ... ok
+test compact_shared_suffixes_are_not_recomputed_after_cache_eviction ... ok
+test discard_large_memo_is_incremental_traceable_and_never_evaluates_more_work ... ok
+test deep_operations_and_collection_do_not_use_the_call_stack ... ok
+test engine_grouped_correlations_remain_compact_after_collection ... ok
+test all_three_choice_functions_have_unique_truth_table_representatives ... ok
+test transform_deep_shared_dag_and_last_assignment_owner_cleanup_are_bounded ... ok
+test local_relations_stay_compact_across_choice_birth_orders ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+
+running 10 tests
+test a_shared_application_projects_the_same_remaining_body_in_each_selected_sibling ... ok
+test committed_rewrite_snapshot_keeps_the_unposted_rhs_after_resume_gc_and_cancel ... ok
+test original_nested_groups_remain_structurally_visible_in_initial_projection ... ok
+test ordinary_bodies_do_not_retain_duplicate_syntax_and_still_deliver_both_answers ... ok
+test initial_and_completed_operation_records_have_coherent_pending_bodies ... ok
+test first_view_during_cancellation_preserves_syntax_after_bodies_are_discarded ... ok
+test first_syntax_capture_at_each_early_suspension_survives_collection_and_cancel ... ok
+test large_body_projection_is_scalar_backpressured_and_cancellation_releases_its_roots ... ok
+test every_partial_nested_and_or_snapshot_contains_exact_remaining_expressions ... ok
+test balanced_ranges_project_original_flat_arms_at_each_suspension ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+
+running 27 tests
+test conditional_clashes_leave_independent_family_and_compatible_arms_live ... ok
+test incomplete_clash_component_does_not_make_compatible_tags_exclusive ... ok
+test independent_families_do_not_bypass_multiplicity_observers ... ok
+test independent_families_coalesce_at_shared_keys_and_after_conditional_merges ... ok
+test independent_family_normalization_preserves_finite_progress_and_release ... ok
+test independent_family_choices_preserve_alternatives_and_local_exclusion ... ok
+test structural_field_consumers_keep_join_and_repeated_identity_tests ... ok
+test structural_occurrence_versions_preserve_unary_and_cyclic_alternatives ... ok
+test dispatch_retains_conditional_field_equalities_without_cross_partition_merges ... ok
+test finite_sibling_progresses_beside_actual_divergent_evaluator ... ok
+test malformed_consistency_cannot_silently_admit_a_smaller_family ... ok
+test known_dispatch_keeps_the_original_leading_post ... ok
+test recognition_is_invariant_under_source_renaming_and_order ... ok
+test conditional_field_merges_enable_real_consumers ... ok
+test selected_original_fields_can_still_make_the_known_arm_fail ... ok
+test dispatch_preserves_terminal_no_c_consumer_failure ... ok
+test dispatch_preserves_independent_fresh_choice_products ... ok
+test terminal_consumer_failure_does_not_escape_its_arm ... ok
+test constructor_attachments_follow_active_support_through_compaction ... ok
+test whole_program_admission_rejects_interference ... ok
+test dispatch_preserves_duplicate_arms_and_rejects_only_supported_clashes ... ok
+test source_normalization_is_shared_across_independent_choices ... ok
+test dispatch_runtime_chain_matches_parent_partition_oracles ... ok
+test pm_partition_oracles_preserve_support_and_identity ... ok
+test repeated_conditional_and_cyclic_unions_agree_with_source_execution ... ok
+test unrestricted_identity_synthesis_runs_the_actual_evaluator ... ok
+test suspended_normalization_survives_collection_and_cancellation ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 6 tests
+test maintenance_is_collection_only_and_post_cancel_inspections_are_not_canceled ... ok
+test snapshots_survive_cancel_and_release_triggers_physical_reclamation ... ok
+test queued_scalar_survives_source_cancellation_without_finishing_projection ... ok
+test physical_collection_between_cancel_steps_keeps_staged_owners_valid ... ok
+test cancellation_at_task_and_gc_boundaries_never_resumes_source_or_leaks_scratch ... ok
+test wide_wake_and_matching_children_discard_incrementally_and_remain_traceable ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+
+running 2 tests
+test wide_source_condition_gate ... ok
+test complete_delivery_scales_with_supported_alternatives_and_rows ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+
+running 11 tests
+test accepts_signatures_locals_comments_and_optional_query_period ... ok
+test deeply_nested_input_returns_error_without_stack_overflow ... ok
+test rejects_malformed_source_with_locations ... ok
+test parses_head_modes_and_body_precedence ... ok
+test validates_deserialized_ast_at_exact_field_paths ... ok
+test structural_roundtrip_for_graph_created_containers_and_json ... ok
+test json_boundary_roundtrips_the_full_validated_depth ... ok
+test nesting_limit_is_consistent_between_source_and_ast ... ok
+test json_boundary_checks_shape_order_depth_and_semantics ... ok
+test deep_json_is_rejected_without_aborting ... ok
+test direct_serde_bounds_borrowed_values_before_constructing_body ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test frozen_root_survives_later_merges_and_collection ... ok
+test uninvolved_variable_is_its_own_member_only_on_scope ... ok
+test transitive_class_keeps_overlapping_child_supports ... ok
+test opposite_parent_directions_in_siblings_terminate_without_duplicate_overlap ... ok
+test completed_enumeration_releases_at_most_one_map_entry_per_tick ... ok
+test sparse_class_visits_do_not_scale_with_unrelated_variables ... ok
+test membership_matches_equal_on_multiple_scopes_with_collection_every_tick ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 16 tests
+test batch_rejects_frozen_foreign_and_stale_roots_before_mutation ... ok
+test collection_rejects_foreign_and_reclaimed_roots_before_marking ... ok
+test filter_collapses_to_the_existing_child_without_allocating ... ok
+test filter_protocol_owner_freeze_and_stale_checks_precede_progress ... ok
+test collection_preserves_snapshot_and_cursor_roots_and_reclaims_dead_versions ... ok
+test filter_full_width_keys_reuses_noop_and_rebuilds_each_changed_node_once ... ok
+test filter_survives_gc_between_every_transition_and_traces_pending_values ... ok
+test owned_collection_freezes_mutators_and_drop_releases_the_owner ... ok
+test roots_share_unchanged_paths_and_preserve_old_values ... ok
+test dense_tail_pages_preserve_snapshots_ranges_and_bounded_reclamation ... ok
+test a_maximal_key_path_remains_bounded_under_update_and_deletion ... ok
+test dense_page_filter_keeps_pending_payloads_through_every_collection_and_discard ... ok
+test mixed_updates_and_prefix_ranges_match_an_ordered_map ... ok
+test batch_preserves_order_snapshots_counts_and_reclaims_discarded_results ... ok
+test boundary_bits_and_sparse_range_seek_do_not_scan_unrelated_rows ... ok
+test batch_new_prefixes_and_delete_all_preserve_pins_without_path_copies ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 8 tests
+test output_json_has_scalar_tagged_events ... ok
+test incomplete_history_cannot_silently_select_one_representative - should panic ... ok
+test empty_graph_preserves_active_duplicate_choices_and_empty_scope ... ok
+test inactive_nested_birth_does_not_multiply_answers ... ok
+test first_output_does_not_materialize_independent_choice_product ... ok
+test correlated_births_prune_by_completion_support_and_ignore_future_births ... ok
+test conditional_query_variables_and_ordered_ports_are_resolved_in_each_history ... ok
+test discard_cancels_nested_projection_without_enumerating_remaining_alternatives ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 20 tests
+test deep_containers_are_rejected_as_ids_without_recursive_buffering ... ok
+test close_replay_after_reclamation_is_terminal_and_still_validates_requests ... ok
+test closing_discards_inspections_created_after_source_cancellation ... ok
+test owner_reservations_and_control_replay_are_admitted_once ... ok
+test owner_requests_validate_boot_and_safe_ids_before_admission ... ok
+test lost_control_responses_replay_without_new_inspections_or_step_controllers ... ok
+test notebook_protocol_executes_and_replays_a_recorded_graph_in_bounded_batches ... ok
+test logical_step_inspection_streams_the_pending_rhs_with_string_variable_ids ... ok
+test snapshot_capture_and_release_replay_after_lost_responses ... ok
+test owner_retirement_fences_reservations_and_cross_owner_execution ... ok
+test releasing_inspection_zero_preserves_source_recovery ... ok
+test flat_choice_metadata_labels_the_actual_contiguous_partitions ... ok
+test server_incarnation_rejects_stale_execution_requests_before_lookup_or_mutation ... ok
+test unacknowledged_output_batches_are_replayed_exactly_after_response_loss ... ok
+test specialized_source_step_keeps_named_rule_and_pending_equality_in_notebook ... ok
+test malformed_requests_are_rejected_before_creating_or_mutating_a_run ... ok
+test concurrent_capture_retries_allocate_one_snapshot_per_run ... ok
+test step_stops_at_a_logical_application_and_cancel_progresses_without_client_polling ... ok
+test metadata_pages_round_trip_without_replaying_prefixes ... ok
+test releasing_a_recorded_execution_reclaims_its_run_without_losing_other_runs ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.39s
+
+
+running 14 tests
+test indexed_port_does_not_replace_other_repeated_variable_guards ... ok
+test equal_rows_still_require_distinct_occurrences_and_preserve_head_order ... ok
+test repeated_variables_only_match_identity_that_already_holds ... ok
+test alias_sensitive_cross_predicate_join_retains_its_condition_through_collection ... ok
+test selective_join_uses_bound_ports_instead_of_scanning_the_relation ... ok
+test small_relation_lookup_does_not_enumerate_large_alias_class ... ok
+test interrupted_alias_planning_discards_incrementally_under_collection ... ok
+test three_head_joins_restore_bindings_after_failed_prefixes_and_allow_any_anchor ... ok
+test output_only_binary_rewrite_preserves_linear_work_without_unused_indexes ... ok
+test fully_bound_correlation_lookup_does_not_scan_individual_port_buckets ... ok
+test selective_alias_buckets_preserve_all_port_and_row_supports_during_collection ... ok
+test rejected_three_head_prefix_uses_empty_partner_before_broad_partner ... ok
+test tuple_buckets_recheck_collisions_swapped_ports_and_conditional_aliases ... ok
+test skewed_multi_bound_join_selects_small_buckets_in_either_port_order ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+
+running 49 tests
+test fresh::tests::contracted_groups_cannot_share_fresh_levels ... ok
+test fresh::tests::contraction_oracle_checks_identity_consumption_and_exact_multisets ... ok
+test fresh::tests::unmerged_control_requires_disjoint_produced_chains ... ok
+test fresh::tests::invalid_dimensions_and_orders_are_rejected ... ok
+test generated::tests::diamond_counts_proofs_instead_of_reachable_pairs ... ok
+test generated::tests::boolean_oracle_enumerates_disconnected_and_unsatisfiable_states ... ok
+test generated::tests::duplicate_heads_require_fresh_distinct_witnesses_in_each_group ... ok
+test generated::tests::partial_join_checks_unbound_payload_and_exact_probe ... ok
+test generated::tests::seeds_reproduce_source_and_preserve_analytic_topologies ... ok
+test generated::tests::self_loop_requires_two_distinct_occurrences ... ok
+test generated::tests::walks_check_order_multiplicity_and_aliases ... ok
+test generated::tests::checked_dimensions_and_inapplicable_shapes ... ok
+test lifecycle::interactions::tests::cancellation_releases_partly_unread_inspection_owners ... ok
+test lifecycle::interactions::tests::failing_arm_leaves_one_known_answer_and_one_application ... ok
+test lifecycle::sessions::tests::initial_deadline_is_censored_without_admission ... ok
+test lifecycle::tests::oracle_rejects_duplicate_answer_and_wrong_ports ... ok
+test notebooks::tests::additional_synthesis_targets_have_independent_behavior_and_type_oracles ... ok
+test notebooks::tests::independent_oracles_reject_wrong_terms_and_preserve_unused_holes ... ok
+test lifecycle::sessions::tests::censored_admission_still_closes_spool_and_owner ... ok
+test preparation::tests::expired_generation_does_not_admit_parsing ... ok
+test lifecycle::pending::tests::exact_unposted_prefix_survives_first_capture_cancel_projection_and_release ... ok
+test preparation::tests::semantic_oracle_rejects_an_extra_residual ... ok
+test preparation::tests::shape_axes_reach_public_preparation_plans ... ok
+test preparation::tests::zero_rule_control_does_not_construct_unused_body ... ok
+test preparation::tests::work_oracle_rejects_redundant_application_with_same_residual ... ok
+test tests::aliases_and_selective_join_are_checked ... ok
+test preparation::tests::both_modes_validate_every_fresh_engine_and_release_prepared ... ok
+test tests::common_reader_resets_tuples_but_requires_exact_answer_multiplicity ... ok
+test tests::cyclic_accepts_only_directed_rotations ... ok
+test notebooks::tests::lambda_oracle_checks_exact_residuals_and_both_reduction_orders ... ok
+test tests::dense_rejects_reversed_ports_and_duplicate_tuples ... ok
+test tests::family_oracles_reject_mixed_bits_wrong_consumption_and_duplicate_rows ... ok
+test tests::common_and_alias_consumption_controls_check_complete_outputs_and_sharing ... ok
+test tests::wide_common_work_runs_once_and_delivers_every_alternative ... ok
+test lifecycle::interactions::tests::structural_payloads_survive_held_output_and_retained_readers ... ok
+test tests::empty_answers_prefixes_and_limits_are_distinct ... ok
+test tests::wide_rewrite_oracle_checks_order_aliases_and_duplicate_occurrences ... ok
+test tests::distinguishing_families_validate_small_runs ... ok
+test report::tests::native_peak_tracks_touched_memory_and_survives_release ... ok
+test fresh::tests::independent_dimensions_and_orders_execute_against_the_oracle ... ok
+test lifecycle::interactions::tests::unread_inspection_pins_without_snapshot_and_cancel_reclaims ... ok
+test lifecycle::interactions::tests::independent_interaction_dimensions_and_censoring ... ok
+test lifecycle::sessions::tests::independent_populations_batches_replay_and_continuing_work ... ok
+test notebooks::tests::finite_notebook_arithmetic ... ok
+test generated::tests::generated_sources_execute_against_the_oracles ... ok
+test lifecycle::sessions::tests::budget_at_tiny_answer_preserves_validated_progress ... ok
+test lifecycle::tests::lifecycle_and_runtime_smoke ... ok
+test lifecycle::interactions::tests::rotating_conditional_prefix_is_pinned_then_reclaimed_before_cancel ... ok
+test notebooks::tests::lambda_measures_a_validated_first_answer_prefix ... ok
+
+test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+

@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "command": [
+    "/tmp/chrimp-round007-baseline-measure",
+    "fresh-contract",
+    "64",
+    "500000000",
+    "45",
+    "--rows",
+    "4",
+    "--depth",
+    "4",
+    "--order",
+    "reversed",
+    "--detail"
+  ],
+  "build": null,
+  "local_revision": "d9a103a2f739b602c90ec1f98a57767a123d3909",
+  "working_tree": "M examples/measure.rs\n M src/graph.rs\n M src/store.rs\n M tests/store.rs\n?? docs/optimization-evidence/rehearse/round007-adaptive-pages/",
+  "local_rustc": "rustc 1.95.0-nightly (18d13b533 2026-02-09)\nbinary: rustc\ncommit-hash: 18d13b5332916ffca8eadb9106d54b5b434e9978\ncommit-date: 2026-02-09\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0-nightly\nLLVM version: 22.1.0",
+  "host": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "build_environment": null,
+  "limits": {
+    "per_sample_seconds": 55.0,
+    "total_sample_seconds": 600.0,
+    "repeats": 5,
+    "warmups": 0,
+    "memory_mib": 4096
+  },
+  "status": "finished",
+  "samples_executed": 5,
+  "requested_samples": 5,
+  "aggregate_censored": false,
+  "elapsed_seconds": 0.011674077017232776,
+  "summary": {
+    "counts": {
+      "workload_error": 5
+    },
+    "warmup_count": 0,
+    "metrics": {},
+    "regression_assessment": "not_performed"
+  }
+}
