@@ -62,8 +62,10 @@ enum IndexWrite {
     Tuple,
 }
 
-/// Immutable graph-update code shared with the prepared source. Every physical
-/// write is explicit; omitted field indexes incur neither writes nor skip jobs.
+/// Certified occurrence storage and immutable graph-update code shared with the
+/// prepared source. The RELATION column versions occurrence support; immutable
+/// rows hold its identity, signature and ordered fields. No duplicate FACT entry
+/// is needed. Every remaining physical index write is explicit.
 pub(crate) struct UpdatePlan {
     ports: Vec<bool>,
     writes: Vec<IndexWrite>,
@@ -78,6 +80,10 @@ pub struct FieldUpdateDiagnostics {
     /// Missing port writes paired with executed incidence writes; cancellation
     /// before reaching that field contributes nothing.
     pub avoided_port_writes: u64,
+    /// Certified support versions staged in RELATION without a duplicate FACT
+    /// write. Counts changed posts and support narrowing/removal; an unchanged
+    /// update already needed only one write on the generic path.
+    pub avoided_fact_writes: u64,
     pub fallback_lookups: u64,
     pub fallback_candidates: u64,
 }
@@ -100,23 +106,17 @@ impl UpdatePlan {
     pub(crate) fn prepare(
         signatures: &[Signature],
         tuples: &[bool],
-        ports: Option<Vec<Vec<bool>>>,
+        ports: Option<Vec<Option<Vec<bool>>>>,
     ) -> Option<Arc<[Option<Self>]>> {
         let ports = ports?;
-        if ports.iter().flatten().all(|p| *p) {
-            return None;
-        }
         Some(
             signatures
                 .iter()
                 .enumerate()
                 .map(|(r, s)| {
-                    let ports = ports[r].clone();
+                    let ports = ports[r].clone()?;
                     debug_assert_eq!(ports.len(), s.arity);
-                    if ports.iter().all(|p| *p) {
-                        return None;
-                    }
-                    let mut writes = vec![IndexWrite::Relation];
+                    let mut writes = vec![];
                     for (port, &indexed) in ports.iter().enumerate() {
                         if indexed {
                             writes.push(IndexWrite::Port(port));
@@ -272,14 +272,24 @@ impl Graph {
         }
     }
     pub fn fact(&self, root: Root, id: u64) -> Option<Fact<'_>> {
-        let support = self.index.get(&root, &[FACT, id, 0, 0])?;
-        let row = self.rows.get(&id).expect("live occurrence payload");
+        let row = self.rows.get(&id)?;
+        let support = self
+            .index
+            .get(&root, &self.occurrence_key(id, row.relation))?;
         Some(Fact {
             id,
             relation: row.relation,
             args: row.args.as_slice(),
             support,
         })
+    }
+
+    fn occurrence_key(&self, id: u64, relation: usize) -> Key {
+        if self.update_plan(relation).is_some() {
+            [RELATION, relation as u64, id, 0]
+        } else {
+            [FACT, id, 0, 0]
+        }
     }
 
     pub(crate) fn arguments(&self, id: u64) -> Arc<Vec<u64>> {
@@ -344,8 +354,8 @@ impl Graph {
         self.index.assert_mutable();
         self.valid_root(root.clone())?;
         let old = self
-            .index
-            .get(&root, &[FACT, id, 0, 0])
+            .fact(root.clone(), id)
+            .map(|fact| fact.support)
             .ok_or(GraphError::MissingOccurrence)?;
         let row = self.rows.get(&id).expect("live occurrence");
         let relation = row.relation;
@@ -362,9 +372,17 @@ impl Graph {
         support: Condition,
         changed: bool,
     ) -> Update {
-        // Staging the fact root immediately makes a pending new occurrence
-        // traceable. All remaining port/index updates yield separately.
-        let staged = self.write(base, [FACT, id, 0, 0], support);
+        // Stage the authoritative support version immediately so a pending new
+        // occurrence is traceable. Earlier roots retain their previous version;
+        // all remaining index updates yield separately before publication.
+        #[cfg(feature = "diagnostics")]
+        if self.update_plan(relation).is_some() {
+            self.field_work.update(|mut w| {
+                w.avoided_fact_writes += u64::from(changed);
+                w
+            });
+        }
+        let staged = self.write(base, self.occurrence_key(id, relation), support);
         let position = if !changed {
             self.update_length(relation, args.len())
         } else {
@@ -628,6 +646,8 @@ pub enum UpdateStatus {
 
 /// A mutation's private index root. Only `Complete` may be published as a
 /// coherent query state. Trace the staged root; callers own earlier snapshots.
+/// Its authoritative occurrence entry is FACT for generic storage and RELATION
+/// for certified storage, even while the remaining indexes are unfinished.
 pub struct Update {
     owner: u32,
     staged: Root,
@@ -745,13 +765,18 @@ impl<I: Iterator<Item = Root>> Collector<I> {
         }
         if !self.index.done() {
             if let Some((key, support)) = self.index.tick(&mut graph.index) {
-                if key[0] == FACT {
+                let occurrence = match key[0] {
+                    FACT => Some(key[1]),
+                    RELATION if graph.update_plan(key[1] as usize).is_some() => Some(key[2]),
+                    _ => None,
+                };
+                if let Some(id) = occurrence {
                     if self.index.archiving() {
-                        graph.unprotected.as_mut().unwrap().remove(&key[1]);
+                        graph.unprotected.as_mut().unwrap().remove(&id);
                     }
                     graph
                         .rows
-                        .get_mut(&key[1])
+                        .get_mut(&id)
                         .expect("live occurrence payload")
                         .marked = self.epoch;
                 }
@@ -882,6 +907,76 @@ mod update_ownership_tests {
         }
     }
     #[test]
+    fn certified_occurrence_versions_share_one_support_record_and_pin_payloads() {
+        use crate::{
+            program::prepare,
+            syntax::{parse_program, parse_query},
+        };
+        for (source, args) in [
+            ("cell(K,A,B) \\ cell(K,C,D) <=> A=C,B=D.", vec![7, 7, 9]),
+            ("cell(K) \\ cell(K) <=> true.", vec![7]),
+        ] {
+            let code = prepare(
+                &parse_program(source).unwrap(),
+                &parse_query("other(X)").unwrap(),
+            )
+            .unwrap();
+            let mut g =
+                Graph::with_update_plans(&code.signatures, &code.tuple_indexes, code.graph_updates);
+            let mut arena = Arena::default();
+            let c = arena.fresh_choice().1;
+            let u = g.post(g.empty(), 0, args.clone(), Condition::TRUE).unwrap();
+            let first = u.occurrence();
+            let old = finish(&mut g, u);
+            let u = g
+                .post(old.clone(), 0, args.clone(), Condition::TRUE)
+                .unwrap();
+            let second = u.occurrence();
+            assert_ne!(first, second);
+            let both = finish(&mut g, u);
+            let u = g.set_liveness(both.clone(), first, c).unwrap();
+            let narrowed = finish(&mut g, u);
+            let u = g
+                .set_liveness(narrowed.clone(), second, Condition::FALSE)
+                .unwrap();
+            let current = finish(&mut g, u);
+            let mut gc = g.collect(
+                [old.clone(), both.clone(), narrowed.clone(), current.clone()].into_iter(),
+            );
+            while !gc.done() {
+                gc.tick(&mut g);
+            }
+            drop(gc);
+            assert_eq!(g.fact(old.clone(), first).unwrap().support, Condition::TRUE);
+            assert!(g.fact(old.clone(), second).is_none());
+            assert_eq!(g.fact(both.clone(), second).unwrap().args, args);
+            assert_eq!(g.fact(narrowed.clone(), first).unwrap().support, c);
+            assert!(g.fact(current.clone(), second).is_none());
+            assert_eq!(
+                g.relation(current.clone(), 0).unwrap().next(&g),
+                Some((first, c))
+            );
+            assert_eq!(
+                g.port(current.clone(), 0, 0, 7).unwrap().next(&g),
+                Some((first, c))
+            );
+            assert_eq!(
+                g.index
+                    .count(&both, [FACT, 0, 0, 0], [FACT, u64::MAX, u64::MAX, u64::MAX]),
+                0,
+                "certified occurrence still duplicates its versioned support in FACT"
+            );
+            drop((old, both, narrowed, current));
+            let mut gc = g.collect(std::iter::empty());
+            while !gc.done() {
+                gc.tick(&mut g);
+            }
+            drop(gc);
+            while !g.release_tick() {}
+            assert_eq!((g.occurrence_count(), g.index_node_count()), (0, 0));
+        }
+    }
+    #[test]
     fn certified_field_lookup_filters_incidence_and_retains_old_conditional_occurrences() {
         use crate::{
             program::prepare,
@@ -978,10 +1073,22 @@ mod update_ownership_tests {
     }
     #[test]
     fn staged_fact_or_owned_arguments_suffice_through_collection_each_tick() {
-        for arity in [0, 1, 3] {
+        for (arity, certified) in [(0, false), (1, false), (3, false), (1, true), (3, true)] {
             for remove in [false, true] {
                 for false_post in [false, true] {
                     let mut g = graph(arity);
+                    if certified {
+                        // Exercise certified occurrence ownership even when
+                        // every port and the whole tuple must remain indexed.
+                        g.updates = UpdatePlan::prepare(
+                            &[Signature {
+                                name: "p".into(),
+                                arity,
+                            }],
+                            &[arity >= 2],
+                            Some(vec![Some(vec![true; arity])]),
+                        );
+                    }
                     let mut a = Arena::default();
                     let c = a.fresh_choice().1;
                     let args = vec![7; arity];

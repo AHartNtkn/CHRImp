@@ -137,7 +137,9 @@ impl Constructors {
     /// and conservatively retain every field compared anywhere in the program,
     /// including source rules removed from ordinary activation. Unknown and
     /// interfering programs never receive this representation certificate.
-    pub(crate) fn field_indexes(&self, code: &Prepared) -> Vec<Vec<bool>> {
+    /// `Some` also certifies occurrence storage, including unary relations with
+    /// no payload-only fields. `None` retains the complete generic update path.
+    pub(crate) fn field_indexes(&self, code: &Prepared) -> Vec<Option<Vec<bool>>> {
         let mut ports: Vec<Vec<bool>> = code
             .signatures
             .iter()
@@ -162,6 +164,10 @@ impl Constructors {
             }
         }
         ports
+            .into_iter()
+            .enumerate()
+            .map(|(relation, ports)| self.relations.contains(&relation).then_some(ports))
+            .collect()
     }
     /// Derive an exact finite normalization subsystem from rule structure.
     /// A direct coalescence is one legal simpagation followed by its field

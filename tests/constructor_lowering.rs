@@ -968,3 +968,54 @@ fn structural_field_consumers_keep_join_and_repeated_identity_tests() {
         assert_eq!(matched, [false, true]);
     }
 }
+
+#[test]
+fn structural_occurrence_versions_preserve_unary_and_cyclic_alternatives() {
+    let p = parse_program("cell(K,A,B) \\ cell(K,C,D) <=> A=C,B=D. tag(K) \\ tag(K) <=> true.")
+        .unwrap();
+    let mut e = start(&p, "cell(K,K,A),cell(L,L,B),tag(K),tag(L),(K=L;true;true)");
+    let all = answers(&mut e);
+    assert_eq!(all.len(), 3);
+    let mut merged = 0;
+    for a in &all {
+        let v = |n| variable(&e, a, n);
+        let same = v("K") == v("L");
+        merged += usize::from(same);
+        assert_eq!(v("A") == v("B"), same);
+        assert_ne!(v("K"), v("A"));
+        assert_eq!(a.rows.len(), if same { 2 } else { 4 });
+        assert!(
+            rows(&e, a, "cell")
+                .iter()
+                .any(|r| r.ports == [v("K"), v("K"), v("A")])
+        );
+        if !same {
+            assert!(
+                rows(&e, a, "cell")
+                    .iter()
+                    .any(|r| r.ports == [v("L"), v("L"), v("B")])
+            );
+        }
+        assert_eq!(rows(&e, a, "tag").len(), if same { 1 } else { 2 });
+    }
+    assert_eq!(merged, 1);
+    e.cancel();
+    for _ in 0..200_000 {
+        e.advance(1);
+        if e.cancel_done() {
+            break;
+        }
+    }
+    assert!(e.cancel_done());
+    let m = e.memory();
+    assert_eq!(
+        (
+            m.occurrences,
+            m.graph_nodes,
+            m.conditions,
+            m.pending_nodes,
+            m.history_nodes
+        ),
+        (0, 0, 0, 0, 0)
+    );
+}
