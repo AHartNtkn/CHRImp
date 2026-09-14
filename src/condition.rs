@@ -103,6 +103,159 @@ struct Node {
     max_choice: u64,
 }
 
+// Monotonic IDs address an append-only epoch of eight payloads. Only live
+// epochs have directory entries; links skip reclaimed epochs. A collector saves
+// its successor BEFORE retiring a node, so no tombstone is needed for a cursor.
+const NODE_BLOCK: usize = 8;
+struct NodeBlock {
+    nodes: [Option<Node>; NODE_BLOCK],
+    live: usize,
+    previous: Option<u64>,
+    next: Option<u64>,
+}
+#[derive(Default)]
+struct NodeSlab {
+    blocks: HashMap<u64, Box<NodeBlock>>,
+    first: Option<u64>,
+    last: Option<u64>,
+    #[cfg(feature = "diagnostics")]
+    accesses: AtomicUsize,
+    #[cfg(feature = "diagnostics")]
+    moves: usize,
+    #[cfg(feature = "diagnostics")]
+    reclaimed: usize,
+    #[cfg(feature = "diagnostics")]
+    directory_lookups: AtomicUsize,
+    #[cfg(feature = "diagnostics")]
+    chronology_scans: AtomicUsize,
+}
+impl NodeSlab {
+    fn block(&self, epoch: &u64) -> Option<&NodeBlock> {
+        #[cfg(feature = "diagnostics")]
+        self.directory_lookups.fetch_add(1, Ordering::Relaxed);
+        self.blocks.get(epoch).map(Box::as_ref)
+    }
+    fn block_mut(&mut self, epoch: &u64) -> Option<&mut NodeBlock> {
+        #[cfg(feature = "diagnostics")]
+        self.directory_lookups.fetch_add(1, Ordering::Relaxed);
+        self.blocks.get_mut(epoch).map(Box::as_mut)
+    }
+    fn accessed(&self) {
+        #[cfg(feature = "diagnostics")]
+        self.accesses.fetch_add(1, Ordering::Relaxed);
+    }
+    fn get(&self, id: &u64) -> Option<&Node> {
+        self.accessed();
+        self.block(&(*id / NODE_BLOCK as u64))?.nodes[*id as usize % NODE_BLOCK].as_ref()
+    }
+    fn get_mut(&mut self, id: &u64) -> Option<&mut Node> {
+        self.accessed();
+        self.block_mut(&(*id / NODE_BLOCK as u64))?.nodes[*id as usize % NODE_BLOCK].as_mut()
+    }
+    fn contains_key(&self, id: &u64) -> bool {
+        self.get(id).is_some()
+    }
+    fn allocate(&mut self, serial: u64, node: Node) -> u64 {
+        let epoch = serial / NODE_BLOCK as u64;
+        if self.block(&epoch).is_none() {
+            if let Some(last) = self.last {
+                self.block_mut(&last).unwrap().next = Some(epoch);
+            } else {
+                self.first = Some(epoch);
+            }
+            self.blocks.insert(
+                epoch,
+                Box::new(NodeBlock {
+                    nodes: std::array::from_fn(|_| None),
+                    live: 0,
+                    previous: self.last,
+                    next: None,
+                }),
+            );
+            self.last = Some(epoch);
+        }
+        let block = self.block_mut(&epoch).unwrap();
+        let slot = &mut block.nodes[serial as usize % NODE_BLOCK];
+        assert!(slot.is_none(), "condition identity reused");
+        *slot = Some(node);
+        block.live += 1;
+        serial
+    }
+    fn remove(&mut self, id: &u64) -> Option<Node> {
+        self.accessed();
+        let epoch = *id / NODE_BLOCK as u64;
+        let block = self.block_mut(&epoch)?;
+        let node = block.nodes[*id as usize % NODE_BLOCK].take()?;
+        block.live -= 1;
+        if block.live == 0 {
+            let (previous, next) = (block.previous, block.next);
+            self.blocks.remove(&epoch);
+            if let Some(previous) = previous {
+                self.block_mut(&previous).unwrap().next = next;
+            } else {
+                self.first = next;
+            }
+            if let Some(next) = next {
+                self.block_mut(&next).unwrap().previous = previous;
+            } else {
+                self.last = previous;
+            }
+            #[cfg(feature = "diagnostics")]
+            {
+                self.reclaimed += 1;
+            }
+        }
+        Some(node)
+    }
+    // An exclusive cursor must still name a live node. Sweep keeps the returned
+    // successor in Collector before remove; reset/unique never remove payloads.
+    // Scan at most two blocks, with at most eight positions in either.
+    fn next(&self, cursor: Option<u64>) -> Option<(u64, &Node)> {
+        let (epoch, offset) = match cursor {
+            Some(id) => (id / NODE_BLOCK as u64, id as usize % NODE_BLOCK + 1),
+            None => (self.first?, 0),
+        };
+        let block = self.block(&epoch).expect("live cursor epoch");
+        for i in offset..NODE_BLOCK {
+            #[cfg(feature = "diagnostics")]
+            self.chronology_scans.fetch_add(1, Ordering::Relaxed);
+            if let Some(node) = &block.nodes[i] {
+                return Some((epoch * NODE_BLOCK as u64 + i as u64, node));
+            }
+        }
+        let epoch = block.next?;
+        let block = self.block(&epoch).expect("live successor epoch");
+        let (offset, node) = block
+            .nodes
+            .iter()
+            .enumerate()
+            .find_map(|(i, node)| {
+                #[cfg(feature = "diagnostics")]
+                self.chronology_scans.fetch_add(1, Ordering::Relaxed);
+                node.as_ref().map(|node| (i, node))
+            })
+            .expect("linked epoch is nonempty");
+        Some((epoch * NODE_BLOCK as u64 + offset as u64, node))
+    }
+    fn compact_tick(&mut self) -> bool {
+        if self.blocks.capacity() > self.blocks.len().saturating_mul(2) {
+            #[cfg(feature = "diagnostics")]
+            {
+                self.moves += self.blocks.len();
+            }
+            self.blocks.shrink_to_fit();
+        }
+        true
+    }
+}
+
+impl std::ops::Index<&u64> for NodeSlab {
+    type Output = Node;
+    fn index(&self, id: &u64) -> &Node {
+        self.get(id).expect("live condition")
+    }
+}
+
 /// One node of the represented function, with complemented edges resolved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum View {
@@ -118,7 +271,7 @@ type Pair = (Condition, Condition);
 
 pub struct Arena {
     owner: u32,
-    nodes: BTreeMap<u64, Node>,
+    nodes: NodeSlab,
     // Derived sweep candidates only; nodes remains the payload authority.
     // None is the ordinary path, restored incrementally on final release.
     unprotected: Option<BTreeSet<u64>>,
@@ -154,7 +307,7 @@ impl Default for Arena {
             owner: NEXT_ARENA
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
                 .expect("condition arena identity exhausted"),
-            nodes: BTreeMap::new(),
+            nodes: NodeSlab::default(),
             unprotected: None,
             archive_epoch: 1,
             archive_branching: 0,
@@ -252,6 +405,40 @@ impl Arena {
     pub fn unique_capacity(&self) -> usize {
         self.unique.capacity()
     }
+    /// Epoch payload and directory gauges; see docs/performance.md.
+    #[cfg(feature = "diagnostics")]
+    pub fn slab_diagnostics(&self) -> [usize; 18] {
+        let occupied = self.nodes.blocks.len();
+        let capacity = self.nodes.blocks.capacity();
+        // HashMap requested backing estimate: buckets plus control bytes and
+        // trailing SIMD group. Whole-process allocator is the byte authority.
+        let directory = if capacity == 0 {
+            0
+        } else {
+            capacity.next_power_of_two() * (std::mem::size_of::<(u64, Box<NodeBlock>)>() + 1) + 16
+        };
+        let leases = usize::from(self.frozen.load(Ordering::Relaxed));
+        [
+            self.node_count(),
+            occupied * NODE_BLOCK - self.node_count(),
+            occupied,
+            capacity,
+            occupied * std::mem::size_of::<NodeBlock>(),
+            self.nodes.accesses.load(Ordering::Relaxed),
+            self.nodes.moves,
+            self.next_node as usize,
+            directory,
+            occupied,
+            self.nodes.reclaimed,
+            self.nodes.accesses.load(Ordering::Relaxed),
+            occupied,
+            leases,
+            leases * std::mem::size_of::<Option<u64>>(),
+            occupied * 2 * std::mem::size_of::<Option<u64>>(),
+            self.nodes.directory_lookups.load(Ordering::Relaxed),
+            self.nodes.chronology_scans.load(Ordering::Relaxed),
+        ]
+    }
     pub fn cache_len(&self) -> usize {
         self.cache.len()
     }
@@ -294,13 +481,10 @@ impl Arena {
         let base = if let Some(&found) = self.unique.get(&key) {
             found
         } else {
-            let id = self.next_node;
-            self.next_node = id.checked_add(1).expect("condition identity exhausted");
-            if let Some(ids) = &mut self.unprotected {
-                ids.insert(id);
-            }
-            self.nodes.insert(
-                id,
+            let serial = self.next_node;
+            self.next_node = serial.checked_add(1).expect("condition identity exhausted");
+            let id = self.nodes.allocate(
+                serial,
                 Node {
                     key,
                     marked: 0,
@@ -313,6 +497,9 @@ impl Arena {
                         .max(self.support_max(high).unwrap_or(choice)),
                 },
             );
+            if let Some(ids) = &mut self.unprotected {
+                ids.insert(id);
+            }
             let order = self.order.entry(choice).or_insert_with(|| {
                 self.ranks.insert(choice, choice);
                 ChoiceOrder {
@@ -441,6 +628,7 @@ impl Arena {
             phase: Phase::Reorder,
             branching: false,
             sweep: None,
+            sweep_next: None,
             unique: HashMap::new(),
         }
     }
@@ -1060,6 +1248,7 @@ enum Phase {
     Sweep,
     Unique,
     Finish,
+    Compact,
     Done,
 }
 
@@ -1078,6 +1267,8 @@ pub struct Collector<I> {
     phase: Phase,
     branching: bool,
     sweep: Option<u64>,
+    // Saved live successor, independent of the payload about to be retired.
+    sweep_next: Option<u64>,
     unique: HashMap<NodeKey, Condition>,
 }
 
@@ -1226,7 +1417,7 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
             }
             Phase::Sift => {
                 if !arena.sift_tick() {
-                    self.phase = Phase::Done;
+                    self.phase = Phase::Compact;
                 }
             }
             Phase::Reset => {
@@ -1238,11 +1429,7 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                     }
                     return false;
                 }
-                let next = match self.sweep {
-                    Some(id) => arena.nodes.range((Excluded(id), Unbounded)).next(),
-                    None => arena.nodes.first_key_value(),
-                }
-                .map(|(&id, _)| id);
+                let next = arena.nodes.next(self.sweep).map(|(id, _)| id);
                 if let Some(id) = next {
                     arena.unprotected.as_mut().unwrap().insert(id);
                     self.sweep = Some(id);
@@ -1285,6 +1472,11 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                             .expect("condition reference count exhausted");
                     }
                 } else {
+                    self.sweep_next = if arena.unprotected.is_none() {
+                        arena.nodes.next(None).map(|(id, _)| id)
+                    } else {
+                        None
+                    };
                     self.phase = Phase::Sweep;
                 }
             }
@@ -1296,13 +1488,12 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                     }
                     .copied()
                 } else {
-                    match self.sweep {
-                        Some(id) => arena.nodes.range((Excluded(id), Unbounded)).next(),
-                        None => arena.nodes.first_key_value(),
-                    }
-                    .map(|(&id, _)| id)
+                    self.sweep_next
                 };
                 if let Some(id) = next {
+                    if arena.unprotected.is_none() {
+                        self.sweep_next = arena.nodes.next(Some(id)).map(|(id, _)| id);
+                    }
                     let node = &arena.nodes[&id];
                     let key = node.key;
                     if node.marked != self.epoch {
@@ -1344,11 +1535,8 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                 }
             }
             Phase::Unique => {
-                let next = match self.sweep {
-                    Some(id) => arena.nodes.range((Excluded(id), Unbounded)).next(),
-                    None => arena.nodes.first_key_value(),
-                };
-                if let Some((&id, node)) = next {
+                let next = arena.nodes.next(self.sweep);
+                if let Some((id, node)) = next {
                     self.unique.insert(
                         node.key,
                         Condition {
@@ -1378,6 +1566,11 @@ impl<I: Iterator<Item = Condition>> Collector<I> {
                     arena.sift = Some(Sift::new(arena));
                     self.phase = Phase::Sift;
                 } else {
+                    self.phase = Phase::Compact;
+                }
+            }
+            Phase::Compact => {
+                if arena.nodes.compact_tick() {
                     self.phase = Phase::Done;
                 }
             }
@@ -2030,15 +2223,18 @@ mod reorder_tests {
             if !checked && f.a.sift.is_some() {
                 let mut expected = BTreeMap::<u64, usize>::new();
                 for root in roots.iter().copied().chain([working]).chain(
-                    f.a.nodes
-                        .values()
-                        .flat_map(|node| [node.key.low, node.key.high]),
+                    std::iter::successors(f.a.nodes.next(None), |(id, _)| {
+                        f.a.nodes.next(Some(*id))
+                    })
+                    .flat_map(|(_, node)| [node.key.low, node.key.high]),
                 ) {
                     if !root.is_terminal() {
                         *expected.entry(root.id).or_default() += 1;
                     }
                 }
-                for (&id, node) in &f.a.nodes {
+                for (id, node) in
+                    std::iter::successors(f.a.nodes.next(None), |(id, _)| f.a.nodes.next(Some(*id)))
+                {
                     let count = if node.references_epoch == f.a.epoch {
                         node.references
                     } else if node.archived == f.a.archive_epoch {
@@ -2404,6 +2600,159 @@ mod archive_ownership_tests {
             }
         }
         panic!("finite ownership update must complete");
+    }
+
+    #[test]
+    fn epoch_handles_keep_full_serial_width_and_reject_retired_payloads() {
+        for start in [u32::MAX as u64, u64::MAX - 2] {
+            let mut a = Arena::default();
+            a.next_node = start;
+            let old = a.fresh_choice().1;
+            collect(&mut a, vec![], vec![]);
+            let new = a.fresh_choice().1;
+            assert_eq!(new.id, start + 1);
+            assert!(!a.contains(old) && !a.contains(old.not()));
+            assert!(a.evaluate(new, |_| true));
+            if start == u64::MAX - 2 {
+                assert!(
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        a.fresh_choice();
+                    }))
+                    .is_err()
+                );
+                assert!(a.contains(new));
+            }
+            collect(&mut a, vec![], vec![]);
+            assert_eq!(a.nodes.blocks.capacity(), 0);
+        }
+    }
+
+    #[test]
+    fn frozen_successor_survives_retirement_of_entire_current_epoch() {
+        let mut a = Arena::default();
+        let vars: Vec<_> = (0..64).map(|_| a.fresh_choice().1).collect();
+        let high = vars[63];
+        let mut gc = a.collect([high].into_iter());
+        while !matches!(gc.phase, Phase::Sweep) {
+            assert!(!gc.tick(&mut a));
+        }
+        for _ in 0..8 {
+            assert!(!gc.tick(&mut a));
+        }
+        assert!(!a.nodes.blocks.contains_key(&0));
+        assert_eq!(gc.sweep_next, Some(8));
+        #[cfg(feature = "diagnostics")]
+        assert_eq!(a.slab_diagnostics()[13..15], [1, 16]);
+        while !gc.tick(&mut a) {}
+        drop(gc);
+        assert_eq!(a.node_count(), 1);
+        assert_eq!(a.nodes.blocks.len(), 1);
+        assert!(a.contains(high));
+        assert!(!a.contains(vars[0]));
+        collect(&mut a, vec![], vec![]);
+        assert_eq!(a.nodes.blocks.capacity(), 0);
+    }
+
+    #[test]
+    fn sparse_blocks_release_payload_below_high_archive_and_reuse_safely() {
+        for size in [64, 512, 4096] {
+            let mut a = Arena::default();
+            let variables: Vec<_> = (0..size).map(|_| a.fresh_choice().1).collect();
+            let high = variables[size - 1];
+            #[cfg(feature = "diagnostics")]
+            println!(
+                "sparse size={size} phase=dense gauges={:?}",
+                a.slab_diagnostics()
+            );
+            collect(&mut a, vec![], vec![high]);
+            #[cfg(feature = "diagnostics")]
+            println!(
+                "sparse size={size} phase=archived gauges={:?}",
+                a.slab_diagnostics()
+            );
+            assert_eq!(a.node_count(), 1);
+            assert_eq!(a.nodes.blocks.len(), 1);
+            assert!(a.nodes.blocks.capacity() <= 3);
+            assert_eq!(a.nodes.blocks.values().next().unwrap().live, 1);
+            assert!(a.evaluate(high, |_| true));
+            for old in &variables[..size - 1] {
+                assert!(!a.contains(*old));
+            }
+            let fresh = a.fresh_choice().1;
+            assert_eq!(fresh.id, size as u64);
+            assert!(!a.contains(variables[0]));
+            let ids: Vec<_> =
+                std::iter::successors(a.nodes.next(None), |(id, _)| a.nodes.next(Some(*id)))
+                    .map(|(id, _)| id)
+                    .collect();
+            assert_eq!(ids, [high.id, fresh.id]);
+            collect(&mut a, vec![fresh], vec![high]);
+            collect(&mut a, vec![], vec![]);
+            #[cfg(feature = "diagnostics")]
+            println!(
+                "sparse size={size} phase=released gauges={:?}",
+                a.slab_diagnostics()
+            );
+            assert_eq!(a.nodes.blocks.capacity(), 0);
+        }
+    }
+
+    #[test]
+    fn epoch_recreation_rejects_stale_handles_and_preserves_birth_order() {
+        let mut a = Arena::default();
+        let old = a.fresh_choice().1;
+        let held = a.fresh_choice().1;
+        collect(&mut a, vec![held], vec![]);
+        let new = a.fresh_choice().1;
+        assert!(new.id > old.id);
+        assert!(new.id > held.id);
+        assert!(!a.contains(old) && !a.contains(old.not()));
+        assert!(a.contains(held) && a.contains(new));
+        assert!(std::panic::catch_unwind(|| a.view(old)).is_err());
+        collect(&mut a, vec![], vec![]);
+        assert_eq!(a.nodes.blocks.capacity(), 0);
+        assert!(a.nodes.first.is_none() && a.nodes.last.is_none());
+        let born = a.fresh_choice().1;
+        assert!(born.id > new.id && !a.contains(new));
+    }
+
+    #[test]
+    fn interrupted_epoch_sweep_keeps_archives_and_cancelled_job_roots() {
+        for (cutoff, archived) in (0..80).flat_map(|n| [(n, false), (n, true)]) {
+            let mut a = Arena::default();
+            let x = a.fresh_choice().1;
+            let y = a.fresh_choice().1;
+            let mut job = a.start(Operation::And(x, y));
+            job.tick(&mut a);
+            for _ in 0..64 {
+                a.fresh_choice();
+            }
+            let mut gc = a.collect_archived(
+                job.roots().collect::<Vec<_>>().into_iter(),
+                if archived { vec![x] } else { vec![] },
+                true,
+            );
+            while !matches!(gc.phase, Phase::Sweep) {
+                assert!(!gc.tick(&mut a));
+            }
+            for _ in 0..cutoff {
+                if gc.tick(&mut a) {
+                    break;
+                }
+            }
+            drop(gc);
+            let fresh = a.fresh_choice().1;
+            collect(&mut a, job.roots().chain([fresh]).collect(), vec![x]);
+            assert!(a.evaluate(x, |_| true));
+            while !job.discard_tick() {
+                collect(&mut a, job.roots().collect(), vec![x]);
+            }
+            collect(&mut a, vec![], vec![x]);
+            assert_eq!(a.node_count(), 1);
+            assert!(!a.contains(y) && !a.contains(fresh));
+            collect(&mut a, vec![], vec![]);
+            assert_eq!(a.nodes.blocks.capacity(), 0);
+        }
     }
 
     #[test]

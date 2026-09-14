@@ -642,8 +642,28 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
     let mut first_answer_value = None;
     let mut peak = memory(&e);
     let mut error = None;
+    // Diagnostic frontier control for comparisons whose collection dispatch
+    // counts differ. This is only a stopping boundary, not a cost metric;
+    // compare the full rule/dispatch vectors and validated output as well.
+    let source_dispatch_limit: Option<u64> = std::env::var("CHRIMP_MEASURE_SOURCE_DISPATCHES")
+        .ok()
+        .map(|v| v.parse().expect("positive source dispatch limit"));
+    if source_dispatch_limit.is_some() && !cfg!(feature = "diagnostics") {
+        return Err("source dispatch limit requires diagnostics".into());
+    }
+    #[cfg(feature = "diagnostics")]
+    let mut source_dispatch_limited = false;
+    #[cfg(not(feature = "diagnostics"))]
+    let source_dispatch_limited = false;
     let start = Instant::now();
     while ticks < max_ticks && !e.delivery_done() && (finite || answers < expected) {
+        #[cfg(feature = "diagnostics")]
+        if source_dispatch_limit.is_some_and(|limit| {
+            e.diagnostics().advance_iterations - e.diagnostics().dispatch.collection >= limit
+        }) {
+            source_dispatch_limited = true;
+            break;
+        }
         if ticks % 2048 == 0 && start.elapsed() >= timeout {
             break;
         }
@@ -872,7 +892,8 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
             "case": case, "size": n, "status": status, "goal": if finite { "complete" } else { "answer_prefix" },
             "goal_count": expected, "source_goal_reached": answers == expected && (!finite || delivery_done),
             "timed_out": elapsed >= timeout,
-            "censor_reason": if elapsed >= timeout { Some("source_timeout") } else if !cleanup_in_time { Some("cleanup_timeout") } else if !cleanup_done { Some("cleanup_ticks") } else if !achieved { Some(if ticks >= max_ticks { "source_ticks" } else { "search_ended_before_prefix" }) } else { None }, "cleanup_done": cleanup_done,
+            "censor_reason": if elapsed >= timeout { Some("source_timeout") } else if !cleanup_in_time { Some("cleanup_timeout") } else if !cleanup_done { Some("cleanup_ticks") } else if !achieved { Some(if source_dispatch_limited { "source_dispatches" } else if ticks >= max_ticks { "source_ticks" } else { "search_ended_before_prefix" }) } else { None }, "cleanup_done": cleanup_done,
+            "source_dispatch_limit": source_dispatch_limit,
             "cleanup_in_time": cleanup_in_time, "prepared_released": prepared_released, "error": error, "search_exhausted": exhausted,
             "delivery_done": delivery_done, "max_ticks": max_ticks, "timeout_ms": ms(timeout),
             "times_ms": {"parse": ms(parse_time), "prepare": ms(prepare_time), "engine_init": ms(init_time),

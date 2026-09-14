@@ -1,5 +1,48 @@
 # Performance tools
 
+## Boolean epoch experiment diagnostics
+
+With `diagnostics`, `measure` emits `condition_slab` at the existing engine
+checkpoints. Round 014 uses reclaimable eight-node epochs with full-width
+monotonic IDs. The array fields are, in order:
+
+1. Live nodes; vacant payload positions in live epochs; live directory entries;
+   effective HashMap capacity; allocated epoch payload bytes (including links
+   and live counts).
+2. Node get/get_mut/remove calls; entries rehashed by directory contraction;
+   node constructions; estimated directory backing bytes; live epochs;
+   cumulative epoch reclamations; an alias of node access calls for the old
+   diagnostic position (this is **not** a hash probe/CPU-step bound).
+3. Live chronology records (one per live epoch); active frozen collector leases
+   (zero or one); bytes of the collector's additional successor witness;
+   chronology link bytes (included in payload bytes); directory read/write
+   lookups; payload positions inspected by chronological traversal.
+
+Directory lookups count `get`/`get_mut`, including allocation and unlinking;
+HashMap insert/remove/rehash probes are not instrumented. Constructions and
+reclamations expose their frequencies. Chronology examines at most two live
+epochs and sixteen positions per successor, independent of retired epochs.
+There are no separate generations or recycled node IDs. Directory contraction
+can scan its old backing and rehash retained entries in one call, like the
+existing size-dependent table allocations; its whole allocation/cleanup costs
+remain in the runner. No occupied payload moves.
+
+Directory bytes estimate the current standard HashMap bucket/control layout
+from effective capacity; this is not an allocator-independent exact size.
+Allocator checkpoints are authoritative for process requested storage. The
+map and slab inline headers are part of the containing Arena, not the backing
+estimate. Cursor leases reuse the existing GC freeze; the successor witness is
+one `Option<u64>` (16 bytes on the measured build) per active collector, with no
+heap allocation or retention of dead epochs. Epoch slack is at most seven nodes
+per live epoch and is charged even when only one payload survives.
+
+For matched unfinished notebook frontiers, diagnostics builds accept
+`CHRIMP_MEASURE_SOURCE_DISPATCHES=N`. This only stops observation after N
+non-collection dispatches and reports `source_dispatches` censoring. It does
+not claim completion or equate those dispatches with semantic work: compare
+per-rule vectors, output obligations, other dispatch categories and cleanup.
+The ordinary build rejects this optional diagnostic control.
+
 Run measurements from the selected repository or experiment worktree root. Current capabilities, evidence and remaining diagnostic questions are in `docs/goals/performance-suite/state.yaml`.
 
 ## CPU flame graphs
