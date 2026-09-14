@@ -225,6 +225,10 @@ impl Graph {
     pub fn index_page_counts(&self) -> [usize; 10] {
         self.index.page_counts()
     }
+    #[cfg(feature = "diagnostics")]
+    pub fn index_batch_diagnostics(&self) -> crate::store::BatchDiagnostics {
+        self.index.batch_diagnostics()
+    }
     pub fn index_prefix_counts(&self) -> [usize; 2] {
         self.index.prefix_counts()
     }

@@ -14,6 +14,8 @@ mod substitute;
 pub use substitute::Substitution;
 #[derive(Default)]
 struct Stats {
+    #[cfg(feature = "diagnostics")]
+    batch: Mutex<BatchDiagnostics>,
     allocated: AtomicUsize,
     live: AtomicUsize,
     unique: AtomicUsize,
@@ -33,6 +35,22 @@ struct Stats {
     prefix_hits: AtomicUsize,
     prefix_misses: AtomicUsize,
     prefix_evictions: AtomicUsize,
+}
+/// Cumulative batch preparation work; scratch peaks are per call, not retained
+/// storage. Comparisons count complete exact keys, not individual words.
+#[cfg(feature = "diagnostics")]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+pub struct BatchDiagnostics {
+    pub calls: usize,
+    pub input_writes: usize,
+    pub comparisons: usize,
+    pub hash_requests: usize,
+    pub membership_checks: usize,
+    pub retained_writes: usize,
+    pub scratch_tables: usize,
+    pub max_input_writes: usize,
+    pub scratch_peak_capacity: usize,
+    pub scratch_peak_bytes: usize,
 }
 // Pages never cross a whole-word prefix or an aligned eight-key interval.
 // Thus classification, copying, shifts, destruction and each update are bounded;
@@ -512,6 +530,10 @@ impl<V: Value> Store<V> {
             self.stats.copied.load(Relaxed),
         )
     }
+    #[cfg(feature = "diagnostics")]
+    pub fn batch_diagnostics(&self) -> BatchDiagnostics {
+        *self.stats.batch.lock().unwrap()
+    }
     /// Page allocations, copied entries, writes, sparse-boundary splits,
     /// packed merges, cursor entries, initialized/copied inline slots, shifted
     /// entries, page-run transfers and scalar fallback visits (cumulative).
@@ -707,13 +729,39 @@ impl<V: Value> Store<V> {
         self.assert_mutable();
         assert!(self.contains(&root), "stale or foreign index root");
         let mut len = 0;
+        #[cfg(feature = "diagnostics")]
+        let mut d = self.stats.batch.lock().unwrap();
+        #[cfg(feature = "diagnostics")]
+        {
+            d.calls += 1;
+            d.input_writes += writes.len();
+            d.max_input_writes = d.max_input_writes.max(writes.len());
+        }
         for i in 0..writes.len() {
             let (key, value) = writes[i];
-            if writes[i + 1..].iter().any(|&(k, _)| k == key) || self.get(&root, &key) == value {
+            if writes[i + 1..].iter().any(|&(k, _)| {
+                #[cfg(feature = "diagnostics")]
+                {
+                    d.comparisons += 1;
+                }
+                k == key
+            }) {
+                continue;
+            }
+            #[cfg(feature = "diagnostics")]
+            {
+                d.membership_checks += 1;
+            }
+            if self.get(&root, &key) == value {
                 continue;
             }
             writes[len] = (key, value);
             len += 1;
+        }
+        #[cfg(feature = "diagnostics")]
+        {
+            d.retained_writes += len;
+            drop(d);
         }
         let writes = &mut writes[..len];
         writes.sort_unstable_by_key(|&(key, _)| key);

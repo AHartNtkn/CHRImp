@@ -377,6 +377,14 @@ impl Engine {
             self.obligations.index.mutation_counts(),
         ]
     }
+    #[cfg(feature = "diagnostics")]
+    pub fn batch_diagnostics(&self) -> [crate::store::BatchDiagnostics; 3] {
+        [
+            self.graph.index.batch_diagnostics(),
+            self.history.index.batch_diagnostics(),
+            self.obligations.index.batch_diagnostics(),
+        ]
+    }
     pub fn study_status(&self) -> (u64, bool, Option<u8>, bool, usize) {
         (
             self.ticks,

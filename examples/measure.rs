@@ -670,7 +670,7 @@ fn report_diagnostics(phase: &str, e: &Engine) {
         let allocation = allocation::snapshot();
         report::emit(
             "diagnostics",
-            serde_json::json!({"phase": phase, "condition_slab": e.arena().slab_diagnostics(), "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "prefix_lookup": e.graph().index_prefix_counts(), "prefix_memo": e.graph().index_prefix_memo_counts(), "normalization": e.normalization_stats(), "field_updates": e.graph().field_update_diagnostics(), "preparation": e.program().preparation_diagnostics(), "store_mutations": e.mutation_counts(), "graph_allocations": e.graph().index_allocations(), "graph_pages": e.graph().index_page_counts(), "allocation": allocation, "memory_counts": report::memory(memory(e))}),
+            serde_json::json!({"phase": phase, "condition_slab": e.arena().slab_diagnostics(), "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "prefix_lookup": e.graph().index_prefix_counts(), "prefix_memo": e.graph().index_prefix_memo_counts(), "normalization": e.normalization_stats(), "field_updates": e.graph().field_update_diagnostics(), "preparation": e.program().preparation_diagnostics(), "store_mutations": e.mutation_counts(), "store_batches": e.batch_diagnostics(), "graph_allocations": e.graph().index_allocations(), "graph_pages": e.graph().index_page_counts(), "allocation": allocation, "memory_counts": report::memory(memory(e))}),
         );
         println!(
             "diagnostics={}",
