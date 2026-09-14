@@ -73,7 +73,8 @@ pub(crate) struct UpdatePlan {
 #[cfg(feature = "diagnostics")]
 #[derive(Clone, Copy, Default, Debug, serde::Serialize)]
 pub struct FieldUpdateDiagnostics {
-    /// All calls to Graph::write, including identities and attachments.
+    /// Index writes submitted through scalar and batch paths, including
+    /// identities and attachments. Unfinalized private batches are not counted.
     pub graph_writes: u64,
     /// Executed writes from a compiler-certified sparse update plan.
     pub specialized_writes: u64,
@@ -421,6 +422,26 @@ impl Graph {
         }
     }
 
+    fn write_batch(&mut self, root: Root, writes: &mut [(Key, Option<Condition>)]) -> Root {
+        self.index.assert_mutable();
+        #[cfg(feature = "diagnostics")]
+        self.field_work.update(|mut w| {
+            w.graph_writes += writes.len() as u64;
+            w
+        });
+        for (i, &(key, support)) in writes.iter().enumerate() {
+            let previous = writes[..i]
+                .iter()
+                .rev()
+                .find(|&&(k, _)| k == key)
+                .map_or_else(|| self.index.get(&root, &key), |&(_, v)| v);
+            if previous != support && (previous.is_some() || key[0] > INCIDENCE) {
+                self.retire_scope();
+            }
+        }
+        self.index.batch(root, writes)
+    }
+
     pub fn relation(&self, root: Root, relation: usize) -> Result<Occurrences, GraphError> {
         self.valid_root(root.clone())?;
         if relation >= self.arities.len() {
@@ -646,6 +667,9 @@ pub enum UpdateStatus {
 
 /// A mutation's private index root. Only `Complete` may be published as a
 /// coherent query state. Trace the staged root; callers own earlier snapshots.
+/// Index writes finalize in bounded batches at the existing yield positions.
+/// Keys are reconstructed from the immutable update plan, so there is no retained
+/// overlay buffer or additional scalar tracing/cancellation obligation.
 /// Its authoritative occurrence entry is FACT for generic storage and RELATION
 /// for certified storage, even while the remaining indexes are unfinished.
 pub struct Update {
@@ -660,39 +684,24 @@ pub struct Update {
     position: usize,
 }
 impl Update {
-    pub fn occurrence(&self) -> u64 {
-        self.id
-    }
-    pub fn roots(&self) -> [Root; 1] {
-        [self.staged.clone()]
-    }
-    pub fn tick(&mut self, graph: &mut Graph) -> UpdateStatus {
-        graph.index.assert_mutable();
-        assert_eq!(self.owner, graph.index.owner(), "foreign graph update");
-        let end = graph.update_length(self.relation, self.args.len());
-        if self.position >= end {
-            return UpdateStatus::Complete(self.staged.clone());
-        }
-        let instruction = if let Some(plan) = graph.update_plan(self.relation) {
-            #[cfg(feature = "diagnostics")]
-            graph.field_work.update(|mut w| {
-                w.specialized_writes += 1;
-                if let IndexWrite::Incidence(port) = plan.writes[self.position] {
-                    w.avoided_port_writes += u64::from(!plan.ports[port]);
-                }
-                w
-            });
-            plan.writes[self.position]
-        } else if self.position == 0 {
+    const BATCH: usize = 8;
+
+    fn instruction(&self, graph: &Graph, position: usize) -> IndexWrite {
+        if let Some(plan) = graph.update_plan(self.relation) {
+            plan.writes[position]
+        } else if position == 0 {
             IndexWrite::Relation
-        } else if self.position == 1 + 2 * self.args.len() {
+        } else if position == 1 + 2 * self.args.len() {
             IndexWrite::Tuple
-        } else if self.position % 2 == 1 {
-            IndexWrite::Port((self.position - 1) / 2)
+        } else if position % 2 == 1 {
+            IndexWrite::Port((position - 1) / 2)
         } else {
-            IndexWrite::Incidence((self.position - 1) / 2)
-        };
-        let key = match instruction {
+            IndexWrite::Incidence((position - 1) / 2)
+        }
+    }
+
+    fn key(&self, instruction: IndexWrite) -> Key {
+        match instruction {
             IndexWrite::Relation => [RELATION, self.relation as u64, self.id, 0],
             IndexWrite::Tuple => [
                 PORT,
@@ -703,15 +712,53 @@ impl Update {
             IndexWrite::Port(port) => {
                 [PORT, self.port_base + port as u64, self.args[port], self.id]
             }
-            IndexWrite::Incidence(port) => {
-                if graph.tuple_indexes[self.relation] {
-                    self.tuple_hash = tuple_hash(self.tuple_hash, self.args[port]);
+            IndexWrite::Incidence(port) => [INCIDENCE, self.args[port], self.id, 0],
+        }
+    }
+
+    pub fn occurrence(&self) -> u64 {
+        self.id
+    }
+    pub fn roots(&self) -> [Root; 1] {
+        [self.staged.clone()]
+    }
+    pub fn tick(&mut self, graph: &mut Graph) -> UpdateStatus {
+        graph.index.assert_mutable();
+        assert_eq!(self.owner, graph.index.owner(), "foreign graph update");
+        assert!(graph.index.contains(&self.staged), "stale graph update");
+        let end = graph.update_length(self.relation, self.args.len());
+        if self.position >= end {
+            return UpdateStatus::Complete(self.staged.clone());
+        }
+        let instruction = self.instruction(graph, self.position);
+        #[cfg(feature = "diagnostics")]
+        if let Some(plan) = graph.update_plan(self.relation) {
+            graph.field_work.update(|mut w| {
+                w.specialized_writes += 1;
+                if let IndexWrite::Incidence(port) = plan.writes[self.position] {
+                    w.avoided_port_writes += u64::from(!plan.ports[port]);
                 }
-                [INCIDENCE, self.args[port], self.id, 0]
-            }
-        };
-        self.staged = graph.write(std::mem::take(&mut self.staged), key, self.support);
+                w
+            });
+        }
+        if let IndexWrite::Incidence(port) = instruction
+            && graph.tuple_indexes[self.relation]
+        {
+            self.tuple_hash = tuple_hash(self.tuple_hash, self.args[port]);
+        }
         self.position += 1;
+        if self.position.is_multiple_of(Self::BATCH) || self.position == end {
+            let start = (self.position - 1) / Self::BATCH * Self::BATCH;
+            let len = self.position - start;
+            let mut writes = [([0; 4], None); Self::BATCH];
+            for (i, write) in writes[..len].iter_mut().enumerate() {
+                *write = (
+                    self.key(self.instruction(graph, start + i)),
+                    (self.support != Condition::FALSE).then_some(self.support),
+                );
+            }
+            self.staged = graph.write_batch(std::mem::take(&mut self.staged), &mut writes[..len]);
+        }
         if self.position == end {
             UpdateStatus::Complete(self.staged.clone())
         } else {
@@ -907,6 +954,105 @@ mod update_ownership_tests {
         }
     }
     #[test]
+    fn wide_support_update_coalesces_shared_path_work() {
+        let mut g = graph(32);
+        let mut arena = Arena::default();
+        let support = arena.fresh_choice().1;
+        let u = g
+            .post(g.empty(), 0, (0..32).collect(), Condition::TRUE)
+            .unwrap();
+        let id = u.occurrence();
+        let root = finish(&mut g, u);
+        let mut cursor = g.index.range(root.clone(), [0; 4], [u64::MAX; 4]);
+        let keys: Vec<_> = std::iter::from_fn(|| cursor.next(&g.index))
+            .map(|(k, _)| k)
+            .collect();
+        drop(cursor);
+        let mut reference = Store::default();
+        let mut sequential = reference.empty();
+        for &key in &keys {
+            sequential = reference.insert(sequential, key, Condition::TRUE);
+        }
+        let before = reference.mutation_counts().0;
+        for &key in &keys {
+            sequential = reference.insert(sequential, key, support);
+        }
+        let sequential_work = reference.mutation_counts().0 - before;
+        let before = g.index.mutation_counts().0;
+        let u = g.set_liveness(root, id, support).unwrap();
+        let root = finish(&mut g, u);
+        for key in keys {
+            assert_eq!(g.index.get(&root, &key), Some(support));
+        }
+        let batched_work = g.index.mutation_counts().0 - before;
+        assert!(
+            batched_work * 4 < sequential_work * 3,
+            "shared path work: batch {batched_work}, sequential {sequential_work}"
+        );
+    }
+    #[test]
+    fn abandoning_each_wide_batch_boundary_preserves_the_published_snapshot() {
+        for cutoff in 0..68 {
+            let mut g = graph(32);
+            let mut arena = Arena::default();
+            let support = arena.fresh_choice().1;
+            let u = g.post(g.empty(), 0, (0..32).collect(), support).unwrap();
+            let id = u.occurrence();
+            let old = finish(&mut g, u);
+            let mut u = g.set_liveness(old.clone(), id, Condition::FALSE).unwrap();
+            for _ in 0..cutoff {
+                u.tick(&mut g);
+                let mut gc = g.collect([old.clone(), u.roots()[0].clone()].into_iter());
+                while !gc.done() {
+                    gc.tick(&mut g);
+                }
+            }
+            drop(u);
+            let mut gc = g.collect([old.clone()].into_iter());
+            while !gc.done() {
+                gc.tick(&mut g);
+            }
+            drop(gc);
+            assert_eq!(g.fact(old.clone(), id).unwrap().support, support);
+            assert_eq!(
+                g.relation(old.clone(), 0).unwrap().next(&g),
+                Some((id, support))
+            );
+            for port in 0..32 {
+                assert_eq!(
+                    g.port(old.clone(), 0, port, port as u64).unwrap().next(&g),
+                    Some((id, support))
+                );
+                assert_eq!(
+                    g.incidence(old.clone(), port as u64).next(&g),
+                    Some((id, support))
+                );
+            }
+            drop(old);
+            let mut gc = g.collect(std::iter::empty());
+            while !gc.done() {
+                gc.tick(&mut g);
+            }
+            drop(gc);
+            while !g.release_tick() {}
+            assert_eq!((g.occurrence_count(), g.index_node_count()), (0, 0));
+        }
+    }
+    #[test]
+    fn deferred_batch_tick_rejects_an_untraced_root_before_progress() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        let mut g = graph(32);
+        let mut u = g.post(g.empty(), 0, vec![7; 32], Condition::TRUE).unwrap();
+        let mut gc = g.collect(std::iter::empty());
+        while !gc.done() {
+            gc.tick(&mut g);
+        }
+        drop(gc);
+        assert!(catch_unwind(AssertUnwindSafe(|| u.tick(&mut g))).is_err());
+        assert_eq!(u.position, 0);
+        assert_eq!(u.tuple_hash, 0);
+    }
+    #[test]
     fn certified_occurrence_versions_share_one_support_record_and_pin_payloads() {
         use crate::{
             program::prepare,
@@ -1073,7 +1219,17 @@ mod update_ownership_tests {
     }
     #[test]
     fn staged_fact_or_owned_arguments_suffice_through_collection_each_tick() {
-        for (arity, certified) in [(0, false), (1, false), (3, false), (1, true), (3, true)] {
+        for (arity, certified) in [
+            (0, false),
+            (1, false),
+            (3, false),
+            (9, false),
+            (32, false),
+            (1, true),
+            (3, true),
+            (9, true),
+            (32, true),
+        ] {
             for remove in [false, true] {
                 for false_post in [false, true] {
                     let mut g = graph(arity);

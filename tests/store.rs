@@ -270,6 +270,107 @@ fn snapshot_rows(store: &Store<u64>, root: chr::store::Root<u64>) -> BTreeMap<Ke
     std::iter::from_fn(|| cursor.next(store)).collect()
 }
 
+#[test]
+fn batch_preserves_order_snapshots_counts_and_reclaims_discarded_results() {
+    let mut store = Store::default();
+    let original = full_width_rows();
+    let mut root = store.empty();
+    for (&key, &value) in &original {
+        root = store.insert(root, key, value);
+    }
+    let old = root.clone();
+    let mut oracle = original.clone();
+    let keys: Vec<_> = original.keys().copied().collect();
+    for chunk in keys.chunks(5) {
+        // Repeated keys, removal followed by insertion, and insertion followed
+        // by removal must have the same meaning as ordered scalar writes.
+        let k = chunk[0];
+        let mut writes = vec![(k, None), (k, Some(900)), (k, Some(901))];
+        writes.extend(chunk.iter().skip(1).map(|&k| (k, None)));
+        writes.extend([([9, 8, 7, 6], Some(5000)), ([9, 8, 7, 6], None)]);
+        for &(key, value) in &writes {
+            if let Some(value) = value {
+                oracle.insert(key, value);
+            } else {
+                oracle.remove(&key);
+            }
+        }
+        root = store.batch(root, &mut writes);
+        assert_eq!(snapshot_rows(&store, root.clone()), oracle);
+        assert_eq!(store.count(&root, [0; 4], [u64::MAX; 4]), oracle.len());
+        let discarded = store.batch(root.clone(), &mut [(k, Some(999))]);
+        drop(discarded);
+        let mut gc = store.collect([root.clone(), old.clone()].into_iter());
+        while !gc.done() {
+            gc.tick(&mut store);
+        }
+    }
+    assert_eq!(snapshot_rows(&store, old.clone()), original);
+    let before = store.allocations();
+    let k = keys[0];
+    let same = store.batch(root.clone(), &mut [(k, None), (k, oracle.get(&k).copied())]);
+    assert_eq!(same, root);
+    assert_eq!(before, store.allocations());
+    drop((same, old, root));
+    while !store.release_tick() {}
+    assert_eq!(store.node_count(), 0);
+}
+
+#[test]
+fn batch_new_prefixes_and_delete_all_preserve_pins_without_path_copies() {
+    let mut store = Store::default();
+    let mut root = store.empty();
+    let mut oracle = BTreeMap::new();
+    for (key, value) in full_width_rows() {
+        let mut writes = [(key, Some(value)), ([7, 0, 0, 0], Some(700))];
+        root = store.batch(root, &mut writes);
+        oracle.insert(key, value);
+        oracle.insert([7, 0, 0, 0], 700);
+        assert_eq!(snapshot_rows(&store, root.clone()), oracle);
+    }
+    let pin = root.clone();
+    let before = store.allocations();
+    let mut writes: Vec<_> = oracle.keys().map(|&k| (k, None)).collect();
+    let empty = store.batch(root, &mut writes);
+    assert!(empty.is_empty());
+    assert_eq!(store.allocations(), before);
+    assert_eq!(snapshot_rows(&store, pin.clone()), oracle);
+    drop(pin);
+    while !store.release_tick() {}
+    assert_eq!(store.node_count(), 0);
+}
+
+#[test]
+fn batch_rejects_frozen_foreign_and_stale_roots_before_mutation() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    let mut store = Store::default();
+    let root = store.insert(store.empty(), key(1), 10);
+    let mut foreign = Store::default();
+    assert!(catch_unwind(AssertUnwindSafe(|| foreign.batch(root.clone(), &mut []))).is_err());
+    let gc = store.collect([root.clone()].into_iter());
+    let before = store.allocations();
+    assert!(
+        catch_unwind(AssertUnwindSafe(
+            || store.batch(root.clone(), &mut [(key(2), Some(20))])
+        ))
+        .is_err()
+    );
+    assert_eq!(store.allocations(), before);
+    drop(gc);
+    let next = store.batch(root.clone(), &mut [(key(2), Some(20))]);
+    assert_eq!(store.get(&root, &key(2)), None);
+    assert_eq!(store.get(&next, &key(2)), Some(20));
+    let mut gc = store.collect(std::iter::empty());
+    while !gc.done() {
+        gc.tick(&mut store);
+    }
+    drop(gc);
+    assert!(catch_unwind(AssertUnwindSafe(|| store.batch(root, &mut []))).is_err());
+    drop(next);
+    while !store.release_tick() {}
+    assert_eq!(store.node_count(), 0);
+}
+
 fn filter_rows(
     store: &mut Store<u64>,
     root: chr::store::Root<u64>,

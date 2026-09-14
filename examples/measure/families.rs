@@ -2,7 +2,7 @@
 use super::{Counts, consume_tuple, expected_tuples, inputs, workload};
 use std::collections::{BTreeMap, HashSet};
 
-pub const CASES: &str = "bits-chain bits-star bits-chain-delayed bits-star-delayed answers alias-consume fair-loop fair-grow stream-fail rejected3 multiport multiport-hit multiport-probes-first simpagation repeated-alias raw-probes reach-chain prepare fanout";
+pub const CASES: &str = "bits-chain bits-star bits-chain-delayed bits-star-delayed answers alias-consume fair-loop fair-grow stream-fail rejected3 multiport multiport-hit multiport-probes-first simpagation repeated-alias raw-probes reach-chain prepare fanout wide-rewrite";
 pub type Rows = BTreeMap<String, Vec<Vec<u64>>>;
 pub type Bindings = BTreeMap<String, u64>;
 
@@ -20,6 +20,7 @@ pub enum Oracle {
     Bits { n: usize, star: bool },
     Answers(usize),
     Alias(usize),
+    WideRewrite { groups: usize, arity: usize },
     Fair,
     Stream,
     Rejected(usize),
@@ -51,6 +52,30 @@ pub fn make(case: &str, n: usize, rows: usize) -> Result<Workload, String> {
         expected: vec![],
     };
     match case {
+        "wide-rewrite" => {
+            // Two distinct occurrences of each ordered tuple. SIZE controls
+            // tuple groups independently of --rows (relation arity).
+            w.apps = Some(n.checked_mul(4).ok_or("wide application overflow")? as u64);
+            w.oracle = Oracle::WideRewrite {
+                groups: n,
+                arity: rows,
+            };
+            let ports = (0..rows)
+                .map(|p| format!("X{p}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            w.program = format!("p({ports}) <=> q({ports}). q({ports}) <=> done({ports}).");
+            w.query = (0..n)
+                .flat_map(|g| {
+                    let ports = (0..rows)
+                        .map(|p| format!("V{g}_{p}"))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    [format!("p({ports})"), format!("p({ports})")]
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+        }
         "bits-chain" | "bits-star" | "bits-chain-delayed" | "bits-star-delayed" => {
             let star = case.contains("star");
             w.oracle = Oracle::Bits { n, star };
@@ -288,6 +313,16 @@ impl Oracle {
                 distinct(b)?;
                 for i in 0..*n {
                     add(&mut expected, "p", vec![v(&format!("V{i}"))?]);
+                }
+            }
+            Self::WideRewrite { groups, arity } => {
+                distinct(b)?;
+                for g in 0..*groups {
+                    let row = (0..*arity)
+                        .map(|p| v(&format!("V{g}_{p}")))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    add(&mut expected, "done", row.clone());
+                    add(&mut expected, "done", row);
                 }
             }
             Self::Alias(n) => {

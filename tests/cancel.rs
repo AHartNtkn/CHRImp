@@ -79,6 +79,10 @@ fn cancellation_at_task_and_gc_boundaries_never_resumes_source_or_leaks_scratch(
             "keep(A),consume(A),consume(B),(A=B;true)",
         ),
         ("p(X),p(Y),p(Z) ==> joined(X,Y,Z).", "p(A),p(B),p(C),p(D)"),
+        (
+            "p(A,B,C,D,E,F,G,H,I) <=> q(I,H,G,F,E,D,C,B,A).",
+            "p(A,B,C,D,E,F,G,H,I),(p(A,B,C,D,E,F,G,H,I);true)",
+        ),
     ];
     for (program, query) in cases {
         for prefix in (0..1500).step_by(23) {

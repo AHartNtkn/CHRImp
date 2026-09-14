@@ -34,6 +34,16 @@ The maintained `life-pending-snapshot` and `life-pending-cancel` measurements
 exercise growing pending frontiers and exact post-cancellation syntax/release
 oracles; see `docs/performance.md`.
 
+Graph updates finalize at most eight private index writes together while keeping
+their existing yield and publication positions. `tests/store.rs` checks ordered
+batch writes against an independent map, full-width keys, unchanged roots,
+counts, frozen/stale/foreign rejection, retained snapshots and reclamation.
+The graph unit tests cover collection at every suspension for generic and
+certified 9/32-port updates, abandonment at 68 wide-update positions, and stale
+root rejection before deferred progress. `tests/cancel.rs` includes a wide
+conditional rewrite. The maintained `wide-rewrite` oracle checks every ordered
+port, distinct query identities and duplicate occurrence multiplicity.
+
 ## Performance and limits
 
 The existing `measure` executable covers unsuccessful and successful joins, conditional equality and consumption, correlated choices with two answers, independently sized answer streams, recursive reachability, preparation, continuing execution, retained archives, and actual notebook programs. `life-archive` holds a fixed number of snapshots while measuring 2,048 additional applications; `life-history-choice` grows history with a live choice. These distinguish archive size from useful execution work.

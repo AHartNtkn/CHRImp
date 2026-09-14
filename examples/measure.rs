@@ -670,7 +670,7 @@ fn report_diagnostics(phase: &str, e: &Engine) {
         let allocation = allocation::snapshot();
         report::emit(
             "diagnostics",
-            serde_json::json!({"phase": phase, "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "normalization": e.normalization_stats(), "field_updates": e.graph().field_update_diagnostics(), "preparation": e.program().preparation_diagnostics(), "allocation": allocation, "memory_counts": report::memory(memory(e))}),
+            serde_json::json!({"phase": phase, "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "normalization": e.normalization_stats(), "field_updates": e.graph().field_update_diagnostics(), "preparation": e.program().preparation_diagnostics(), "store_mutations": e.mutation_counts(), "graph_allocations": e.graph().index_allocations(), "allocation": allocation, "memory_counts": report::memory(memory(e))}),
         );
         println!(
             "diagnostics={}",
@@ -1024,6 +1024,43 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn wide_rewrite_oracle_checks_order_aliases_and_duplicate_occurrences() {
+        use families::{Bindings, Rows};
+        let w = families::make("wide-rewrite", 1, 3).unwrap();
+        assert_eq!(w.apps, Some(4));
+        let b = Bindings::from([("V0_0".into(), 7), ("V0_1".into(), 8), ("V0_2".into(), 9)]);
+        let good = Rows::from([("done".into(), vec![vec![7, 8, 9]; 2])]);
+        assert!(w.oracle.check(&b, &good, &mut vec![]).is_ok());
+        for bad in [
+            vec![vec![7, 8, 9]],
+            vec![vec![7, 8, 9]; 3],
+            vec![vec![9, 8, 7]; 2],
+            vec![vec![7, 7, 9]; 2],
+        ] {
+            assert!(
+                w.oracle
+                    .check(&b, &Rows::from([("done".into(), bad)]), &mut vec![])
+                    .is_err()
+            );
+        }
+        let mut alias = b.clone();
+        alias.insert("V0_1".into(), 7);
+        assert!(w.oracle.check(&alias, &good, &mut vec![]).is_err());
+        for arity in [0, 1, 8, 17] {
+            assert!(
+                run_options(
+                    "wide-rewrite",
+                    2,
+                    arity,
+                    None,
+                    2_000_000,
+                    Duration::from_secs(5)
+                )
+                .unwrap()
+            );
+        }
+    }
     #[test]
     fn empty_answers_prefixes_and_limits_are_distinct() {
         let limit = Duration::from_secs(10);

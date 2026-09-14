@@ -33,6 +33,7 @@ target/release/examples/measure proof-dag 7 5000000 10 --shape diamond --seed 17
 target/release/examples/measure graph-bits 7 5000000 10 --shape random --seed 17
 target/release/examples/measure duplicate-heads 4 5000000 10 --rows 3 --seed 17
 target/release/examples/measure partial-join 16 5000000 10 --rows 8 --seed 17
+target/release/examples/measure wide-rewrite 16 5000000 10 --rows 64 --detail
 ```
 
 Graph shapes are chain, ring, star, diamond, dense and seeded random. DAG workloads reject cyclic shapes. `--rows` varies edge/relation multiplicity for graph cases, group count for duplicate heads, and probe count for partial joins. `partial-join-hit` provides the corresponding successful-join control. Seed zero uses canonical query order; other seeds reproducibly vary order and random structure. Boolean seed zero uses disagreement constraints; other seeds mix agreement/disagreement.
@@ -40,6 +41,14 @@ Graph shapes are chain, ring, star, diamond, dense and seeded random. DAG worklo
 The oracles check ordered tuple multisets and distinct query identities. Walks require distinct edge occurrences even on a self-loop; DAG proofs count every derivation, not just reachable pairs; duplicate heads check distinct fresh witnesses; partial joins check payloads and exact hit/miss behavior. Boolean graphs enumerate all assignments independently (at most 16 variables), including disconnected and unsatisfiable cases. These bounds belong to the benchmark oracle, not the language.
 
 Vary dimensions independently before attributing scaling: repeated edge occurrences and multiple proofs can legitimately increase output. Equivalent answers alone do not require equivalent cost. Generator timings remain outside parse/prepare/execution measurements. Existing measurement commands report source and cleanup limits separately; the flamegraph wrapper also imposes an external deadline.
+
+`wide-rewrite` varies tuple groups with SIZE and relation arity with `--rows`.
+Each group posts two identical occurrences and rewrites both through `p`, `q`,
+and `done`: exactly 4 × SIZE applications, one answer and 2 × SIZE residual
+tuples. Its independent oracle checks ordered ports, multiplicity and distinct
+query identities; arity zero is a duplicate zero-port control. It uses the same
+preparation/execution/delivery/validation/allocation/cleanup runner as the other
+core cases.
 
 ## Relevant checks
 
@@ -89,6 +98,13 @@ Allocation JSON records process-wide successful allocation/reallocation counts, 
 The final `allocations=` JSON is sampled after the workload function returns, before serializing that report and before process shutdown. Earlier reports contribute allocation traffic to subsequent checkpoints. Snapshots are consistent at quiescent single-thread checkpoints; atomics make counting safe across threads but do not make simultaneous counter reads an atomic snapshot. Engine object-count checkpoints remain available alongside byte accounting.
 
 The `diagnostics` feature compiles engine counters and the measure allocator in. Default builds contain neither; these instrumented timings require observer-overhead calibration and must not be substituted for baseline timing. CPU and heap profiles provide source attribution, while scoped lifetime workloads check resource release. Calibration across rewriting, synthesis and runtime sessions found workload-dependent observer effects; use baseline runs for timings and instrumented runs for attribution.
+
+Typed `diagnostics` records also expose existing `store_mutations` counters as
+three [unique, copied] pairs for graph, propagation history and pending indexes,
+and cumulative `graph_allocations`. A mutation count measures visited mutable
+paths, including ownership checks and metadata refresh, not semantic rule work.
+Batching can reduce these counts without changing applications or allocation;
+charge batch normalization, finalization and release work separately.
 
 ## External limits and process resources
 

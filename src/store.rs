@@ -424,6 +424,113 @@ impl<V: Value> Store<V> {
         }
         self.insert_node(root, key, value)
     }
+    /// Apply ordered writes privately and publish one root. None removes a key;
+    /// the last write wins. The caller supplies scratch storage, which is
+    /// reordered/compacted. Intended for small bounded batches: coalescing is
+    /// quadratic in write count, and finalization is synchronous. No roots or
+    /// scalar values escape to a suspended overlay, so the ordinary collector
+    /// lease and deferred child-release protocol suffice.
+    pub fn batch(&mut self, root: Root<V>, writes: &mut [(Key, Option<V>)]) -> Root<V> {
+        self.assert_mutable();
+        assert!(self.contains(&root), "stale or foreign index root");
+        let mut len = 0;
+        for i in 0..writes.len() {
+            let (key, value) = writes[i];
+            if writes[i + 1..].iter().any(|&(k, _)| k == key) || self.get(&root, &key) == value {
+                continue;
+            }
+            writes[len] = (key, value);
+            len += 1;
+        }
+        let writes = &mut writes[..len];
+        writes.sort_unstable_by_key(|&(key, _)| key);
+        self.batch_node(root, writes)
+    }
+
+    fn batch_node(&mut self, mut root: Root<V>, writes: &[(Key, Option<V>)]) -> Root<V> {
+        if writes.is_empty() {
+            return root;
+        }
+        let (prefix, bit) = if root.is_empty() {
+            (writes[0].0, 256)
+        } else {
+            let record = self.record(&root);
+            // Every deletion was verified present before descending. A whole
+            // removed subtree needs neither copying nor visits to descendants.
+            if record.leaves == writes.len() && writes.iter().all(|&(_, v)| v.is_none()) {
+                return self.empty();
+            }
+            match &record.node {
+                Node::Leaf { key, .. } => (*key, 256),
+                Node::Branch { prefix, bit, .. } => (*prefix, *bit as usize),
+            }
+        };
+        let split = bit
+            .min(difference(&prefix, &writes[0].0).map_or(256, usize::from))
+            .min(difference(&writes[0].0, &writes[writes.len() - 1].0).map_or(256, usize::from));
+        if split == 256 {
+            let (key, value) = writes[0];
+            let Some(value) = value else {
+                return self.empty();
+            };
+            if root.is_empty() {
+                return self.allocate(Node::Leaf { key, value });
+            }
+            self.unique(&mut root);
+            Arc::get_mut(root.node.as_mut().unwrap()).unwrap().node = Node::Leaf { key, value };
+            return root;
+        }
+        let split = split as u8;
+        let middle = writes.partition_point(|&(key, _)| !right(&key, split));
+        let (low, high) = writes.split_at(middle);
+        if split as usize == bit && !root.is_empty() {
+            self.unique(&mut root);
+            let Node::Branch { left, right, .. } =
+                &mut Arc::get_mut(root.node.as_mut().unwrap()).unwrap().node
+            else {
+                unreachable!()
+            };
+            let a = std::mem::take(left);
+            let b = std::mem::take(right);
+            let a = self.batch_node(a, low);
+            let b = self.batch_node(b, high);
+            if a.is_empty() {
+                return b;
+            }
+            if b.is_empty() {
+                return a;
+            }
+            let Node::Branch { left, right, .. } =
+                &mut Arc::get_mut(root.node.as_mut().unwrap()).unwrap().node
+            else {
+                unreachable!()
+            };
+            *left = a;
+            *right = b;
+            Self::refresh(&mut root);
+            root
+        } else {
+            let (a, b) = if right(&prefix, split) {
+                (self.empty(), root)
+            } else {
+                (root, self.empty())
+            };
+            let left = self.batch_node(a, low);
+            let right = self.batch_node(b, high);
+            if left.is_empty() {
+                return right;
+            }
+            if right.is_empty() {
+                return left;
+            }
+            self.allocate(Node::Branch {
+                prefix,
+                bit: split,
+                left,
+                right,
+            })
+        }
+    }
     fn insert_node(&mut self, mut root: Root<V>, key: Key, value: V) -> Root<V> {
         if root.is_empty() {
             return self.allocate(Node::Leaf { key, value });
