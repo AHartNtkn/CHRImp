@@ -67,7 +67,9 @@ type Cursor = crate::store::Cursor<obligations::Pending>;
 use crate::wake::{Wake, WakeStatus};
 use coordinates::{Coordinates, Epoch, Transport};
 use discovery::Discovery;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+#[cfg(test)]
+use std::collections::BTreeSet;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 
 pub struct Birth {
@@ -231,7 +233,8 @@ pub struct Engine {
     next_task: u64,
     lane: Option<Owner>,
     waiting: VecDeque<Owner>,
-    requested: BTreeSet<Owner>,
+    completion_waiting: bool,
+    collection_waiting: bool,
     pending_root: PendingRoot,
     release_turn: usize,
     obligations: obligations::Obligations,
@@ -314,7 +317,8 @@ impl Engine {
             next_task: 0,
             lane: None,
             waiting: VecDeque::new(),
-            requested: BTreeSet::new(),
+            completion_waiting: false,
+            collection_waiting: false,
             ready: None,
             output: None,
             observer: None,
@@ -529,7 +533,20 @@ impl Engine {
         if self.lane == Some(owner) {
             return true;
         }
-        if self.requested.insert(owner) {
+        // A task calls acquire at most once per dispatch. On failure the
+        // scheduler parks it immediately, and only FIFO handoff can wake it.
+        // Thus runnable tasks cannot already have a waiter. The two independently
+        // serviced non-task owners can retry while waiting and need flags.
+        let enqueue = match owner {
+            Owner::Task(id) => {
+                debug_assert!(!self.parked.contains_key(&id));
+                debug_assert!(self.waiting.back() != Some(&owner));
+                true
+            }
+            Owner::Completion => !std::mem::replace(&mut self.completion_waiting, true),
+            Owner::Collection => !std::mem::replace(&mut self.collection_waiting, true),
+        };
+        if enqueue {
             self.waiting.push_back(owner);
             #[cfg(feature = "diagnostics")]
             {
@@ -541,7 +558,7 @@ impl Engine {
         }
         if self.lane.is_none() && self.waiting.front() == Some(&owner) {
             self.waiting.pop_front();
-            self.requested.remove(&owner);
+            self.clear_waiting(owner);
             self.lane = Some(owner);
             #[cfg(feature = "diagnostics")]
             {
@@ -552,10 +569,17 @@ impl Engine {
         }
         false
     }
+    fn clear_waiting(&mut self, owner: Owner) {
+        match owner {
+            Owner::Task(_) => {}
+            Owner::Completion => self.completion_waiting = false,
+            Owner::Collection => self.collection_waiting = false,
+        }
+    }
     fn release_lane(&mut self) {
         self.lane = self.waiting.pop_front();
         if let Some(owner) = self.lane {
-            self.requested.remove(&owner);
+            self.clear_waiting(owner);
             #[cfg(feature = "diagnostics")]
             {
                 self.diagnostics.waiters.granted[owner.diagnostic_slot()] += 1;
@@ -646,7 +670,7 @@ impl Engine {
                 // Keep each runnable class's reserved share. Fill other slots
                 // with source work first, then completion or observation.
                 if let Some(mut task) = self.queue.pop_front() {
-                    debug_assert!(!self.requested.contains(&Owner::Task(task.id)));
+                    debug_assert!(!self.parked.contains_key(&task.id));
                     #[cfg(feature = "diagnostics")]
                     {
                         let d = &mut self.diagnostics.dispatch;
@@ -666,13 +690,10 @@ impl Engine {
                         *count += 1;
                     }
                     let done = self.task(&mut task);
-                    // A runnable task can only append its own request during this tick.
-                    // Handoff removes the request before requeuing a parked task.
-                    debug_assert_eq!(
-                        self.requested.contains(&Owner::Task(task.id)),
-                        self.waiting.back() == Some(&Owner::Task(task.id)),
-                    );
+                    // A failed acquire appends this task and returns unfinished.
+                    // Nothing else may enqueue an owner before we park it here.
                     if done {
+                        debug_assert!(self.waiting.back() != Some(&Owner::Task(task.id)));
                         #[cfg(feature = "diagnostics")]
                         {
                             self.diagnostics.tasks_completed += 1;
@@ -689,7 +710,8 @@ impl Engine {
                         {
                             self.diagnostics.task_parks += 1;
                         }
-                        self.parked.insert(task.id, task);
+                        let previous = self.parked.insert(task.id, task);
+                        debug_assert!(previous.is_none());
                     } else {
                         #[cfg(feature = "diagnostics")]
                         {
@@ -1555,6 +1577,170 @@ mod balanced_phase_tests {
 #[cfg(test)]
 mod parking_tail_tests {
     use super::*;
+
+    fn assert_waiters(e: &Engine) {
+        let waiting = e.waiting.iter().copied().collect::<BTreeSet<_>>();
+        assert_eq!(waiting.len(), e.waiting.len());
+        assert_eq!(e.completion_waiting, waiting.contains(&Owner::Completion));
+        assert_eq!(e.collection_waiting, waiting.contains(&Owner::Collection));
+        assert!(
+            e.queue
+                .iter()
+                .all(|s| !waiting.contains(&Owner::Task(s.id)))
+        );
+        assert!(e.queue.iter().all(|s| !e.parked.contains_key(&s.id)));
+        for owner in &waiting {
+            if let Owner::Task(id) = owner {
+                assert!(e.parked.contains_key(id));
+            }
+        }
+        for id in e.parked.keys() {
+            assert!(waiting.contains(&Owner::Task(*id)));
+        }
+        if let Some(owner) = e.lane {
+            assert!(!waiting.contains(&owner));
+        }
+        #[cfg(feature = "diagnostics")]
+        assert_eq!(e.diagnostics.waiters.entries, e.waiting.len());
+    }
+
+    #[test]
+    fn non_task_retries_and_handoffs_clear_only_the_dequeued_flag() {
+        let code = crate::program::prepare(
+            &crate::syntax::parse_program("").unwrap(),
+            &crate::syntax::parse_query("true").unwrap(),
+        )
+        .unwrap();
+        let mut e = Engine::new(Arc::new(code));
+        for first in [Owner::Completion, Owner::Collection] {
+            let second = if first == Owner::Completion {
+                Owner::Collection
+            } else {
+                Owner::Completion
+            };
+            for _ in 0..3 {
+                assert!(e.acquire(first));
+                assert_waiters(&e);
+            }
+            for _ in 0..8 {
+                assert!(!e.acquire(second));
+                assert_eq!(e.waiting.len(), 1);
+                assert_waiters(&e);
+            }
+            e.release_lane();
+            assert!(e.lane == Some(second));
+            assert!(e.acquire(second));
+            assert!(!e.completion_waiting && !e.collection_waiting);
+            assert!(!e.acquire(first));
+            assert_waiters(&e);
+            e.release_lane();
+            assert!(e.lane == Some(first));
+            assert_waiters(&e);
+            e.release_lane();
+            assert!(e.lane.is_none());
+            assert_waiters(&e);
+        }
+    }
+
+    fn inspect_snapshot(e: &mut Engine, snapshot: ViewId) -> Vec<Output> {
+        let id = e.start_inspection(Some(snapshot), vec![]).unwrap();
+        let mut events = Vec::new();
+        for _ in 0..100_000 {
+            e.advance_inspection(id, 1).unwrap();
+            if let Some(event) = e.take_inspection_output(id).unwrap() {
+                // Completion IDs identify the inspection, not the frozen graph.
+                if !matches!(event, Output::Begin { .. }) {
+                    events.push(event);
+                }
+            }
+            if e.inspection_status(id).unwrap().done {
+                e.release_inspection(id).unwrap();
+                return events;
+            }
+        }
+        panic!("snapshot inspection did not finish");
+    }
+
+    #[test]
+    fn parked_frontier_snapshots_cancel_and_zero_owner_drop() {
+        let code = Arc::new(
+            crate::program::prepare(
+                &crate::syntax::parse_program("p(X) <=> done(X).").unwrap(),
+                &crate::syntax::parse_query("p(A),p(B),p(C),p(D),p(E),p(F),p(G),p(H)").unwrap(),
+            )
+            .unwrap(),
+        );
+        let owner = Arc::downgrade(&code);
+        // Each offset crosses a different parked/woken/body/commit suspension.
+        for offset in 0..64 {
+            let mut e = Engine::new(code.clone());
+            for _ in 0..10_000 {
+                e.advance(1);
+                assert_waiters(&e);
+                if e.parked.len() >= 4 {
+                    break;
+                }
+            }
+            assert!(e.parked.len() >= 4);
+            for _ in 0..offset {
+                e.advance(1);
+                assert_waiters(&e);
+            }
+            let snapshot = e.capture_snapshot().unwrap();
+            let applications = e.applications();
+            let expected = inspect_snapshot(&mut e, snapshot);
+            assert_eq!(e.applications(), applications);
+            e.request_collection();
+            e.cancel();
+            for _ in 0..100_000 {
+                e.advance(1);
+                assert_eq!(e.applications(), applications);
+                if e.cancel_done() {
+                    break;
+                }
+            }
+            assert!(e.cancel_done());
+            assert_waiters(&e);
+            assert!(e.lane.is_none() && e.waiting.is_empty() && e.parked.is_empty());
+            assert_eq!(inspect_snapshot(&mut e, snapshot), expected);
+            e.release_snapshot(snapshot).unwrap();
+            for _ in 0..100_000 {
+                e.maintain(1);
+                if e.cancel_done() {
+                    break;
+                }
+            }
+            assert!(e.cancel_done());
+            assert_eq!(e.memory().graph_nodes, 0);
+            assert_eq!(e.memory().occurrences, 0);
+            assert_eq!(e.memory().conditions, 0);
+            assert_eq!(e.memory().history_nodes, 0);
+            assert_eq!(e.memory().history_records, 0);
+            assert_eq!(e.memory().pending_nodes, 0);
+            assert_eq!(e.memory().choices, 0);
+            assert_eq!(e.memory().release_batches, 0);
+            assert_eq!(e.memory().restriction_nodes, 0);
+            assert_eq!(e.memory().obligation_descriptors, 0);
+            assert_eq!(e.memory().snapshots, 0);
+            assert_eq!(e.memory().inspections, 0);
+            assert_eq!(e.memory().coordinate_records, 1);
+            drop(e);
+            assert_eq!(Arc::strong_count(&code), 1);
+        }
+        // Direct destruction with active parked tasks must release ownership too.
+        let mut e = Engine::new(code.clone());
+        for _ in 0..10_000 {
+            if e.parked.len() >= 4 {
+                break;
+            }
+            e.advance(1);
+        }
+        assert!(e.parked.len() >= 4);
+        drop(code);
+        drop(e);
+        assert!(owner.upgrade().is_none());
+    }
+
     #[test]
     fn failed_acquires_park_and_fifo_handoffs_survive_collection() {
         let code = crate::program::prepare(
@@ -1584,25 +1770,7 @@ mod parking_tail_tests {
                 );
                 handoffs += 1;
             }
-            let waiting = e.waiting.iter().copied().collect::<BTreeSet<_>>();
-            assert_eq!(waiting.len(), e.waiting.len());
-            assert!(waiting == e.requested);
-            assert!(
-                e.queue
-                    .iter()
-                    .all(|s| !e.requested.contains(&Owner::Task(s.id)))
-            );
-            for owner in &waiting {
-                if let Owner::Task(id) = owner {
-                    assert!(e.parked.contains_key(id));
-                }
-            }
-            for id in e.parked.keys() {
-                assert!(waiting.contains(&Owner::Task(*id)));
-            }
-            if let Some(owner) = e.lane {
-                assert!(!waiting.contains(&owner));
-            }
+            assert_waiters(&e);
             if let Some(event) = e.take_output() {
                 match event {
                     Output::Variable { variable, .. } => variables.push(variable),
@@ -1663,7 +1831,6 @@ mod body_direct_tests {
             assert!(b.job.is_none());
             assert_eq!(b.scope, scope);
             assert!(e.waiting.pop_front() == Some(Owner::Task(99)));
-            assert!(e.requested.remove(&Owner::Task(99)));
             e.lane = Some(Owner::Task(99));
             assert!(!e.body_tick(99, &mut b));
             if let Some(expected) = expected {

@@ -144,10 +144,10 @@ impl Engine {
                 {
                     self.diagnostics.waiters.entries = 0;
                 }
-                if self.requested.pop_first().is_none() {
-                    self.lane = None;
-                    self.cancellation.phase = Phase::Roots;
-                }
+                self.completion_waiting = false;
+                self.collection_waiting = false;
+                self.lane = None;
+                self.cancellation.phase = Phase::Roots;
             }
             Phase::Roots => {
                 self.state = StateRoot {
@@ -243,6 +243,7 @@ mod tests {
             }
         }
         assert!(e.cancel_done());
-        assert!(e.lane.is_none() && e.waiting.is_empty() && e.requested.is_empty());
+        assert!(e.lane.is_none() && e.waiting.is_empty());
+        assert!(!e.completion_waiting && !e.collection_waiting);
     }
 }

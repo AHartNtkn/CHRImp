@@ -140,7 +140,7 @@ impl Engine {
         self.collector.is_some()
             || self.collection_requested
             || self.lane == Some(Owner::Collection)
-            || self.requested.contains(&Owner::Collection)
+            || self.collection_waiting
     }
     pub(super) fn collect_heap(&mut self) -> bool {
         self.collect_heap_mode(true)
@@ -163,22 +163,20 @@ impl Engine {
                     || self.lane == Some(Owner::Collection))
                 && (self.semantic_regions
                     || (self.graph.semantic_debt() > 0
-                        && (self.requested.contains(&Owner::Collection)
-                            || self.lane == Some(Owner::Collection)
-                            || {
-                                let minimum = self
-                                    .variables
-                                    .len()
-                                    .saturating_add(self.pending_tasks())
-                                    .saturating_add(CLEANUP_ALLOWANCE);
-                                // Occurrence counts cannot lower this frontier.
-                                self.graph.semantic_debt() >= minimum
-                                    && self.graph.semantic_debt()
-                                        >= self
-                                            .graph
-                                            .occurrence_frontier(&self.state.graph)
-                                            .saturating_add(minimum)
-                            })));
+                        && (self.collection_waiting || self.lane == Some(Owner::Collection) || {
+                            let minimum = self
+                                .variables
+                                .len()
+                                .saturating_add(self.pending_tasks())
+                                .saturating_add(CLEANUP_ALLOWANCE);
+                            // Occurrence counts cannot lower this frontier.
+                            self.graph.semantic_debt() >= minimum
+                                && self.graph.semantic_debt()
+                                    >= self
+                                        .graph
+                                        .occurrence_frontier(&self.state.graph)
+                                        .saturating_add(minimum)
+                        })));
             if !explicit
                 && !semantic_due
                 && memory <= self.collection_limit
@@ -204,7 +202,7 @@ impl Engine {
                 && semantic
                 && !self.canceled()
                 && !explicit
-                && self.requested.contains(&Owner::Collection)
+                && self.collection_waiting
                 && memory < self.collection_limit.saturating_mul(2)
             {
                 return false;
@@ -883,7 +881,7 @@ mod tests {
         assert_ne!(e.state.history, e.history.empty());
         e.request_collection();
         e.advance(1);
-        assert!(e.requested.contains(&Owner::Collection));
+        assert!(e.collection_waiting);
         for _ in 0..100000 {
             if e.collector.is_none() {
                 break;
@@ -891,7 +889,7 @@ mod tests {
             e.advance(1);
         }
         assert!(e.collector.is_none());
-        assert!(e.requested.contains(&Owner::Collection));
+        assert!(e.collection_waiting);
         assert!(
             e.collecting(),
             "the requested semantic pass still awaits its writer"
@@ -905,7 +903,7 @@ mod tests {
         }
         assert!(!e.collecting());
         assert!(e.collections() > before);
-        assert!(!e.requested.contains(&Owner::Collection));
+        assert!(!e.collection_waiting);
     }
     #[test]
     fn routine_pressure_preserves_fifo_and_emergency_or_explicit_gc_bounds_writer_growth() {
@@ -959,7 +957,7 @@ mod tests {
                             );
                             assert!(e.lane == lane);
                         }
-                    } else if e.requested.contains(&Owner::Collection) {
+                    } else if e.collection_waiting {
                         assert!(before < emergency);
                         assert!(memory <= emergency.saturating_add(max_growth));
                         assert_eq!(
