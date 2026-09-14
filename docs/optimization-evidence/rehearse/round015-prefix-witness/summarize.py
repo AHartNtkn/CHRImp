@@ -29,7 +29,7 @@ for path in sorted((HERE / 'raw/baseline').iterdir()):
             'phases': {p['phase']: {key: med(lambda s, phase=p['phase'], key=key: next(q[key] for q in s['allocations']['phases'] if q['phase']==phase)) for key in ('allocations', 'allocated_bytes', 'freed_bytes')} for p in samples[0]['allocations']['phases']},
             'result': samples[0]['result'],
             'restrictions': {phase: cp.get('shared_restrictions') for phase, cp in samples[0]['checkpoints'].items()},
-            'source_live': med(lambda s: s['checkpoints'].get('source', {}).get('allocation', {}).get('process_live_requested_bytes', 0)),
+            'source_live': med(lambda s: s['checkpoints']['source']['allocation']['process_live_requested_bytes']) if all('allocation' in s['checkpoints'].get('source', {}) for s in samples) else None,
         }
         pair[side]['work_samples'] = [s['checkpoints'].get('source', {}).get('work') for s in samples]
     b, c = pair['baseline'], pair['candidate']
