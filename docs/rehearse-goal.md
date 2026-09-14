@@ -1,4 +1,4 @@
-/goal Continuously improve CHRImp in /home/ahart/Documents/Codex/CHRImp using the Rehearse loop below. Use Luna (gpt-5.6-luna) as orchestrator and proposal/judge model, and Astra (gpt-6-astra) for code implementation. Continue until I stop or redirect the campaign; do not create campaign or candidate time budgets.
+/goal Continuously improve CHRImp in /home/ahart/Documents/Codex/CHRImp using the Rehearse loop below. Use Luna (gpt-5.6-luna) for proposal and judge subagents, and Astra (gpt-6-astra) for code implementation. Continue until I stop or redirect the campaign; do not create campaign or candidate time budgets.
 
 Read AGENTS.md, README.md, relevant architecture and performance documentation,
 and tools/rehearse/README.md. The objective is substantial reduction of semantic
