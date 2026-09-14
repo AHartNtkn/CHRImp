@@ -168,6 +168,7 @@ impl Engine {
                 self.cancellation.phase = Phase::Roots;
             }
             Phase::Roots => {
+                self.graph.invalidate_liveness();
                 self.state = StateRoot {
                     graph: self.graph.empty(),
                     history: self.history.empty(),

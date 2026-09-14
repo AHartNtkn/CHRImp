@@ -398,6 +398,9 @@ impl Arena {
     pub(crate) fn representation_epoch(&self) -> u64 {
         self.order_epoch
     }
+    pub(crate) fn owner(&self) -> u32 {
+        self.owner
+    }
     pub fn node_count(&self) -> usize {
         self.unique.len()
     }
@@ -2203,6 +2206,43 @@ mod reorder_tests {
             }
         }
     }
+    #[test]
+    fn graph_liveness_certificate_rechecks_after_actual_reordering() {
+        use crate::graph::{Graph, UpdateStatus};
+        use crate::program::Signature;
+        let mut f = Fixture::new();
+        let mut g = Graph::new(&[Signature {
+            name: "p".into(),
+            arity: 0,
+        }]);
+        let mut post = g.post(g.empty(), 0, vec![], Condition::TRUE).unwrap();
+        let id = post.occurrence();
+        let root = (0..1000)
+            .find_map(|_| match post.tick(&mut g) {
+                UpdateStatus::Complete(r) => Some(r),
+                _ => None,
+            })
+            .unwrap();
+        drop(post);
+        let mut p = g.prune(root, f.root);
+        let root = (0..10000).find_map(|_| p.tick(&mut g, &mut f.a)).unwrap();
+        drop(p);
+        f.a.reorder_after = 0;
+        let before = f.a.representation_epoch();
+        let roots = f.roots();
+        let mut gc = f.a.collect(roots.into_iter());
+        assert!((0..200_000).any(|_| gc.tick(&mut f.a)));
+        drop(gc);
+        assert!(f.a.representation_epoch() > before);
+        f.assert_root();
+        let mut p = g.prune(root, f.root);
+        let (steps, root) = (1..10000)
+            .find_map(|steps| p.tick(&mut g, &mut f.a).map(|r| (steps, r)))
+            .unwrap();
+        assert!(steps > 4, "reordered support reused an old certificate");
+        assert_eq!(g.fact(root, id).unwrap().support, f.root);
+    }
+
     #[test]
     fn archived_closures_keep_exact_sift_references_and_rebuild_after_reordering() {
         let mut f = Fixture::new();

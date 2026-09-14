@@ -1,0 +1,86 @@
+diff --git a/examples/measure/interactions.rs b/examples/measure/interactions.rs
+index 1efa065..49e0ecb 100644
+--- a/examples/measure/interactions.rs
++++ b/examples/measure/interactions.rs
+@@ -129,7 +129,7 @@ fn capture(
+                 }
+         })
+         .unwrap();
+-    let mut last_choice = e.choices().next_back().map(|(&id, _)| id);
++    let last_choice = e.choices().next_back().map(|(&id, _)| id);
+     let structural_payload = e
+         .program()
+         .signatures()
+@@ -141,12 +141,18 @@ fn capture(
+             "continuing view source emitted answer",
+         )?;
+         if conditional {
+-            // turn() is posted before this body's choice instruction. Capture
+-            // the birth before its fail arm can trigger unpinned compaction.
++            // A later application may consume turn() before this body's
++            // choice is born. Wait for both a newer live choice and a posted
++            // continuation; conjunction service order is not a language rule.
+             let choice = e.choices().next_back().map(|(&id, _)| id);
+             let born = choice > last_choice;
+-            last_choice = last_choice.max(choice);
+-            if !born {
++            if !born
++                || e.facts(relation)
++                    .map_err(|e| e.to_string())?
++                    .filter(|fact| e.arena().evaluate(fact.support, |_| false))
++                    .count()
++                    != 1
++            {
+                 continue;
+             }
+         } else if e.facts(relation).map_err(|e| e.to_string())?.count()
+diff --git a/examples/measure/pending.rs b/examples/measure/pending.rs
+index 58cc787..aada42d 100644
+--- a/examples/measure/pending.rs
++++ b/examples/measure/pending.rs
+@@ -1,4 +1,5 @@
+ //! First-view promotion and cancellation with a wide, wholly unposted body.
+ //! SIZE grows both the number of relations and their arity. The exact prefix
+-//! has SIZE scheduled tasks, zero posts/applications, and SIZE^2 pending ports.
++//! follows query-variable initialization, with zero posts/applications and
++//! SIZE^2 pending ports. It does not prescribe a scheduled-task representation.
+ use super::*;
+@@ -97,7 +98,7 @@ pub(super) fn run(case: &str, n: usize, limit: u64, timeout: Duration) -> Result
+     let mut e = during(Phase::Setup, || Engine::new(code.clone()));
+     checkpoint("pending_setup", &e, start.elapsed());
+     let mut b = Budget::new(limit, timeout);
+-    while e.pending_tasks() < n {
++    while e.query_variables().is_empty() {
+         if !b.step(&mut e) {
+             return Ok(false);
+         }
+@@ -105,7 +106,7 @@ pub(super) fn run(case: &str, n: usize, limit: u64, timeout: Duration) -> Result
+     }
+     // This is an exact semantic prefix, not equivalence inferred from ticks.
+     check(
+-        e.pending_tasks() == n
++        e.query_variables().len() == 1
+             && e.applications() == 0
+             && e.facts(0).map_err(|e| e.to_string())?.count() == 0,
+         "unposted prefix",
+diff --git a/src/graph.rs b/src/graph.rs
+index e0718b4..4058f91 100644
+--- a/src/graph.rs
++++ b/src/graph.rs
+@@ -73,6 +73,16 @@ pub(crate) struct UpdatePlan {
+ #[cfg(feature = "diagnostics")]
+ #[derive(Clone, Copy, Default, Debug, serde::Serialize)]
+ pub struct FieldUpdateDiagnostics {
++    // Matched Round 025 observer schema; baseline performs no certificate work.
++    pub liveness_probes: u64,
++    pub liveness_hits: u64,
++    pub liveness_empty_frontiers: u64,
++    pub liveness_full_frontiers: u64,
++    pub liveness_seed_copies: u64,
++    pub liveness_seed_comparisons: u64,
++    pub liveness_mutation_checks: u64,
++    pub liveness_dirty_visits: u64,
++    pub liveness_dirty_filter_ticks: u64,
+     /// Index writes submitted through scalar and batch paths, including
+     /// identities and attachments. Unfinalized private batches are not counted.
+     pub graph_writes: u64,

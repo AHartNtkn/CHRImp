@@ -1,5 +1,31 @@
 # Performance tools
 
+## Graph liveness certificates (Round 025)
+
+`field_updates.liveness_*` diagnostic fields count certificate probes/hits,
+empty/full dependency-frontier passes, copied/compared external seed pairs,
+mutation checks with an eligible certificate, dirty filter calls, and dirty
+leaves intersected with active support. Filter calls include bounded subtree
+membership searches; scalar-fallback counts alone are not a complete cost model.
+Each write also performs a nullable-certificate check, including cold misses.
+All these counters compile out without diagnostics.
+
+The weak root certificate owns no graph or condition payload. Changed graphs
+with identity edges, changed active support/ordering, or overflow use full
+pruning. Identity-free mutation journals hold at most 256 encoded bytes; decoded
+work has at most 64 exact keys. The maintained allocator charges journal growth,
+seed copies, decoding, filtering and release at their actual phases.
+
+`tests/liveness_certificate.rs` uses the same allocator for public-Graph sparse,
+dense, repeated-root, retained-snapshot, and immediate-cancellation comparisons.
+`CHRIMP_LIVENESS_CASE=1024/1` selects rows/changed occurrences; append `/cancel`
+to release ownership before another prune. Build with diagnostics and `--no-run`,
+then run the exact `sparse_dense_and_archive_certificate_lifecycle` test with
+`--nocapture --test-threads=1` under `timeout --kill-after=5s 60s`.
+The [Round 025 report](optimization-evidence/rehearse/round025-liveness-certificate/README.md)
+contains paired engine workloads, adverse mutation costs, storage follow-ups,
+raw records, and exact reproduction commands.
+
 ## Mutation-lane payload FIFO (Round 021)
 
 Suspended `Scheduled` values live directly in typed FIFO entries alongside

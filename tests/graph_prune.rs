@@ -120,6 +120,44 @@ fn finish(
 }
 
 #[test]
+fn certified_dirty_frontier_survives_every_collection_suspension_and_overflow() {
+    for added in [1, 8, 65] {
+        let mut g = graph();
+        let mut a = Arena::default();
+        let (_, c) = a.fresh_choice();
+        let mut root = g.empty();
+        let mut ids = Vec::new();
+        for _ in 0..32 {
+            let (next, id) = post(&mut g, root, vec![], c);
+            root = next;
+            ids.push(id);
+        }
+        let mut prune = g.prune(root, c);
+        root = finish(&mut g, &mut a, &mut prune, true, &[c]);
+        drop(prune);
+        for _ in 0..added {
+            let (next, id) = post(&mut g, root, vec![], Condition::TRUE);
+            root = next;
+            ids.push(id);
+        }
+        let mut prune = g.prune(root, c);
+        root = finish(&mut g, &mut a, &mut prune, true, &[c]);
+        for id in ids {
+            assert_eq!(g.fact(root.clone(), id).unwrap().support, c);
+        }
+        drop(prune);
+        let mut prune = g.prune(root, c.not());
+        let empty = finish(&mut g, &mut a, &mut prune, true, &[c]);
+        assert_eq!(empty, g.empty());
+        drop(prune);
+        collect(&mut g, &mut a, vec![], vec![]);
+        assert_eq!(g.occurrence_count(), 0);
+        assert_eq!(g.index_node_count(), 0);
+        assert_eq!(a.node_count(), 0);
+    }
+}
+
+#[test]
 fn live_raw_arguments_keep_bridge_ancestors_and_only_reachable_reverse_members() {
     let mut g = graph();
     let mut a = Arena::default();

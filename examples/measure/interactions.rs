@@ -129,7 +129,7 @@ fn capture(
                 }
         })
         .unwrap();
-    let mut last_choice = e.choices().next_back().map(|(&id, _)| id);
+    let last_choice = e.choices().next_back().map(|(&id, _)| id);
     let structural_payload = e
         .program()
         .signatures()
@@ -141,12 +141,17 @@ fn capture(
             "continuing view source emitted answer",
         )?;
         if conditional {
-            // turn() is posted before this body's choice instruction. Capture
-            // the birth before its fail arm can trigger unpinned compaction.
+            // Capture a new choice with a posted continuation in the surviving
+            // alternative; conjunction service order is not a language rule.
             let choice = e.choices().next_back().map(|(&id, _)| id);
             let born = choice > last_choice;
-            last_choice = last_choice.max(choice);
-            if !born {
+            if !born
+                || e.facts(relation)
+                    .map_err(|e| e.to_string())?
+                    .filter(|fact| e.arena().evaluate(fact.support, |_| false))
+                    .count()
+                    != 1
+            {
                 continue;
             }
         } else if e.facts(relation).map_err(|e| e.to_string())?.count()

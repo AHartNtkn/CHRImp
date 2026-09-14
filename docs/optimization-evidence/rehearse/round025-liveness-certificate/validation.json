@@ -1,0 +1,38 @@
+{
+  "diagnostic": {
+    "command": [
+      "timeout",
+      "--kill-after=5s",
+      "60s",
+      "cargo",
+      "test",
+      "--offline",
+      "--release",
+      "--features",
+      "diagnostics",
+      "--all-targets"
+    ],
+    "passed": 554,
+    "binaries": 46,
+    "exit": 0,
+    "log": "/tmp/round025-owner-diagnostic-tests.log",
+    "sha256": "b6599f5af52c8b7e986e02cbb64f6a6c34bdd236674cd5b216274d489086890f"
+  },
+  "ordinary": {
+    "command": [
+      "timeout",
+      "--kill-after=5s",
+      "60s",
+      "cargo",
+      "test",
+      "--offline",
+      "--release",
+      "--all-targets"
+    ],
+    "passed": 508,
+    "binaries": 46,
+    "exit": 0,
+    "log": "/tmp/round025-owner-ordinary-tests.log",
+    "sha256": "218ff5819186481dd74e7c2191d61dfda89568edbedd5d62b9e6ff0297f28c18"
+  }
+}

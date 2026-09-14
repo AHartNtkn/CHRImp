@@ -1,6 +1,7 @@
 //! First-view promotion and cancellation with a wide, wholly unposted body.
 //! SIZE grows both the number of relations and their arity. The exact prefix
-//! has SIZE scheduled tasks, zero posts/applications, and SIZE^2 pending ports.
+//! follows query-variable initialization, with zero posts/applications and
+//! SIZE^2 pending ports, independent of scheduled-task representation.
 use super::*;
 
 fn checkpoint(phase: &str, e: &Engine, elapsed: Duration) {
@@ -97,7 +98,7 @@ pub(super) fn run(case: &str, n: usize, limit: u64, timeout: Duration) -> Result
     let mut e = during(Phase::Setup, || Engine::new(code.clone()));
     checkpoint("pending_setup", &e, start.elapsed());
     let mut b = Budget::new(limit, timeout);
-    while e.pending_tasks() < n {
+    while e.query_variables().is_empty() {
         if !b.step(&mut e) {
             return Ok(false);
         }
@@ -105,7 +106,7 @@ pub(super) fn run(case: &str, n: usize, limit: u64, timeout: Duration) -> Result
     }
     // This is an exact semantic prefix, not equivalence inferred from ticks.
     check(
-        e.pending_tasks() == n
+        e.query_variables().len() == 1
             && e.applications() == 0
             && e.facts(0).map_err(|e| e.to_string())?.count() == 0,
         "unposted prefix",

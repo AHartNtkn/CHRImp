@@ -73,6 +73,15 @@ pub(crate) struct UpdatePlan {
 #[cfg(feature = "diagnostics")]
 #[derive(Clone, Copy, Default, Debug, serde::Serialize)]
 pub struct FieldUpdateDiagnostics {
+    pub liveness_probes: u64,
+    pub liveness_hits: u64,
+    pub liveness_empty_frontiers: u64,
+    pub liveness_full_frontiers: u64,
+    pub liveness_seed_copies: u64,
+    pub liveness_seed_comparisons: u64,
+    pub liveness_mutation_checks: u64,
+    pub liveness_dirty_visits: u64,
+    pub liveness_dirty_filter_ticks: u64,
     /// Index writes submitted through scalar and batch paths, including
     /// identities and attachments. Unfinalized private batches are not counted.
     pub graph_writes: u64,
@@ -144,6 +153,7 @@ pub struct Fact<'a> {
 /// Immutable occurrence payloads and a persistent supported index. The executor
 /// owns the current root; updates return a new root for atomic publication.
 pub struct Graph {
+    liveness: Option<prune::Certificate>,
     #[cfg(feature = "diagnostics")]
     field_work: std::cell::Cell<FieldUpdateDiagnostics>,
     pub(crate) shared_restrictions: restriction::Cache,
@@ -160,6 +170,9 @@ pub struct Graph {
 }
 
 impl Graph {
+    pub(crate) fn invalidate_liveness(&mut self) {
+        self.liveness = None;
+    }
     /// Standalone graphs index every whole tuple with at least two ports.
     pub fn new(signatures: &[Signature]) -> Self {
         Self::with_tuple_indexes(
@@ -204,6 +217,7 @@ impl Graph {
             })
             .collect();
         Self {
+            liveness: None,
             #[cfg(feature = "diagnostics")]
             field_work: std::cell::Cell::default(),
             shared_restrictions: restriction::Cache::default(),
@@ -428,11 +442,24 @@ impl Graph {
         {
             self.retire_scope();
         }
-        if support == Condition::FALSE {
+        let mut certificate = self.take_liveness_delta(&root);
+        if let Some(c) = &mut certificate {
+            #[cfg(feature = "diagnostics")]
+            self.field_work.update(|mut w| {
+                w.liveness_mutation_checks += 1;
+                w
+            });
+            if !c.record(key, (support != Condition::FALSE).then_some(support)) {
+                certificate = None;
+            }
+        }
+        let root = if support == Condition::FALSE {
             self.index.remove(root, &key)
         } else {
             self.index.insert(root, key, support)
-        }
+        };
+        self.finish_liveness_delta(certificate, &root);
+        root
     }
 
     fn write_batch(&mut self, root: Root, writes: &mut [(Key, Option<Condition>)]) -> Root {
@@ -452,7 +479,23 @@ impl Graph {
                 self.retire_scope();
             }
         }
-        self.index.batch(root, writes)
+        let mut certificate = self.take_liveness_delta(&root);
+        for &(key, support) in writes.iter() {
+            let Some(c) = &mut certificate else {
+                break;
+            };
+            #[cfg(feature = "diagnostics")]
+            self.field_work.update(|mut w| {
+                w.liveness_mutation_checks += 1;
+                w
+            });
+            if !c.record(key, support) {
+                certificate = None;
+            }
+        }
+        let root = self.index.batch(root, writes);
+        self.finish_liveness_delta(certificate, &root);
+        root
     }
 
     pub fn relation(&self, root: Root, relation: usize) -> Result<Occurrences, GraphError> {
@@ -866,6 +909,13 @@ impl<I: Iterator<Item = Root>> Collector<I> {
                 }
                 self.sweep = Some(id);
             } else {
+                if graph
+                    .liveness
+                    .as_ref()
+                    .is_some_and(|c| !c.valid(&graph.index))
+                {
+                    graph.invalidate_liveness();
+                }
                 self.done = true;
             }
         }

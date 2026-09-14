@@ -307,6 +307,17 @@ pub(crate) struct WeakRoot<V: Value = Condition> {
     node: Option<Weak<Record<V>>>,
 }
 impl<V: Value> WeakRoot<V> {
+    pub(crate) fn valid(&self, store: &Store<V>) -> bool {
+        match &self.node {
+            None => true,
+            Some(node) => node.upgrade().is_some_and(|node| {
+                store.contains(&Root {
+                    owner: self.owner,
+                    node: Some(node),
+                })
+            }),
+        }
+    }
     pub(crate) fn matches(&self, root: &Root<V>) -> bool {
         self.owner == root.owner
             && match (&self.node, &root.node) {
@@ -1332,6 +1343,14 @@ impl<V: Value> Filter<V> {
         }
     }
     pub fn tick(&mut self, store: &mut Store<V>) -> FilterStatus<V> {
+        self.tick_frontier(store, None)
+    }
+    /// Caller certifies that all keys outside this sorted frontier are already
+    /// correct. Unaffected immutable subtrees are returned without leaf visits.
+    pub(crate) fn tick_keys(&mut self, store: &mut Store<V>, keys: &[Key]) -> FilterStatus<V> {
+        self.tick_frontier(store, Some(keys))
+    }
+    fn tick_frontier(&mut self, store: &mut Store<V>, keys: Option<&[Key]>) -> FilterStatus<V> {
         assert_eq!(self.owner, store.owner, "foreign index filter");
         store.assert_mutable();
         assert!(store.contains(&self.base), "stale index filter root");
@@ -1375,6 +1394,23 @@ impl<V: Value> Filter<V> {
                 unreachable!()
             };
             return self.returned(result);
+        }
+        if let (Some(keys), Some(FilterFrame::Visit(root))) = (keys, &self.frame)
+            && !root.is_empty()
+        {
+            let (low, high) = match &store.record(root).node {
+                Node::Leaf { key, .. } => (*key, *key),
+                Node::Page { prefix, .. } => bounds(*prefix, PAGE_BIT as u8),
+                Node::Branch { prefix, bit, .. } => bounds(*prefix, *bit),
+            };
+            let position = keys.partition_point(|key| *key < low);
+            if keys.get(position).is_none_or(|key| *key > high) {
+                store.stats.page_fallback_visits.fetch_add(1, Relaxed);
+                let Some(FilterFrame::Visit(root)) = self.frame.take() else {
+                    unreachable!()
+                };
+                return self.returned(root);
+            }
         }
         match self.frame.take() {
             None => FilterStatus::Complete(self.last.clone()),
