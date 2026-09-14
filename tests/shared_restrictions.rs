@@ -82,6 +82,173 @@ fn unrelated_posts_share_the_correlated_scan_across_graph_versions() {
 }
 
 #[test]
+fn growing_prefix_versions_preserve_order_cutoffs_and_release() {
+    for n in [128, 512, 2048] {
+        let (c, mut g, root) = fixture(n);
+        let (mut root, p) = post(&mut g, root, 0, vec![1, 2, 9000]);
+        let mut a = Arena::default();
+        let mut hits = Vec::new();
+        let mut snapshots = Vec::new();
+        for version in 0..9 {
+            if version != 0 {
+                let (next, hit) = post(&mut g, root, 1, vec![1, 2, 9001]);
+                root = next;
+                hits.push(hit);
+            }
+            let mut m = Matches::new(
+                &g,
+                root.clone(),
+                c.clone(),
+                0,
+                Condition::TRUE,
+                Some((0, p)),
+            )
+            .unwrap();
+            let result = drain(&mut m, &g, &mut a);
+            assert_eq!(
+                result.iter().map(|m| m.occurrences[1]).collect::<Vec<_>>(),
+                hits
+            );
+            assert!(result.iter().all(|m| m.support == Condition::TRUE));
+            snapshots.push((root.clone(), hits.clone()));
+        }
+        println!(
+            "prefix_growth n={n} phase=updated diagnostics={} graph_nodes={} graph_allocations={}",
+            serde_json::to_string(&g.restriction_diagnostics()).unwrap(),
+            g.index_node_count(),
+            g.index_allocations()
+        );
+        for (snapshot, expected) in snapshots {
+            let mut m =
+                Matches::new(&g, snapshot, c.clone(), 0, Condition::TRUE, Some((0, p))).unwrap();
+            assert_eq!(
+                drain(&mut m, &g, &mut a)
+                    .iter()
+                    .map(|m| m.occurrences[1])
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
+        println!(
+            "prefix_growth n={n} phase=readback diagnostics={}",
+            serde_json::to_string(&g.restriction_diagnostics()).unwrap()
+        );
+        drop(root);
+        let mut collector = g.collect(std::iter::empty());
+        let mut cleanup_ticks = 0;
+        while !collector.done() {
+            collector.tick(&mut g);
+            cleanup_ticks += 1;
+            assert!(cleanup_ticks < 1_000_000);
+        }
+        drop(collector);
+        while !g.release_tick() {
+            cleanup_ticks += 1;
+            assert!(cleanup_ticks < 1_000_000);
+        }
+        assert_eq!(g.restriction_diagnostics().retained_rows, 0);
+        assert_eq!(g.restriction_diagnostics().entries, 0);
+        assert_eq!(g.occurrence_count(), 0);
+        assert_eq!(g.index_node_count(), 0);
+        println!("prefix_growth n={n} phase=released cleanup_ticks={cleanup_ticks}");
+    }
+}
+
+#[test]
+fn large_prefix_readers_survive_interrupted_service_and_collection() {
+    for interruption in [0, 1, 2, 3, 8, 32, 128, 256, 512, 1024] {
+        let (c, mut g, root) = fixture(256);
+        let (root, hit) = post(&mut g, root, 1, vec![1, 2, 9001]);
+        let (root, p) = post(&mut g, root, 0, vec![1, 2, 9000]);
+        let mut a = Arena::default();
+        let mut slow = Matches::new(
+            &g,
+            root.clone(),
+            c.clone(),
+            0,
+            Condition::TRUE,
+            Some((0, p)),
+        )
+        .unwrap();
+        let mut got = Vec::new();
+        for _ in 0..interruption {
+            if let MatchStatus::Found(m) = slow.tick(&g, &mut a) {
+                got.push(m.occurrences[1]);
+            }
+        }
+        let (next, extra) = post(&mut g, root.clone(), 1, vec![1, 2, 9001]);
+        let mut fast = Matches::new(&g, next.clone(), c, 0, Condition::TRUE, Some((0, p))).unwrap();
+        assert_eq!(
+            drain(&mut fast, &g, &mut a)
+                .iter()
+                .map(|m| m.occurrences[1])
+                .collect::<Vec<_>>(),
+            [hit, extra]
+        );
+        while !fast.discard_tick() {}
+        drop(fast);
+        drop(next);
+        let mut collector = g.collect(vec![root.clone(), slow.root()].into_iter());
+        while !collector.done() {
+            collector.tick(&mut g);
+        }
+        drop(collector);
+        got.extend(
+            drain(&mut slow, &g, &mut a)
+                .iter()
+                .map(|m| m.occurrences[1]),
+        );
+        assert_eq!(got, [hit]);
+        while !slow.discard_tick() {}
+        drop(slow);
+        drop(root);
+        let mut collector = g.collect(std::iter::empty());
+        while !collector.done() {
+            collector.tick(&mut g);
+        }
+        drop(collector);
+        while !g.release_tick() {}
+        assert_eq!(g.restriction_diagnostics().retained_rows, 0);
+        assert_eq!(g.occurrence_count(), 0);
+        assert_eq!(g.index_node_count(), 0);
+    }
+}
+
+#[test]
+fn large_prefix_lagging_reader_keeps_shared_production_after_cache_clear() {
+    let (c, mut g, root) = fixture(512);
+    let (root, hit) = post(&mut g, root, 1, vec![1, 2, 9001]);
+    let (root, p) = post(&mut g, root, 0, vec![1, 2, 9000]);
+    let mut a = Arena::default();
+    let mut slow = Matches::new(&g, root.clone(), c.clone(), 0,
+        Condition::TRUE, Some((0, p))).unwrap();
+    while g.restriction_diagnostics().producer_candidates < 3 {
+        assert!(matches!(slow.tick(&g, &mut a), MatchStatus::Pending));
+    }
+    let mut fast = Matches::new(&g, root.clone(), c, 0,
+        Condition::TRUE, Some((0, p))).unwrap();
+    assert_eq!(drain(&mut fast, &g, &mut a)[0].occurrences, [p, hit]);
+    drop(fast);
+    let produced = g.restriction_diagnostics().producer_candidates;
+    assert_eq!(produced, 513);
+    let mut collector = g.collect(vec![root.clone(), slow.root()].into_iter());
+    while !collector.done() { collector.tick(&mut g); }
+    drop(collector);
+    assert_eq!(drain(&mut slow, &g, &mut a)[0].occurrences, [p, hit]);
+    assert_eq!(g.restriction_diagnostics().producer_candidates, produced,
+        "a lagging alternative must reuse earlier shared computation after eviction");
+    drop(slow);
+    drop(root);
+    let mut collector = g.collect(std::iter::empty());
+    while !collector.done() { collector.tick(&mut g); }
+    drop(collector);
+    while !g.release_tick() {}
+    assert_eq!(g.restriction_diagnostics().retained_rows, 0);
+    assert_eq!(g.occurrence_count(), 0);
+    assert_eq!(g.index_node_count(), 0);
+}
+
+#[test]
 fn relevant_insertions_and_liveness_changes_preserve_old_snapshots() {
     let (c, mut g, root) = fixture(32);
     let (root, p) = post(&mut g, root, 0, vec![1, 2, 9000]);
