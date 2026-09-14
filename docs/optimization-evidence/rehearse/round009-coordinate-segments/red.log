@@ -1,0 +1,35 @@
+
+running 15 tests
+
+thread 'engine::coordinates::tests::adjacent_constant_deltas_traverse_an_unaffected_boolean_once' (17) panicked at src/engine/coordinates.rs:291:13:
+assertion `left == right` failed: one exact composition must replace repeated Boolean traversal
+  left: 72
+ right: 9
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test engine::coordinates::boundary_tests::certificate_is_transported_before_current_active_intersection ... ok
+thread 'engine::coordinates::tests::sparse_publications_share_segment_metadata' (20) panicked at src/engine/coordinates.rs:262:9:
+eight sparse deltas must share metadata
+
+test engine::coordinates::boundary_tests::transport_survives_collection_at_every_restriction_tick ... ok
+test engine::coordinates::boundary_tests::cancellation_drains_an_inflight_transport_and_coordinate_log ... ok
+test engine::coordinates::functional_image_tests::engine_collection_roots_functional_images_during_log_cleanup ... ok
+test engine::coordinates::engine_tests::immutable_matcher_candidates_use_current_coordinates_before_commit ... ok
+test engine::coordinates::functional_image_tests::retiring_a_partly_traced_epoch_resets_the_next_maps_child_cursor ... ok
+test engine::coordinates::functional_image_tests::functional_images_compose_across_epochs_with_gc_at_every_transport_tick ... ok
+test engine::coordinates::functional_image_tests::unstarted_transport_images_and_incremental_log_drain_are_roots ... ok
+test engine::coordinates::maintenance_tests::maintenance_spends_its_budget_draining_unowned_coordinate_records ... ok
+test engine::coordinates::tests::log_retention_follows_reader_leases ... ok
+test engine::coordinates::tests::old_reader_crosses_multiple_publications_without_changing_target ... ok
+test engine::coordinates::tests::adjacent_constant_deltas_traverse_an_unaffected_boolean_once ... FAILED
+test engine::coordinates::tests::sparse_publications_share_segment_metadata ... FAILED
+test engine::coordinates::rejected_reader_tests::false_pending_scope_discards_a_large_old_join_without_enumerating_it ... ok
+test engine::coordinates::progress_tests::old_finite_join_releases_broad_pending_scope_beside_divergence ... ok
+
+failures:
+
+failures:
+    engine::coordinates::tests::adjacent_constant_deltas_traverse_an_unaffected_boolean_once
+    engine::coordinates::tests::sparse_publications_share_segment_metadata
+
+test result: FAILED. 13 passed; 2 failed; 0 ignored; 0 measured; 87 filtered out; finished in 0.00s
+

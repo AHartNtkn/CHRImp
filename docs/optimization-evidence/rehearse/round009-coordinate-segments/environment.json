@@ -1,0 +1,15 @@
+{
+  "baseline_revision": "8e025bc82ea4ed229b53a62804ffa9bb6183e584",
+  "implementation_revision": "6970a96f62cdb22a142a89a14fe79a24c8145206",
+  "rustc": "rustc 1.95.0-nightly (18d13b533 2026-02-09)\nbinary: rustc\ncommit-hash: 18d13b5332916ffca8eadb9106d54b5b434e9978\ncommit-date: 2026-02-09\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0-nightly\nLLVM version: 22.1.0\n",
+  "binaries": {
+    "/tmp/chrimp-round009-baseline-target/release/examples/measure": "eeeea3b430daeeb5bcc0850896eb5cad210d101d99f53bdaff2b33cc04006053",
+    "/tmp/chrimp-round009-bounded-target/release/examples/measure": "c60d49fc1f5d15282e7d3f3b51c4cf12b8f0ee796e174f93547aae41a00cb985"
+  },
+  "build_commands": [
+    "cargo build --offline --release --features diagnostics --example measure --target-dir /tmp/chrimp-round009-baseline-target",
+    "cargo build --offline --release --features diagnostics --example measure --target-dir /tmp/chrimp-round009-bounded-target",
+    "cargo test --offline --release --features diagnostics --all-targets --no-run",
+    "cargo test --offline --release --all-targets --no-run --target-dir /tmp/chrimp-round009-native-target"
+  ]
+}

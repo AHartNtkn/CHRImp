@@ -1,0 +1,1 @@
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-lambda2-serial/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 25950.112967999998, "min": 25839.123537, "max": 26070.685205, "mad": 98.85957299999791}, "regression_assessment": "not_performed"}

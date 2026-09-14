@@ -1,0 +1,1463 @@
+{
+  "answers256": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 256,
+          "applications": 0,
+          "scalars": 512
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 256,
+          "applications": 0,
+          "scalars": 512
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "archive-fixed": {
+    "baseline": [
+      [
+        {
+          "applications": 4,
+          "data": {
+            "conditional": true,
+            "inspections": 0,
+            "views": 4
+          },
+          "phase": "interaction_admitted"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "conditional": true,
+            "continued_applications": 64,
+            "first_choice": 3,
+            "latest_choice": 66,
+            "output_partly_unread": false,
+            "pinned_choices_checked": 4,
+            "rotation_peak_views": 4,
+            "rotations": 0
+          },
+          "phase": "interaction_held"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "answers": 4,
+            "projection_only": true,
+            "source_applications_during_projection": 0
+          },
+          "phase": "interaction_resumed"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "inspections": 0,
+            "released_choice_pins": 4,
+            "snapshots": 0,
+            "source_continuing": true
+          },
+          "phase": "interaction_unpinned"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "censored": false,
+            "complete": true,
+            "error": null
+          },
+          "phase": "interaction_exit"
+        },
+        {
+          "assignments_published": 67,
+          "publications": 64
+        },
+        {
+          "applications": 68,
+          "phase": "cancel"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "applications": 4,
+          "data": {
+            "conditional": true,
+            "inspections": 0,
+            "views": 4
+          },
+          "phase": "interaction_admitted"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "conditional": true,
+            "continued_applications": 64,
+            "first_choice": 3,
+            "latest_choice": 66,
+            "output_partly_unread": false,
+            "pinned_choices_checked": 4,
+            "rotation_peak_views": 4,
+            "rotations": 0
+          },
+          "phase": "interaction_held"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "answers": 4,
+            "projection_only": true,
+            "source_applications_during_projection": 0
+          },
+          "phase": "interaction_resumed"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "inspections": 0,
+            "released_choice_pins": 4,
+            "snapshots": 0,
+            "source_continuing": true
+          },
+          "phase": "interaction_unpinned"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "censored": false,
+            "complete": true,
+            "error": null
+          },
+          "phase": "interaction_exit"
+        },
+        {
+          "assignments_published": 67,
+          "publications": 64
+        },
+        {
+          "applications": 68,
+          "phase": "cancel"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "archive-rotate": {
+    "baseline": [
+      [
+        {
+          "applications": 4,
+          "data": {
+            "conditional": true,
+            "inspections": 0,
+            "views": 4
+          },
+          "phase": "interaction_admitted"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "conditional": true,
+            "continued_applications": 64,
+            "first_choice": 3,
+            "latest_choice": 67,
+            "output_partly_unread": false,
+            "pinned_choices_checked": 36,
+            "rotation_peak_views": 5,
+            "rotations": 16
+          },
+          "phase": "interaction_held"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "answers": 4,
+            "projection_only": true,
+            "source_applications_during_projection": 0
+          },
+          "phase": "interaction_resumed"
+        },
+        {
+          "applications": 69,
+          "data": {
+            "inspections": 0,
+            "released_choice_pins": 36,
+            "snapshots": 0,
+            "source_continuing": true
+          },
+          "phase": "interaction_unpinned"
+        },
+        {
+          "applications": 69,
+          "data": {
+            "censored": false,
+            "complete": true,
+            "error": null
+          },
+          "phase": "interaction_exit"
+        },
+        {
+          "assignments_published": 68,
+          "publications": 33
+        },
+        {
+          "applications": 69,
+          "phase": "cancel"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "applications": 4,
+          "data": {
+            "conditional": true,
+            "inspections": 0,
+            "views": 4
+          },
+          "phase": "interaction_admitted"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "conditional": true,
+            "continued_applications": 64,
+            "first_choice": 3,
+            "latest_choice": 67,
+            "output_partly_unread": false,
+            "pinned_choices_checked": 36,
+            "rotation_peak_views": 5,
+            "rotations": 16
+          },
+          "phase": "interaction_held"
+        },
+        {
+          "applications": 68,
+          "data": {
+            "answers": 4,
+            "projection_only": true,
+            "source_applications_during_projection": 0
+          },
+          "phase": "interaction_resumed"
+        },
+        {
+          "applications": 69,
+          "data": {
+            "inspections": 0,
+            "released_choice_pins": 36,
+            "snapshots": 0,
+            "source_continuing": true
+          },
+          "phase": "interaction_unpinned"
+        },
+        {
+          "applications": 69,
+          "data": {
+            "censored": false,
+            "complete": true,
+            "error": null
+          },
+          "phase": "interaction_exit"
+        },
+        {
+          "assignments_published": 68,
+          "publications": 33
+        },
+        {
+          "applications": 69,
+          "phase": "cancel"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "behavior-i": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 10,
+          "publications": 5
+        },
+        {
+          "cleanup_done": true,
+          "first_complete_answer": "App(App(S, K), Hole(16))",
+          "prepared_released": true,
+          "source_goal_reached": true,
+          "status": "PREFIX_COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 126,
+          "scalars": 73
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 10,
+          "publications": 5
+        },
+        {
+          "cleanup_done": true,
+          "first_complete_answer": "App(App(S, K), Hole(16))",
+          "prepared_released": true,
+          "source_goal_reached": true,
+          "status": "PREFIX_COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 126,
+          "scalars": 73
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "behavior-s": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 3,
+          "publications": 3
+        },
+        {
+          "cleanup_done": true,
+          "first_complete_answer": "S",
+          "prepared_released": true,
+          "source_goal_reached": true,
+          "status": "PREFIX_COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 134,
+          "scalars": 125
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 3,
+          "publications": 3
+        },
+        {
+          "cleanup_done": true,
+          "first_complete_answer": "S",
+          "prepared_released": true,
+          "source_goal_reached": true,
+          "status": "PREFIX_COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 134,
+          "scalars": 125
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "duplicate4": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 36,
+          "scalars": 194
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 36,
+          "scalars": 194
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "fair-grow4": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "PREFIX_COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 1029,
+          "scalars": 8
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "PREFIX_COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 1029,
+          "scalars": 8
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "fresh256-grouped": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 8192,
+          "scalars": 26626
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 8192,
+          "scalars": 26626
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "fresh256-interleaved": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 8192,
+          "scalars": 26626
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 8192,
+          "scalars": 26626
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "fresh256-reverse": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 8192,
+          "scalars": 26626
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 8192,
+          "scalars": 26626
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "fresh64-grouped": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 2048,
+          "scalars": 6658
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 2048,
+          "scalars": 6658
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "fresh64-interleaved": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 2048,
+          "scalars": 6658
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 2048,
+          "scalars": 6658
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "fresh64-reverse": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 2048,
+          "scalars": 6658
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 2048,
+          "scalars": 6658
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "graph-bits7": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 6,
+          "publications": 2
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 0,
+          "applications": 24,
+          "scalars": 0
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 6,
+          "publications": 2
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 0,
+          "applications": 24,
+          "scalars": 0
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "held-output": {
+    "baseline": [
+      [
+        {
+          "applications": 8,
+          "data": {
+            "conditional": true,
+            "inspections": 0,
+            "views": 0
+          },
+          "phase": "interaction_admitted"
+        },
+        {
+          "applications": 72,
+          "data": {
+            "conditional": true,
+            "continued_applications": 64,
+            "first_choice": 11,
+            "latest_choice": 71,
+            "output_partly_unread": true,
+            "pinned_choices_checked": 0,
+            "rotation_peak_views": 0,
+            "rotations": 0
+          },
+          "phase": "interaction_held"
+        },
+        {
+          "applications": 80,
+          "data": {
+            "answers": 1,
+            "projection_only": false,
+            "source_applications_during_projection": 8
+          },
+          "phase": "interaction_resumed"
+        },
+        {
+          "applications": 80,
+          "data": {
+            "inspections": 0,
+            "released_choice_pins": 0,
+            "snapshots": 0,
+            "source_continuing": true
+          },
+          "phase": "interaction_unpinned"
+        },
+        {
+          "applications": 80,
+          "data": {
+            "censored": false,
+            "complete": true,
+            "error": null
+          },
+          "phase": "interaction_exit"
+        },
+        {
+          "assignments_published": 78,
+          "publications": 19
+        },
+        {
+          "applications": 80,
+          "phase": "cancel"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "applications": 8,
+          "data": {
+            "conditional": true,
+            "inspections": 0,
+            "views": 0
+          },
+          "phase": "interaction_admitted"
+        },
+        {
+          "applications": 72,
+          "data": {
+            "conditional": true,
+            "continued_applications": 64,
+            "first_choice": 11,
+            "latest_choice": 71,
+            "output_partly_unread": true,
+            "pinned_choices_checked": 0,
+            "rotation_peak_views": 0,
+            "rotations": 0
+          },
+          "phase": "interaction_held"
+        },
+        {
+          "applications": 80,
+          "data": {
+            "answers": 1,
+            "projection_only": false,
+            "source_applications_during_projection": 8
+          },
+          "phase": "interaction_resumed"
+        },
+        {
+          "applications": 80,
+          "data": {
+            "inspections": 0,
+            "released_choice_pins": 0,
+            "snapshots": 0,
+            "source_continuing": true
+          },
+          "phase": "interaction_unpinned"
+        },
+        {
+          "applications": 80,
+          "data": {
+            "censored": false,
+            "complete": true,
+            "error": null
+          },
+          "phase": "interaction_exit"
+        },
+        {
+          "assignments_published": 78,
+          "publications": 19
+        },
+        {
+          "applications": 80,
+          "phase": "cancel"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "history64": {
+    "baseline": [
+      [
+        {
+          "applications": 512,
+          "phase": "source"
+        },
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "applications": 512,
+          "phase": "cancel"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "applications": 512,
+          "phase": "source"
+        },
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "applications": 512,
+          "phase": "cancel"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "inspections": {
+    "baseline": [
+      [
+        {
+          "applications": 130,
+          "data": {
+            "conditional": true,
+            "inspections": 4,
+            "views": 0
+          },
+          "phase": "interaction_admitted"
+        },
+        {
+          "applications": 194,
+          "data": {
+            "conditional": true,
+            "continued_applications": 64,
+            "first_choice": 128,
+            "latest_choice": 192,
+            "output_partly_unread": false,
+            "pinned_choices_checked": 1,
+            "rotation_peak_views": 0,
+            "rotations": 0
+          },
+          "phase": "interaction_held"
+        },
+        {
+          "applications": 194,
+          "data": {
+            "answers": 4,
+            "projection_only": true,
+            "source_applications_during_projection": 0
+          },
+          "phase": "interaction_resumed"
+        },
+        {
+          "applications": 194,
+          "data": {
+            "inspections": 0,
+            "released_choice_pins": 1,
+            "snapshots": 0,
+            "source_continuing": true
+          },
+          "phase": "interaction_unpinned"
+        },
+        {
+          "applications": 194,
+          "data": {
+            "censored": false,
+            "complete": true,
+            "error": null
+          },
+          "phase": "interaction_exit"
+        },
+        {
+          "assignments_published": 193,
+          "publications": 193
+        },
+        {
+          "applications": 194,
+          "phase": "cancel"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "applications": 130,
+          "data": {
+            "conditional": true,
+            "inspections": 4,
+            "views": 0
+          },
+          "phase": "interaction_admitted"
+        },
+        {
+          "applications": 194,
+          "data": {
+            "conditional": true,
+            "continued_applications": 64,
+            "first_choice": 128,
+            "latest_choice": 192,
+            "output_partly_unread": false,
+            "pinned_choices_checked": 1,
+            "rotation_peak_views": 0,
+            "rotations": 0
+          },
+          "phase": "interaction_held"
+        },
+        {
+          "applications": 194,
+          "data": {
+            "answers": 4,
+            "projection_only": true,
+            "source_applications_during_projection": 0
+          },
+          "phase": "interaction_resumed"
+        },
+        {
+          "applications": 194,
+          "data": {
+            "inspections": 0,
+            "released_choice_pins": 1,
+            "snapshots": 0,
+            "source_continuing": true
+          },
+          "phase": "interaction_unpinned"
+        },
+        {
+          "applications": 194,
+          "data": {
+            "censored": false,
+            "complete": true,
+            "error": null
+          },
+          "phase": "interaction_exit"
+        },
+        {
+          "assignments_published": 193,
+          "publications": 193
+        },
+        {
+          "applications": 194,
+          "phase": "cancel"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "lambda2": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 31,
+          "publications": 8
+        },
+        {
+          "cleanup_done": true,
+          "first_complete_answer": "Output=Original(7)",
+          "prepared_released": true,
+          "source_goal_reached": true,
+          "status": "PREFIX_COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 5339,
+          "scalars": 83
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 31,
+          "publications": 8
+        },
+        {
+          "cleanup_done": true,
+          "first_complete_answer": "Output=Original(7)",
+          "prepared_released": true,
+          "source_goal_reached": true,
+          "status": "PREFIX_COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 5394,
+          "scalars": 83
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": false
+  },
+  "partial32": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 4,
+          "scalars": 504
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 4,
+          "scalars": 504
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "pending-cancel64": {
+    "baseline": [
+      [
+        {
+          "applications": 0,
+          "phase": "pending_setup"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_admitted"
+        },
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "applications": 0,
+          "phase": "cancel"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_validated"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "phase": "pending_drop"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "applications": 0,
+          "phase": "pending_setup"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_admitted"
+        },
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "applications": 0,
+          "phase": "cancel"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_validated"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "phase": "pending_drop"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "pending-snapshot64": {
+    "baseline": [
+      [
+        {
+          "applications": 0,
+          "phase": "pending_setup"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_admitted"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_first_capture"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_second_capture"
+        },
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "applications": 0,
+          "phase": "cancel"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_validated"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "phase": "pending_drop"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "applications": 0,
+          "phase": "pending_setup"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_admitted"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_first_capture"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_second_capture"
+        },
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "applications": 0,
+          "phase": "cancel"
+        },
+        {
+          "applications": 0,
+          "phase": "pending_validated"
+        },
+        {
+          "phase": "release"
+        },
+        {
+          "phase": "pending_drop"
+        },
+        {
+          "status": "PREFIX_COMPLETE"
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "rewrite128": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 256,
+          "scalars": 514
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 256,
+          "scalars": 514
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "runtime": {
+    "baseline": [
+      [
+        {
+          "answers": 8,
+          "status": "COMPLETE"
+        },
+        {}
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "answers": 8,
+          "status": "COMPLETE"
+        },
+        {}
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "wide16": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 64,
+          "scalars": 3138
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 64,
+          "scalars": 3138
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  },
+  "wide4": {
+    "baseline": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 16,
+          "scalars": 786
+        }
+      ]
+    ],
+    "candidate": [
+      [
+        {
+          "assignments_published": 0,
+          "publications": 0
+        },
+        {
+          "cleanup_done": true,
+          "source_goal_reached": true,
+          "status": "COMPLETE"
+        },
+        {
+          "answers": 1,
+          "applications": 16,
+          "scalars": 786
+        }
+      ]
+    ],
+    "completed_endpoint_signatures_equal": true
+  }
+}

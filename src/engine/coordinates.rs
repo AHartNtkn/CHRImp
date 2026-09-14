@@ -1127,14 +1127,14 @@ mod functional_image_tests {
     #[test]
     fn later_prefix_cannot_satisfy_an_older_frozen_target() {
         let mut arena = Arena::default();
-        let (xi, x) = arena.fresh_choice();
+        let (xi, _) = arena.fresh_choice();
         let (yi, y) = arena.fresh_choice();
         let mut c = Coordinates::default();
         let old = c.current();
-        c.publish(Arc::new(BTreeMap::from([(xi, y)])));
-        let mut frozen = c.transport(x, &old);
+        c.publish(Arc::new(BTreeMap::from([(xi, Condition::TRUE)])));
+        let mut frozen = c.transport(y, &old);
         c.publish(Arc::new(BTreeMap::from([(yi, Condition::FALSE)])));
-        let mut later = c.transport(x, &old);
+        let mut later = c.transport(y, &old);
         while later.tick(&mut arena, &c) != Progress::Complete(Condition::FALSE) {}
         drop(later);
         loop {

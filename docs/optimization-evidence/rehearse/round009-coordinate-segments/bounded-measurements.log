@@ -1,0 +1,56 @@
+candidate graph-bits7
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-graph-bits7/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 3.886015, "min": 3.6581, "max": 5.191847999999999, "mad": 0.22791499999999987}, "regression_assessment": "not_performed"}
+candidate duplicate4
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-duplicate4/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 1.7607840000000001, "min": 1.1710399999999999, "max": 1.8029000000000002, "mad": 0.022321999999999953}, "regression_assessment": "not_performed"}
+candidate partial32
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-partial32/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 2.936781, "min": 1.9865629999999999, "max": 2.984737, "mad": 0.04795600000000011}, "regression_assessment": "not_performed"}
+candidate rewrite128
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-rewrite128/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 7.94774, "min": 6.645996, "max": 8.813485, "mad": 0.8657450000000004}, "regression_assessment": "not_performed"}
+candidate answers256
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-answers256/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 29.019573, "min": 26.71012, "max": 30.318848, "mad": 0.3896230000000003}, "regression_assessment": "not_performed"}
+candidate behavior-i
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-behavior-i/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 21.595139999999997, "min": 19.762853, "max": 26.351352000000002, "mad": 1.8322869999999973}, "regression_assessment": "not_performed"}
+candidate behavior-s
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-behavior-s/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 19.443763999999998, "min": 19.189579, "max": 25.09868, "mad": 0.25418499999999966}, "regression_assessment": "not_performed"}
+candidate lambda2
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-lambda2/campaign.json", "counts": {"censored": 1, "completed": 4}, "aggregate_censored": false, "source_delivery_ms": {"n": 4, "incomplete_or_missing": 1, "median": 25907.616379499996, "min": 25746.204924, "max": 26091.096442000002, "mad": 94.34629149999819}, "regression_assessment": "not_performed"}
+Traceback (most recent call last):
+  File "/tmp/chrimp-opt-round009-coordinate-segments/docs/optimization-evidence/rehearse/round009-coordinate-segments/run.py", line 35, in <module>
+    subprocess.run([sys.executable, "examples/perf.py", "--binary", binary,
+  File "/usr/lib/python3.10/subprocess.py", line 526, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/usr/bin/python3', 'examples/perf.py', '--binary', '/tmp/chrimp-round009-bounded-target/release/examples/measure', '--out', '/tmp/chrimp-round009-bounded/candidate-lambda2', '--repeat', '5', '--warmup', '0', '--seconds', '55', '--total-seconds', '600', '--', 'notebook-lambda', '2', '500000000', '45', '--detail']' returned non-zero exit status 2.
+candidate history64
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-history64/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": null, "regression_assessment": "not_performed"}
+candidate fair-grow4
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-fair-grow4/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 139.837234, "min": 137.971786, "max": 142.697349, "mad": 1.8654479999999865}, "regression_assessment": "not_performed"}
+candidate pending-cancel64
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-pending-cancel64/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": null, "regression_assessment": "not_performed"}
+candidate pending-snapshot64
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-pending-snapshot64/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": null, "regression_assessment": "not_performed"}
+candidate runtime
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-runtime/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": null, "regression_assessment": "not_performed"}
+candidate fresh64-grouped
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-fresh64-grouped/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 143.890151, "min": 141.667135, "max": 146.934699, "mad": 2.223016000000001}, "regression_assessment": "not_performed"}
+candidate fresh64-interleaved
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-fresh64-interleaved/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 144.077703, "min": 139.73002300000002, "max": 147.82957299999998, "mad": 0.5166899999999828}, "regression_assessment": "not_performed"}
+candidate fresh64-reverse
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-fresh64-reverse/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 148.39469, "min": 147.351759, "max": 149.8835, "mad": 0.8846780000000081}, "regression_assessment": "not_performed"}
+candidate fresh256-grouped
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-fresh256-grouped/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 643.683096, "min": 638.6315500000001, "max": 650.170786, "mad": 2.022864000000027}, "regression_assessment": "not_performed"}
+candidate fresh256-interleaved
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-fresh256-interleaved/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 633.9781869999999, "min": 633.055061, "max": 639.282421, "mad": 0.9231259999999111}, "regression_assessment": "not_performed"}
+candidate fresh256-reverse
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-fresh256-reverse/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 690.113876, "min": 684.7990149999999, "max": 701.06606, "mad": 3.528368999999998}, "regression_assessment": "not_performed"}
+candidate held-output
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-held-output/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": null, "regression_assessment": "not_performed"}
+candidate archive-fixed
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-archive-fixed/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": null, "regression_assessment": "not_performed"}
+candidate archive-rotate
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-archive-rotate/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": null, "regression_assessment": "not_performed"}
+candidate inspections
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-inspections/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": null, "regression_assessment": "not_performed"}
+candidate wide4
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-wide4/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 4.768788000000001, "min": 4.7068900000000005, "max": 5.216767, "mad": 0.06189800000000023}, "regression_assessment": "not_performed"}
+candidate wide16
+{"campaign": "/tmp/chrimp-round009-bounded/candidate-wide16/campaign.json", "counts": {"completed": 5}, "aggregate_censored": false, "source_delivery_ms": {"n": 5, "incomplete_or_missing": 0, "median": 23.698974, "min": 23.454448, "max": 23.926529, "mad": 0.16134699999999924}, "regression_assessment": "not_performed"}

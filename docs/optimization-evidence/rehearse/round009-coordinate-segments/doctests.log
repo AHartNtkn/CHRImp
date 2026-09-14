@@ -1,0 +1,11 @@
+   Compiling chr v0.1.0 (/tmp/chrimp-opt-round009-coordinate-segments)
+    Finished `release` profile [optimized] target(s) in 6.51s
+   Doc-tests chr
+
+running 3 tests
+test src/program.rs - program::Prepared (line 59) - compile fail ... ok
+test src/engine.rs - engine::Engine::facts (line 401) - compile fail ... ok
+test src/program.rs - program::Prepared (line 51) - compile fail ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

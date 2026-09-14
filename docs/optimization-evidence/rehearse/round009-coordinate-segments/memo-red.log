@@ -1,0 +1,17 @@
+
+running 1 test
+
+thread 'engine::coordinates::tests::repeated_exact_single_epoch_transport_reuses_boolean_work' (6) panicked at src/engine/coordinates.rs:537:9:
+assertion `left == right` failed: an exact retained prefix result is reusable
+  left: 7
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test engine::coordinates::tests::repeated_exact_single_epoch_transport_reuses_boolean_work ... FAILED
+
+failures:
+
+failures:
+    engine::coordinates::tests::repeated_exact_single_epoch_transport_reuses_boolean_work
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.00s
+

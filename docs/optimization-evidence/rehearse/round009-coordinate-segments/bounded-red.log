@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'engine::coordinates::tests::retained_composition_images_are_bounded_across_many_segments' (6) panicked at src/engine/coordinates.rs:629:9:
+one recent composition, not one per retained segment
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test engine::coordinates::tests::retained_composition_images_are_bounded_across_many_segments ... FAILED
+
+failures:
+
+failures:
+    engine::coordinates::tests::retained_composition_images_are_bounded_across_many_segments
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 108 filtered out; finished in 0.00s
+

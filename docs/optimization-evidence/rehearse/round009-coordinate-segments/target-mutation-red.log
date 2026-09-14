@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'engine::coordinates::functional_image_tests::later_prefix_cannot_satisfy_an_older_frozen_target' (6) panicked at src/engine/coordinates.rs:175:22:
+leased coordinate transition
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test engine::coordinates::functional_image_tests::later_prefix_cannot_satisfy_an_older_frozen_target ... FAILED
+
+failures:
+
+failures:
+    engine::coordinates::functional_image_tests::later_prefix_cannot_satisfy_an_older_frozen_target
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 109 filtered out; finished in 0.00s
+
