@@ -80,7 +80,7 @@ index d89b4c2..636aaf0 100644
 +    EngineDrop,
 +    PreparedDrop,
  }
- 
+
  #[inline]
 @@ -33,7 +36,7 @@ mod enabled {
          cell::Cell,
@@ -160,7 +160,7 @@ index 0ea1c74..1efa065 100644
 +    super::drop_prepared_engine(e, code)?;
      result.map(|complete| complete && clean)
  }
- 
+
 @@ -750,7 +751,7 @@ mod tests {
      }
      fn conditional_source() -> Engine {
@@ -171,7 +171,7 @@ index 0ea1c74..1efa065 100644
                  &parse_query("keep(A),loop(A),turn()").unwrap(),
              )
 @@ -768,7 +769,7 @@ mod tests {
- 
+
      #[test]
      fn failing_arm_leaves_one_known_answer_and_one_application() {
 -        let code = prepare(
@@ -204,7 +204,7 @@ index 4192a64..0164c3c 100644
 @@ -29,6 +29,32 @@ fn check(ok: bool, why: &str) -> Result<(), String> {
      if ok { Ok(()) } else { Err(why.into()) }
  }
- 
+
 +fn drop_prepared_engine(e: Engine, code: Arc<chr::program::Prepared>) -> Result<(), String> {
 +    let start = Instant::now();
 +    during(Phase::EngineDrop, || drop(e));
@@ -266,7 +266,7 @@ index 4192a64..0164c3c 100644
 +    drop_prepared_engine(e, code)?;
      Ok(complete && clean)
  }
- 
+
 diff --git a/examples/measure/notebooks.rs b/examples/measure/notebooks.rs
 index 0251cd9..f7937a4 100644
 --- a/examples/measure/notebooks.rs
@@ -442,7 +442,7 @@ index 7b8e7bf..199b99d 100644
 +                .is_ok()
 +        );
      }
- 
+
      #[test]
 @@ -523,7 +537,7 @@ mod tests {
      #[test]
@@ -468,7 +468,7 @@ index ad408de..a24d8e3 100644
 +++ b/src/program.rs
 @@ -95,6 +95,47 @@ pub struct PreparationDiagnostics {
  }
- 
+
  impl Prepared {
 +    /// Requested storage of the changed representation, including all buffer
 +    /// capacity, padding, and the entire Prepared header. Excludes unchanged
