@@ -54,8 +54,11 @@ Repeat:
    mechanism. A correctness evaluation showing that the chosen mechanism violates
    required semantics is a negative result, not unfinished implementation.
    Apply the acceptance rule in AGENTS.md to the actual measured change. Review
-   the relevant gains and regressions across the report before deciding; the
-   implementor's recommendation is advice, not the decision. KEEP a qualifying
+   whether the evidence establishes the claimed benefit after replacement costs
+   and supports the absence of significant regressions. Correctness tests and
+   a list of disclosed costs do not establish that assessment. Resolve material
+   uncertainty in the comparison before accepting; the implementor's
+   recommendation is advice, not the decision. KEEP a qualifying
    improvement even if it achieved only part of the original proposal. Otherwise
    DISCARD the evaluated patch for a reason supported by the measurements.
    Preserve the evaluated implementation as a Git commit and include its revision

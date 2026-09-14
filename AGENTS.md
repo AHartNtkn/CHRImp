@@ -48,13 +48,27 @@ improvement can be kept even when it falls short of the original proposal. Pursu
 ambitious candidates does not raise the acceptance bar for gains already achieved.
 Weigh concrete added complexity against those benefits; patch size or a narrower
 result alone is not a reason to discard it. Identify a specific significant cost
-or regression if it outweighs a demonstrated benefit.
+or regression if it outweighs a demonstrated benefit. Disclosure does not make
+a regression acceptable: being temporary, bounded, or outside the favored
+dimension does not establish that its cost is insignificant.
 
 Demonstrate what work or storage a change removes: for example, fewer repeated
 joins, less retained data, or slower growth of work as inputs increase. Compare
 runs that fulfill the same semantic obligations, including answer multiplicity
 and progress. Fewer internal ticks are not by themselves a gain when the meaning
 of a tick or the amount of completed work differs between implementations.
+
+Establish the claimed benefit after accounting for the work or storage that
+replaces it. Fewer operations of one kind do not establish less work when other
+operations are added. Use measurements or a supported algorithmic cost argument
+to resolve consequential replacement costs; if they could overturn the claimed
+benefit, continue evaluating or refining the mechanism before accepting it.
+
+Assess gains and regressions at consistent workload and component scales, with
+absolute costs and growth as well as percentages. A small whole-process change
+does not dismiss a substantial cost in the affected component. Targeted probes
+can establish useful gains, but their adverse cases count equally; unchanged
+workloads that do not exercise the changed path cannot clear its regressions.
 
 Include affected preparation, query execution, answer delivery, retention, and
 cleanup costs so moving a cost between phases does not appear to remove it.
