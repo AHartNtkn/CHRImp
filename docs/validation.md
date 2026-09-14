@@ -21,6 +21,14 @@ Notebook tests check execution without browser requests, exact replay of retaine
 
 Fair service includes source work, completion, observation and reclamation. A frozen pending-work view excludes unfinished scopes; children are admitted before their parent obligation retires. The FIFO mutation lane revalidates against current state before publication. Immutable readers and explicit snapshots retain their dependencies. Tests exercise these obligations under divergence, conditional updates, collection and cancellation; they are not a formal proof over every program.
 
+`engine::parking_tail_tests` checks waiter uniqueness and FIFO reservations at
+every source suspension, repeated non-task acquisition in both owner orders,
+and immediate/deferred flag clearing. It validates identical frozen inspection
+events before and after cancellation at 64 parked-frontier offsets, complete
+release after snapshots are dropped, and direct Engine destruction while tasks
+remain parked. Existing collection tests cover physical GC while collection
+waits for a writer, followed by semantic handoff.
+
 Coordinate unit tests exhaust every source/target pair through 19 sparse
 publications against a Boolean truth table, including repeated keys and segment
 boundaries. They check frozen targets during publication, functional-image

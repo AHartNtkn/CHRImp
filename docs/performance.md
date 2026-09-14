@@ -1,5 +1,23 @@
 # Performance tools
 
+## Mutation-lane waiter diagnostics (Round 020)
+
+Engine diagnostic checkpoints include `work.waiters`: `requests`, `enqueued`
+and `granted` arrays in Task / Completion / Collection order, plus `entries`
+and `peak_entries` for the FIFO. Requests include calls by an owner already
+holding the lane. Grants include immediate acquisitions and FIFO handoffs;
+task wakes still count only parked-to-runnable transitions. Cancellation clears
+the entry gauge when it releases the scalar FIFO. Instrumentation adds no queue
+scan, allocation, or ordinary-build fields.
+
+Tasks park immediately after a failed acquire, so the FIFO and parked map are
+their unique waiting representation. Completion and collection retry through
+separate flags, cleared on dequeue. The old duplicate BTreeSet is removed.
+The [Round 020 report](optimization-evidence/rehearse/round020-waiter-index/README.md)
+includes paired phase allocations and equal-work checks. The existing `rewrite`
+size sweep exercises growing parked tails; `life-pending-*` stops before any
+acquisition and supplies unaffected pending-syntax lifecycle controls.
+
 ## Store batch coalescing (Round 018)
 
 Store batch preparation scans writes in reverse, keeps up to eight exact keys

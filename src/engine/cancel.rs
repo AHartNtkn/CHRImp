@@ -226,6 +226,40 @@ impl Task {
 mod tests {
     use super::*;
     #[test]
+    fn cancellation_clears_both_non_task_waiters_behind_a_writer() {
+        let code = crate::program::prepare(
+            &crate::syntax::parse_program("").unwrap(),
+            &crate::syntax::parse_query("p(A),p(B),p(C)").unwrap(),
+        )
+        .unwrap();
+        let mut e = Engine::new(Arc::new(code));
+        for _ in 0..1000 {
+            e.advance(1);
+            if matches!(e.lane, Some(Owner::Task(_))) {
+                break;
+            }
+        }
+        assert!(matches!(e.lane, Some(Owner::Task(_))));
+        for _ in 0..3 {
+            assert!(!e.acquire(Owner::Completion));
+            assert!(!e.acquire(Owner::Collection));
+        }
+        assert!(e.completion_waiting && e.collection_waiting);
+        let applications = e.applications();
+        e.cancel();
+        for _ in 0..10_000 {
+            e.advance(1);
+            assert_eq!(e.applications(), applications);
+            if e.cancel_done() {
+                break;
+            }
+        }
+        assert!(e.cancel_done());
+        assert!(!e.completion_waiting && !e.collection_waiting);
+        assert!(e.lane.is_none() && e.waiting.is_empty() && e.parked.is_empty());
+    }
+
+    #[test]
     fn cancellation_does_not_wait_for_a_reserved_semantic_lane() {
         let code = crate::program::prepare(
             &crate::syntax::parse_program("").unwrap(),
