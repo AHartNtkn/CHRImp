@@ -11,6 +11,18 @@ use chr::{
 };
 use std::sync::Arc;
 
+#[allow(dead_code)]
+#[path = "../examples/measure/allocation.rs"]
+mod allocation;
+
+fn allocation_checkpoint(n: u64, phase: &str) {
+    let checkpoint = allocation::snapshot();
+    println!(
+        "prefix_allocation n={n} phase={phase} data={}",
+        serde_json::to_string(&checkpoint).unwrap()
+    );
+}
+
 fn code() -> Arc<Prepared> {
     Arc::new(
         prepare(
@@ -84,11 +96,13 @@ fn unrelated_posts_share_the_correlated_scan_across_graph_versions() {
 #[test]
 fn growing_prefix_versions_preserve_order_cutoffs_and_release() {
     for n in [128, 512, 2048] {
+        allocation_checkpoint(n, "start");
         let (c, mut g, root) = fixture(n);
         let (mut root, p) = post(&mut g, root, 0, vec![1, 2, 9000]);
         let mut a = Arena::default();
         let mut hits = Vec::new();
         let mut snapshots = Vec::new();
+        allocation_checkpoint(n, "prepared");
         for version in 0..9 {
             if version != 0 {
                 let (next, hit) = post(&mut g, root, 1, vec![1, 2, 9001]);
@@ -112,6 +126,7 @@ fn growing_prefix_versions_preserve_order_cutoffs_and_release() {
             assert!(result.iter().all(|m| m.support == Condition::TRUE));
             snapshots.push((root.clone(), hits.clone()));
         }
+        allocation_checkpoint(n, "updated");
         println!(
             "prefix_growth n={n} phase=updated diagnostics={} graph_nodes={} graph_allocations={}",
             serde_json::to_string(&g.restriction_diagnostics()).unwrap(),
@@ -133,6 +148,7 @@ fn growing_prefix_versions_preserve_order_cutoffs_and_release() {
             "prefix_growth n={n} phase=readback diagnostics={}",
             serde_json::to_string(&g.restriction_diagnostics()).unwrap()
         );
+        allocation_checkpoint(n, "readback");
         drop(root);
         let mut collector = g.collect(std::iter::empty());
         let mut cleanup_ticks = 0;
@@ -151,6 +167,9 @@ fn growing_prefix_versions_preserve_order_cutoffs_and_release() {
         assert_eq!(g.occurrence_count(), 0);
         assert_eq!(g.index_node_count(), 0);
         println!("prefix_growth n={n} phase=released cleanup_ticks={cleanup_ticks}");
+        allocation_checkpoint(n, "released");
+        drop((g, a, c));
+        allocation_checkpoint(n, "dropped");
     }
 }
 
@@ -220,27 +239,40 @@ fn large_prefix_lagging_reader_keeps_shared_production_after_cache_clear() {
     let (root, hit) = post(&mut g, root, 1, vec![1, 2, 9001]);
     let (root, p) = post(&mut g, root, 0, vec![1, 2, 9000]);
     let mut a = Arena::default();
-    let mut slow = Matches::new(&g, root.clone(), c.clone(), 0,
-        Condition::TRUE, Some((0, p))).unwrap();
+    let mut slow = Matches::new(
+        &g,
+        root.clone(),
+        c.clone(),
+        0,
+        Condition::TRUE,
+        Some((0, p)),
+    )
+    .unwrap();
     while g.restriction_diagnostics().producer_candidates < 3 {
         assert!(matches!(slow.tick(&g, &mut a), MatchStatus::Pending));
     }
-    let mut fast = Matches::new(&g, root.clone(), c, 0,
-        Condition::TRUE, Some((0, p))).unwrap();
+    let mut fast = Matches::new(&g, root.clone(), c, 0, Condition::TRUE, Some((0, p))).unwrap();
     assert_eq!(drain(&mut fast, &g, &mut a)[0].occurrences, [p, hit]);
     drop(fast);
     let produced = g.restriction_diagnostics().producer_candidates;
     assert_eq!(produced, 513);
     let mut collector = g.collect(vec![root.clone(), slow.root()].into_iter());
-    while !collector.done() { collector.tick(&mut g); }
+    while !collector.done() {
+        collector.tick(&mut g);
+    }
     drop(collector);
     assert_eq!(drain(&mut slow, &g, &mut a)[0].occurrences, [p, hit]);
-    assert_eq!(g.restriction_diagnostics().producer_candidates, produced,
-        "a lagging alternative must reuse earlier shared computation after eviction");
+    assert_eq!(
+        g.restriction_diagnostics().producer_candidates,
+        produced,
+        "a lagging alternative must reuse earlier shared computation after eviction"
+    );
     drop(slow);
     drop(root);
     let mut collector = g.collect(std::iter::empty());
-    while !collector.done() { collector.tick(&mut g); }
+    while !collector.done() {
+        collector.tick(&mut g);
+    }
     drop(collector);
     while !g.release_tick() {}
     assert_eq!(g.restriction_diagnostics().retained_rows, 0);
