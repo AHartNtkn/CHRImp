@@ -1,7 +1,7 @@
 //! Arc-owned persistent indexes. Explicit leaf tracing protects scalar payloads;
 //! completed collection epochs invalidate untraced roots. Child release is deferred.
 use crate::{condition::Condition, gc::GcLease};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{
     Arc, Mutex, Weak,
     atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering::Relaxed},
@@ -51,6 +51,26 @@ pub struct BatchDiagnostics {
     pub max_input_writes: usize,
     pub scratch_peak_capacity: usize,
     pub scratch_peak_bytes: usize,
+}
+// The diagnostic wrapper has exactly Key's layout. Thread-local counters avoid
+// adding a pointer to every hash bucket or changing scratch allocation sizes.
+#[derive(Eq)]
+struct BatchKey(Key);
+#[cfg(feature = "diagnostics")]
+thread_local! {
+    static BATCH_COMPARISONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+impl PartialEq for BatchKey {
+    fn eq(&self, other: &Self) -> bool {
+        #[cfg(feature = "diagnostics")]
+        BATCH_COMPARISONS.with(|c| c.set(c.get() + 1));
+        self.0 == other.0
+    }
+}
+impl std::hash::Hash for BatchKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
 }
 // Pages never cross a whole-word prefix or an aligned eight-key interval.
 // Thus classification, copying, shifts, destruction and each update are bounded;
@@ -721,14 +741,15 @@ impl<V: Value> Store<V> {
     }
     /// Apply ordered writes privately and publish one root. None removes a key;
     /// the last write wins. The caller supplies scratch storage, which is
-    /// reordered/compacted. Intended for small bounded batches: coalescing is
-    /// quadratic in write count, and finalization is synchronous. No roots or
+    /// reordered/compacted. Reverse exact-key coalescing takes expected linear
+    /// work and temporary storage bounded by the distinct keys. Finalization
+    /// remains synchronous. No roots or
     /// scalar values escape to a suspended overlay, so the ordinary collector
     /// lease and deferred child-release protocol suffice.
     pub fn batch(&mut self, root: Root<V>, writes: &mut [(Key, Option<V>)]) -> Root<V> {
         self.assert_mutable();
         assert!(self.contains(&root), "stale or foreign index root");
-        let mut len = 0;
+        let mut end = writes.len();
         #[cfg(feature = "diagnostics")]
         let mut d = self.stats.batch.lock().unwrap();
         #[cfg(feature = "diagnostics")]
@@ -737,15 +758,17 @@ impl<V: Value> Store<V> {
             d.input_writes += writes.len();
             d.max_input_writes = d.max_input_writes.max(writes.len());
         }
-        for i in 0..writes.len() {
+        let mut seen = HashSet::new();
+        #[cfg(feature = "diagnostics")]
+        BATCH_COMPARISONS.with(|c| c.set(0));
+        for i in (0..writes.len()).rev() {
             let (key, value) = writes[i];
-            if writes[i + 1..].iter().any(|&(k, _)| {
-                #[cfg(feature = "diagnostics")]
-                {
-                    d.comparisons += 1;
-                }
-                k == key
-            }) {
+            #[cfg(feature = "diagnostics")]
+            {
+                d.hash_requests += 1;
+            }
+            // Include final no-ops: they still supersede earlier writes.
+            if !seen.insert(BatchKey(key)) {
                 continue;
             }
             #[cfg(feature = "diagnostics")]
@@ -755,14 +778,35 @@ impl<V: Value> Store<V> {
             if self.get(&root, &key) == value {
                 continue;
             }
-            writes[len] = (key, value);
-            len += 1;
+            // Compact into the already-read suffix, never the unread prefix.
+            end -= 1;
+            writes[end] = (key, value);
         }
+        let len = writes.len() - end;
         #[cfg(feature = "diagnostics")]
         {
+            d.comparisons += BATCH_COMPARISONS.with(std::cell::Cell::get);
+            let capacity = seen.capacity();
+            d.scratch_tables += usize::from(capacity != 0);
+            d.scratch_peak_capacity = d.scratch_peak_capacity.max(capacity);
+            // Current std HashSet bucket/control layout estimate. The measured
+            // allocator includes actual growth traffic and is authoritative.
+            let buckets = if capacity == 0 {
+                0
+            } else {
+                (capacity + 1).next_power_of_two()
+            };
+            let bytes = if buckets == 0 {
+                0
+            } else {
+                buckets * (size_of::<Key>() + 1) + 16
+            };
+            d.scratch_peak_bytes = d.scratch_peak_bytes.max(bytes);
             d.retained_writes += len;
             drop(d);
         }
+        drop(seen);
+        writes.copy_within(end.., 0);
         let writes = &mut writes[..len];
         writes.sort_unstable_by_key(|&(key, _)| key);
         self.batch_node(root, writes)

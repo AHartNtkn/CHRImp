@@ -171,7 +171,6 @@ fn batch_order_and_lifecycle_matrix() {
 }
 
 #[test]
-#[ignore = "candidate resource contract: baseline suffix scan is quadratic"]
 fn large_batch_coalescing_work_scales_linearly() {
     for n in [64, 256] {
         for distinct in [n / 4, n] {
