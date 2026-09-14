@@ -1,9 +1,10 @@
 # Rehearse round 003: canonical certified occurrence support
 
-Implementor recommendation: **KEEP** this evaluated slice. Landing remains an
-independent decision. Parent is `01d5d60320777adbf71a828a78ed914cbfbbc851`;
-the evaluated implementation is the commit containing this report. All work was
-performed in `/tmp/chrimp-opt-round003-versioned-structural-occurrences`.
+Implementor recommendation: **KEEP** this evaluated slice. Corrected landing
+disposition: **KEEP**, integrated as `4c9ae4e` on `codex/shared-relational-engine`.
+Parent before the experiment was `01d5d60320777adbf71a828a78ed914cbfbbc851`;
+the evaluated implementation is commit `c8c0ed6dc1cda40011b7d849bd20e12fa303cf5b`.
+All work was performed in `/tmp/chrimp-opt-round003-versioned-structural-occurrences`.
 
 ## Implemented mechanism and limits
 
@@ -266,8 +267,8 @@ occurrences, ordered propagation history, fresh body variables, explicit-choice
 multiplicity, committed execution, finite progress beside divergence, sharing,
 source Post/Application/Failure observations, pending bodies, stepping, history,
 snapshots, cancellation, compaction and final reclamation. This is tested
-evidence rather than a universal proof. Review here is implementor review;
-the campaign's landing review remains independent.
+evidence rather than a universal proof. The independent landing review
+confirmed the same semantic, lifecycle, and storage evidence before integration.
 
 KEEP is recommended for the measured representation/storage reduction and
 directly removed update work, with no significant regression in the measured
