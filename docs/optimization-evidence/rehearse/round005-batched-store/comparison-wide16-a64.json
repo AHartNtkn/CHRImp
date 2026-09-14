@@ -1,0 +1,161 @@
+{
+  "status": "compared",
+  "observer_overhead": false,
+  "observation_changes": {},
+  "environment_differences": {},
+  "before": "evidence/round005/baseline/wide16-a64",
+  "after": "evidence/round005/final/wide16-a64",
+  "configuration": {
+    "case": "wide-rewrite",
+    "detailed": true,
+    "diagnostics_feature": true,
+    "max_ticks": 50000000,
+    "rows": 64,
+    "seed": 0,
+    "shape": "chain",
+    "size": 16,
+    "timeout_seconds": 3
+  },
+  "measurement_scope": "Completed measurement intervals only. Censored resource observations describe the measured prefix, not whole-search cost or adverse amplification; inspect raw work and elapsed observations.",
+  "metrics": {
+    "diagnostics.source.0.store_mutations.0.0": {
+      "status": "decrease",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 147408.0,
+      "after_mean": 29206.0,
+      "before_median": 147408,
+      "after_median": 29206,
+      "absolute_change": -118202.0,
+      "ratio": 0.19813035927493758,
+      "before_range": [
+        147408,
+        147408
+      ],
+      "after_range": [
+        29206,
+        29206
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "holm_threshold": 0.0125
+    },
+    "diagnostics.source.0.store_mutations.0.1": {
+      "status": "decrease",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 40003.0,
+      "after_mean": 39395.0,
+      "before_median": 40003,
+      "after_median": 39395,
+      "absolute_change": -608.0,
+      "ratio": 0.9848011399145065,
+      "before_range": [
+        40003,
+        40003
+      ],
+      "after_range": [
+        39395,
+        39395
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "holm_threshold": 0.016666666666666666
+    },
+    "allocations.phases.engine.allocated_bytes": {
+      "status": "decrease",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 9549312.0,
+      "after_mean": 9471488.0,
+      "before_median": 9549312,
+      "after_median": 9471488,
+      "absolute_change": -77824.0,
+      "ratio": 0.9918503029328186,
+      "before_range": [
+        9549312,
+        9549312
+      ],
+      "after_range": [
+        9471488,
+        9471488
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "holm_threshold": 0.01
+    },
+    "allocations.process_peak_requested_bytes": {
+      "status": "uncertain",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 1417777.0,
+      "after_mean": 1417777.0,
+      "before_median": 1417777,
+      "after_median": 1417777,
+      "absolute_change": 0.0,
+      "ratio": 1.0,
+      "before_range": [
+        1417777,
+        1417777
+      ],
+      "after_range": [
+        1417777,
+        1417777
+      ],
+      "p_value": 1.0,
+      "method": "exact",
+      "assignments": 252,
+      "holm_threshold": 0.05,
+      "permutation_resolution_lower_bound": 0.007936507936507936
+    },
+    "workload.memory_counts.sampled_peak.graph_nodes": {
+      "status": "increase",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 8552.0,
+      "after_mean": 8590.0,
+      "before_median": 8552,
+      "after_median": 8590,
+      "absolute_change": 38.0,
+      "ratio": 1.00444340505145,
+      "before_range": [
+        8552,
+        8552
+      ],
+      "after_range": [
+        8590,
+        8590
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "holm_threshold": 0.025
+    }
+  },
+  "sample_paths": {
+    "before": [
+      "evidence/round005/baseline/wide16-a64/0.json",
+      "evidence/round005/baseline/wide16-a64/1.json",
+      "evidence/round005/baseline/wide16-a64/2.json",
+      "evidence/round005/baseline/wide16-a64/3.json",
+      "evidence/round005/baseline/wide16-a64/4.json"
+    ],
+    "after": [
+      "evidence/round005/final/wide16-a64/0.json",
+      "evidence/round005/final/wide16-a64/1.json",
+      "evidence/round005/final/wide16-a64/2.json",
+      "evidence/round005/final/wide16-a64/3.json",
+      "evidence/round005/final/wide16-a64/4.json"
+    ]
+  },
+  "before_outcomes": {
+    "completed": 5
+  },
+  "after_outcomes": {
+    "completed": 5
+  },
+  "interpretation": "At most 9,999 resampling draws per hypothesis; processing deadline bounds the comparison. Two-sided mean-difference permutation evidence with Holm family correction; increases need materiality/scaling assessment. Sparse, censored or missing observations cannot establish absence of regression. Machine drift and serial group order can confound differences. Native RSS is the whole harness address-space peak; wait4 RSS includes launcher overhead."
+}
