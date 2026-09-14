@@ -44,6 +44,15 @@ root rejection before deferred progress. `tests/cancel.rs` includes a wide
 conditional rewrite. The maintained `wide-rewrite` oracle checks every ordered
 port, distinct query identities and duplicate occurrence multiplicity.
 
+Persistent indexes pack multiple entries from one aligned eight-key final-word
+interval into a page. Three-word prefix certificates remain exact; sparse
+boundaries retain crit-bit branches. `tests/store.rs` checks dense storage,
+scalar/batch edits against independent ordered maps, boundary ranges/counts,
+immutable snapshots, filtering with collection at each suspension, discard,
+and bounded final release. Store unit tests check interrupted page archive
+registration, archive reuse/invalidation, and weak-prefix identity witnesses.
+Collection and filtering expose one scalar payload at a time within a page.
+
 ## Performance and limits
 
 The existing `measure` executable covers unsuccessful and successful joins, conditional equality and consumption, correlated choices with two answers, independently sized answer streams, recursive reachability, preparation, continuing execution, retained archives, and actual notebook programs. `life-archive` holds a fixed number of snapshots while measuring 2,048 additional applications; `life-history-choice` grows history with a live choice. These distinguish archive size from useful execution work.

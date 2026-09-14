@@ -17,7 +17,18 @@ struct Stats {
     live: AtomicUsize,
     unique: AtomicUsize,
     copied: AtomicUsize,
+    pages: AtomicUsize,
+    page_copies: AtomicUsize,
+    page_writes: AtomicUsize,
+    page_splits: AtomicUsize,
+    page_merges: AtomicUsize,
+    page_cursor_entries: AtomicUsize,
 }
+// Pages never cross a whole-word prefix or an aligned eight-key interval.
+// Thus classification, copying, shifts, destruction and each update are bounded;
+// sparse boundaries and all three-word dependency witnesses remain crit-bit.
+const PAGE_BIT: usize = 253;
+const PAGE_CAPACITY: usize = 8;
 const RELEASE_CAPACITY: usize = 16;
 type Pair<V> = (Option<Arc<Record<V>>>, Option<Arc<Record<V>>>);
 struct Block<V: Value> {
@@ -118,6 +129,10 @@ enum Node<V: Value> {
         key: Key,
         value: V,
     },
+    Page {
+        prefix: Key,
+        entries: Vec<(u64, V)>,
+    },
     Branch {
         prefix: Key,
         bit: u8,
@@ -136,7 +151,7 @@ struct Record<V: Value> {
 impl<V: Value> Record<V> {
     fn children(&mut self) -> (Option<Arc<Self>>, Option<Arc<Self>>) {
         match &mut self.node {
-            Node::Leaf { .. } => (None, None),
+            Node::Leaf { .. } | Node::Page { .. } => (None, None),
             Node::Branch { left, right, .. } => (left.node.take(), right.node.take()),
         }
     }
@@ -259,6 +274,10 @@ impl<V: Value> Default for Store<V> {
 fn right(key: &Key, bit: u8) -> bool {
     key[bit as usize / 64] & (1 << (63 - bit % 64)) != 0
 }
+fn page_key(mut prefix: Key, tail: u64) -> Key {
+    prefix[3] = tail;
+    prefix
+}
 fn difference(a: &Key, b: &Key) -> Option<u8> {
     a.iter().zip(b).enumerate().find_map(|(i, (&a, &b))| {
         (a != b).then(|| (64 * i + (a ^ b).leading_zeros() as usize) as u8)
@@ -281,6 +300,83 @@ fn bounds(mut low: Key, bit: u8) -> (Key, Key) {
     (low, high)
 }
 impl<V: Value> Store<V> {
+    fn append_page_entries(&self, root: &Root<V>, result: &mut Vec<(u64, V)>) -> Key {
+        match &self.record(root).node {
+            Node::Leaf { key, value } => {
+                result.push((key[3], *value));
+                self.stats.page_copies.fetch_add(1, Relaxed);
+                *key
+            }
+            Node::Page { prefix, entries } => {
+                result.extend_from_slice(entries);
+                self.stats.page_copies.fetch_add(entries.len(), Relaxed);
+                *prefix
+            }
+            Node::Branch { .. } => unreachable!("page crosses sparse boundary"),
+        }
+    }
+    fn page_batch(&mut self, mut root: Root<V>, writes: &[(Key, Option<V>)]) -> Root<V> {
+        // Called only after membership/no-op checks and aligned interval checks.
+        // Reuse unique page storage; copying is bounded by eight scalar pairs.
+        if root.is_empty() {
+            let entries: Vec<_> = writes
+                .iter()
+                .filter_map(|&(key, value)| value.map(|v| (key[3], v)))
+                .collect();
+            return match entries.as_slice() {
+                [] => self.empty(),
+                &[(tail, value)] => self.allocate(Node::Leaf {
+                    key: page_key(writes[0].0, tail),
+                    value,
+                }),
+                _ => self.allocate(Node::Page {
+                    prefix: writes[0].0,
+                    entries,
+                }),
+            };
+        }
+        self.unique(&mut root);
+        let record = Arc::get_mut(root.node.as_mut().unwrap()).unwrap();
+        if let Node::Leaf { key, value } = record.node {
+            let mut entries = Vec::with_capacity(PAGE_CAPACITY);
+            entries.push((key[3], value));
+            record.node = Node::Page {
+                prefix: key,
+                entries,
+            };
+            self.stats.page_merges.fetch_add(1, Relaxed);
+        }
+        let Node::Page { prefix, entries } = &mut record.node else {
+            unreachable!()
+        };
+        for &(key, value) in writes {
+            self.stats.page_writes.fetch_add(1, Relaxed);
+            match (
+                entries.binary_search_by_key(&key[3], |&(tail, _)| tail),
+                value,
+            ) {
+                (Ok(i), Some(v)) => entries[i].1 = v,
+                (Ok(i), None) => {
+                    entries.remove(i);
+                }
+                (Err(i), Some(v)) => entries.insert(i, (key[3], v)),
+                (Err(_), None) => {}
+            }
+        }
+        assert!(entries.len() <= PAGE_CAPACITY);
+        record.leaves = entries.len();
+        match entries.as_slice() {
+            [] => return self.empty(),
+            &[(tail, value)] => {
+                record.node = Node::Leaf {
+                    key: page_key(*prefix, tail),
+                    value,
+                }
+            }
+            _ => {}
+        }
+        root
+    }
     pub(crate) fn assert_mutable(&self) {
         GcLease::assert_mutable(&self.frozen);
     }
@@ -324,6 +420,19 @@ impl<V: Value> Store<V> {
             self.stats.copied.load(Relaxed),
         )
     }
+    /// Page allocations, copied entries, writes, sparse-boundary splits,
+    /// packed merges, and cursor entries returned (cumulative).
+    pub fn page_counts(&self) -> [usize; 6] {
+        [
+            &self.stats.pages,
+            &self.stats.page_copies,
+            &self.stats.page_writes,
+            &self.stats.page_splits,
+            &self.stats.page_merges,
+            &self.stats.page_cursor_entries,
+        ]
+        .map(|counter| counter.load(Relaxed))
+    }
     fn record<'a>(&self, root: &'a Root<V>) -> &'a Record<V> {
         assert!(
             self.contains(root) && !root.is_empty(),
@@ -334,7 +443,21 @@ impl<V: Value> Store<V> {
     fn node(&self, root: &Root<V>) -> Node<V> {
         self.record(root).node.clone()
     }
-    fn allocate(&mut self, node: Node<V>) -> Root<V> {
+    fn allocate(&mut self, mut node: Node<V>) -> Root<V> {
+        if let Node::Branch {
+            bit, left, right, ..
+        } = &node
+            && *bit as usize >= PAGE_BIT
+        {
+            let mut entries = Vec::with_capacity(PAGE_CAPACITY);
+            let prefix = self.append_page_entries(left, &mut entries);
+            self.append_page_entries(right, &mut entries);
+            self.stats.page_merges.fetch_add(1, Relaxed);
+            node = Node::Page { prefix, entries };
+        }
+        if matches!(node, Node::Page { .. }) {
+            self.stats.pages.fetch_add(1, Relaxed);
+        }
         let leaves = Self::leaf_count(&node);
         self.stats.allocated.fetch_add(1, Relaxed);
         self.stats.live.fetch_add(1, Relaxed);
@@ -359,12 +482,16 @@ impl<V: Value> Store<V> {
             self.stats.unique.fetch_add(1, Relaxed);
         } else {
             self.stats.copied.fetch_add(1, Relaxed);
+            if let Node::Page { entries, .. } = &self.record(root).node {
+                self.stats.page_copies.fetch_add(entries.len(), Relaxed);
+            }
             *root = self.allocate(self.node(root));
         }
     }
     fn leaf_count(node: &Node<V>) -> usize {
         match node {
             Node::Leaf { .. } => 1,
+            Node::Page { entries, .. } => entries.len(),
             Node::Branch { left, right, .. } => {
                 left.node.as_ref().map_or(0, |n| n.leaves)
                     + right.node.as_ref().map_or(0, |n| n.leaves)
@@ -384,6 +511,11 @@ impl<V: Value> Store<V> {
         let record = self.record(root);
         match &record.node {
             Node::Leaf { key, .. } => usize::from(*key >= low && *key <= high),
+            Node::Page { prefix, entries } => {
+                let begin = entries.partition_point(|&(tail, _)| page_key(*prefix, tail) < low);
+                let end = entries.partition_point(|&(tail, _)| page_key(*prefix, tail) <= high);
+                end - begin
+            }
             Node::Branch {
                 prefix,
                 bit,
@@ -406,6 +538,15 @@ impl<V: Value> Store<V> {
         while !r.is_empty() {
             match &self.record(r).node {
                 Node::Leaf { key: found, value } => return (found == key).then_some(*value),
+                Node::Page { prefix, entries } => {
+                    if prefix[..3] != key[..3] {
+                        return None;
+                    }
+                    return entries
+                        .binary_search_by_key(&key[3], |&(tail, _)| tail)
+                        .ok()
+                        .map(|i| entries[i].1);
+                }
                 Node::Branch {
                     bit,
                     left,
@@ -462,12 +603,19 @@ impl<V: Value> Store<V> {
             }
             match &record.node {
                 Node::Leaf { key, .. } => (*key, 256),
+                Node::Page { prefix, .. } => (*prefix, PAGE_BIT),
                 Node::Branch { prefix, bit, .. } => (*prefix, *bit as usize),
             }
         };
         let split = bit
             .min(difference(&prefix, &writes[0].0).map_or(256, usize::from))
             .min(difference(&writes[0].0, &writes[writes.len() - 1].0).map_or(256, usize::from));
+        if split >= PAGE_BIT && split != 256 {
+            return self.page_batch(root, writes);
+        }
+        if bit == PAGE_BIT && split < PAGE_BIT {
+            self.stats.page_splits.fetch_add(1, Relaxed);
+        }
         if split == 256 {
             let (key, value) = writes[0];
             let Some(value) = value else {
@@ -537,8 +685,15 @@ impl<V: Value> Store<V> {
         }
         let (prefix, bit) = match &self.record(&root).node {
             Node::Leaf { key, .. } => (*key, 256),
+            Node::Page { prefix, .. } => (*prefix, PAGE_BIT),
             Node::Branch { prefix, bit, .. } => (*prefix, *bit as usize),
         };
+        if bit == PAGE_BIT {
+            if difference(&prefix, &key).is_none_or(|d| d as usize >= PAGE_BIT) {
+                return self.page_batch(root, &[(key, Some(value))]);
+            }
+            self.stats.page_splits.fetch_add(1, Relaxed);
+        }
         if let Some(split) = difference(&prefix, &key).filter(|&x| (x as usize) < bit) {
             let new = self.allocate(Node::Leaf { key, value });
             let (left, rgt) = if right(&key, split) {
@@ -557,6 +712,7 @@ impl<V: Value> Store<V> {
         let record = Arc::get_mut(root.node.as_mut().unwrap()).unwrap();
         match &mut record.node {
             Node::Leaf { value: v, .. } => *v = value,
+            Node::Page { .. } => unreachable!(),
             Node::Branch {
                 bit,
                 left,
@@ -580,6 +736,9 @@ impl<V: Value> Store<V> {
         self.remove_node(root, key)
     }
     fn remove_node(&mut self, mut root: Root<V>, key: &Key) -> Root<V> {
+        if matches!(self.record(&root).node, Node::Page { .. }) {
+            return self.page_batch(root, &[(*key, None)]);
+        }
         if matches!(self.record(&root).node, Node::Leaf { .. }) {
             return Root::empty();
         }
@@ -606,14 +765,15 @@ impl<V: Value> Store<V> {
         Self::refresh(&mut root);
         root
     }
-    /// Exact subtree for a whole-word key prefix (at most 256 path steps).
+    /// Exact subtree for a prefix of at most three words (at most 192 path steps).
     /// Unrelated prefix updates preserve its identity even when the root changes.
     pub(crate) fn prefix_root(&self, root: &Root<V>, prefix: Key, words: usize) -> Root<V> {
-        assert!(words <= 4 && self.contains(root));
+        assert!(words <= 3 && self.contains(root));
         let mut node = root;
         while !node.is_empty() {
             let (key, bit) = match &self.record(node).node {
                 Node::Leaf { key, .. } => (*key, 256),
+                Node::Page { prefix, .. } => (*prefix, PAGE_BIT),
                 Node::Branch { prefix, bit, .. } => (*prefix, *bit as usize),
             };
             if difference(&key, &prefix).is_some_and(|d| (d as usize) < bit.min(words * 64)) {
@@ -648,6 +808,7 @@ impl<V: Value> Store<V> {
             low,
             high,
             visits: 0,
+            page_position: 0,
         }
     }
     pub fn filter(&self, root: Root<V>) -> Filter<V> {
@@ -693,6 +854,7 @@ impl<V: Value> Store<V> {
             pending: Vec::new(),
             marking: true,
             done: false,
+            page: None,
         }
     }
 }
@@ -702,6 +864,7 @@ pub struct Cursor<V: Value = Condition> {
     low: Key,
     high: Key,
     visits: u64,
+    page_position: usize,
 }
 impl<V: Value> Cursor<V> {
     pub fn root(&self) -> Root<V> {
@@ -713,11 +876,32 @@ impl<V: Value> Cursor<V> {
     pub fn next(&mut self, store: &Store<V>) -> Option<(Key, V)> {
         assert!(store.contains(&self.root), "stale or foreign cursor root");
         while let Some(root) = self.pending.pop() {
-            self.visits += 1;
-            match store.node(&root) {
+            if self.page_position == 0 {
+                self.visits += 1;
+            }
+            match &store.record(&root).node {
                 Node::Leaf { key, value } => {
-                    if key >= self.low && key <= self.high {
-                        return Some((key, value));
+                    if *key >= self.low && *key <= self.high {
+                        return Some((*key, *value));
+                    }
+                }
+                Node::Page { prefix, entries } => {
+                    let position = if self.page_position == 0 {
+                        entries.partition_point(|&(tail, _)| page_key(*prefix, tail) < self.low)
+                    } else {
+                        self.page_position
+                    };
+                    self.page_position = 0;
+                    if let Some(&(tail, value)) = entries.get(position) {
+                        let key = page_key(*prefix, tail);
+                        if key <= self.high {
+                            if position + 1 < entries.len() {
+                                self.page_position = position + 1;
+                                self.pending.push(root.clone());
+                            }
+                            store.stats.page_cursor_entries.fetch_add(1, Relaxed);
+                            return Some((key, value));
+                        }
                     }
                 }
                 Node::Branch {
@@ -726,9 +910,9 @@ impl<V: Value> Cursor<V> {
                     left,
                     right,
                 } => {
-                    let (low, high) = bounds(prefix, bit);
+                    let (low, high) = bounds(*prefix, *bit);
                     if low <= self.high && high >= self.low {
-                        self.pending.extend([right, left]);
+                        self.pending.extend([right.clone(), left.clone()]);
                     }
                 }
             }
@@ -739,8 +923,18 @@ impl<V: Value> Cursor<V> {
 #[derive(Clone)]
 enum FilterFrame<V: Value> {
     Visit(Root<V>),
-    AfterLeft { root: Root<V> },
-    AfterRight { root: Root<V>, left: Root<V> },
+    AfterLeft {
+        root: Root<V>,
+    },
+    AfterRight {
+        root: Root<V>,
+        left: Root<V>,
+    },
+    Page {
+        root: Root<V>,
+        position: usize,
+        result: Root<V>,
+    },
 }
 struct FilterLeaf<V: Value> {
     root: Root<V>,
@@ -775,6 +969,7 @@ impl<V: Value> Filter<V> {
                 .chain(self.frame.iter())
                 .filter_map(|f| match f {
                     FilterFrame::AfterRight { left, .. } => Some(left.clone()),
+                    FilterFrame::Page { result, .. } => Some(result.clone()),
                     _ => None,
                 }),
         )
@@ -803,6 +998,16 @@ impl<V: Value> Filter<V> {
         }
         if let Some(leaf) = self.leaf.take() {
             let replacement = leaf.replacement.unwrap();
+            if let Some(FilterFrame::Page { result, .. }) = &mut self.frame {
+                if replacement != Some(leaf.value) {
+                    let input = std::mem::take(result);
+                    *result = match replacement {
+                        Some(value) => store.insert(input, leaf.key, value),
+                        None => store.remove(input, &leaf.key),
+                    };
+                }
+                return FilterStatus::Pending;
+            }
             let root = match replacement {
                 None => Root::empty(),
                 Some(v) if v == leaf.value => leaf.root,
@@ -813,11 +1018,32 @@ impl<V: Value> Filter<V> {
             };
             return self.returned(root);
         }
+        if let Some(FilterFrame::Page { root, position, .. }) = &mut self.frame {
+            let Node::Page { prefix, entries } = &store.record(root).node else {
+                unreachable!()
+            };
+            if let Some(&(tail, value)) = entries.get(*position) {
+                let key = page_key(*prefix, tail);
+                *position += 1;
+                self.leaf = Some(FilterLeaf {
+                    root: Root::empty(),
+                    key,
+                    value,
+                    replacement: None,
+                });
+                return FilterStatus::Leaf { key, value };
+            }
+            let Some(FilterFrame::Page { result, .. }) = self.frame.take() else {
+                unreachable!()
+            };
+            return self.returned(result);
+        }
         match self.frame.take() {
             None => FilterStatus::Complete(self.last.clone()),
             Some(FilterFrame::Visit(root)) if root.is_empty() => self.returned(root),
-            Some(FilterFrame::Visit(root)) => match store.node(&root) {
+            Some(FilterFrame::Visit(root)) => match &store.record(&root).node {
                 Node::Leaf { key, value } => {
+                    let (key, value) = (*key, *value);
                     self.leaf = Some(FilterLeaf {
                         root,
                         key,
@@ -826,7 +1052,16 @@ impl<V: Value> Filter<V> {
                     });
                     FilterStatus::Leaf { key, value }
                 }
+                Node::Page { .. } => {
+                    self.frame = Some(FilterFrame::Page {
+                        root: root.clone(),
+                        position: 0,
+                        result: root,
+                    });
+                    FilterStatus::Pending
+                }
                 Node::Branch { left, .. } => {
+                    let left = left.clone();
                     self.frames.push(FilterFrame::AfterLeft { root });
                     self.frame = Some(FilterFrame::Visit(left));
                     FilterStatus::Pending
@@ -870,6 +1105,7 @@ impl<V: Value> Filter<V> {
                 };
                 self.returned(result)
             }
+            Some(FilterFrame::Page { .. }) => unreachable!(),
         }
     }
 }
@@ -883,6 +1119,7 @@ pub struct Collector<I, V: Value = Condition> {
     pending: Vec<Root<V>>,
     marking: bool,
     done: bool,
+    page: Option<(Root<V>, usize)>,
 }
 impl<I: Iterator<Item = Root<V>>, V: Value> Collector<I, V> {
     pub(crate) fn validate(&self, store: &Store<V>) {
@@ -898,6 +1135,17 @@ impl<I: Iterator<Item = Root<V>>, V: Value> Collector<I, V> {
     pub fn tick(&mut self, store: &mut Store<V>) -> Option<(Key, V)> {
         self.validate(store);
         if self.done {
+            return None;
+        }
+        if let Some((root, position)) = &mut self.page {
+            let Node::Page { prefix, entries } = &store.record(root).node else {
+                unreachable!()
+            };
+            if let Some(&(tail, value)) = entries.get(*position) {
+                *position += 1;
+                return Some((page_key(*prefix, tail), value));
+            }
+            self.page = None;
             return None;
         }
         if self.marking {
@@ -920,6 +1168,12 @@ impl<I: Iterator<Item = Root<V>>, V: Value> Collector<I, V> {
                     if fresh {
                         match &record.node {
                             Node::Leaf { key, value } => return Some((*key, *value)),
+                            Node::Page { prefix, entries } => {
+                                let (tail, value) = entries[0];
+                                let key = page_key(*prefix, tail);
+                                self.page = Some((root, 1));
+                                return Some((key, value));
+                            }
                             Node::Branch { left, right, .. } => {
                                 self.pending.extend([right.clone(), left.clone()])
                             }
@@ -945,7 +1199,7 @@ mod filter_tests {
     use super::*;
 
     #[test]
-    fn maximal_filter_stack_is_256_and_completion_releases_capacity() {
+    fn maximal_filter_stack_is_bounded_and_completion_releases_capacity() {
         let mut store = Store::default();
         let mut root = store.insert(store.empty(), [0; 4], 0_u64);
         for bit in 0..256 {
@@ -974,7 +1228,7 @@ mod filter_tests {
             }
         }
         assert_eq!(leaves, 257);
-        assert_eq!(peak, 256);
+        assert_eq!(peak, PAGE_BIT);
         assert_eq!(store.node_count(), before);
         assert_eq!(filter.frames.capacity(), 0);
         assert!(filter.frame.is_none());
@@ -1092,5 +1346,61 @@ mod prefix_identity_tests {
             0,
             "weak witness must not retain payloads"
         );
+    }
+}
+
+#[cfg(test)]
+mod page_archive_tests {
+    use super::*;
+
+    #[test]
+    fn interrupted_page_registration_retraces_all_values_and_releases_final_archive() {
+        for cutoff in 0..24 {
+            let mut store = Store::default();
+            let mut root = store.empty();
+            for n in 0..16 {
+                root = store.insert(root, [1, 2, 3, n], n);
+            }
+            let archive = root.clone();
+            root = store.insert(root, [1, 2, 3, 7], 77);
+            let mut registration =
+                store.collect_archived([root.clone()].into_iter(), vec![archive.clone()], true);
+            for _ in 0..cutoff {
+                registration.tick(&mut store);
+            }
+            drop(registration);
+            // An aborted archive registration restarts with the full root set.
+            let mut registration =
+                store.collect_archived([root.clone()].into_iter(), vec![archive.clone()], true);
+            let mut seen = std::collections::BTreeSet::new();
+            while !registration.done() {
+                if let Some(pair) = registration.tick(&mut store) {
+                    seen.insert(pair);
+                }
+            }
+            drop(registration);
+            for n in 0..16 {
+                assert!(seen.contains(&([1, 2, 3, n], n)));
+            }
+            assert!(seen.contains(&([1, 2, 3, 7], 77)));
+            // Completed archive protection lets the next pass skip its scalars.
+            let mut gc = store.collect_archived(std::iter::empty(), vec![], false);
+            while !gc.done() {
+                assert_eq!(gc.tick(&mut store), None);
+            }
+            drop(gc);
+            assert!(store.contains(&archive));
+            assert!(!store.contains(&root));
+            drop(root);
+            let mut gc = store.collect(std::iter::empty());
+            while !gc.done() {
+                gc.tick(&mut store);
+            }
+            drop(gc);
+            assert!(!store.contains(&archive));
+            drop(archive);
+            while !store.release_tick() {}
+            assert_eq!(store.node_count(), 0);
+        }
     }
 }

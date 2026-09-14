@@ -222,6 +222,9 @@ impl Graph {
     pub fn index_allocations(&self) -> usize {
         self.index.allocations()
     }
+    pub fn index_page_counts(&self) -> [usize; 6] {
+        self.index.page_counts()
+    }
     #[cfg(feature = "diagnostics")]
     pub fn field_update_diagnostics(&self) -> FieldUpdateDiagnostics {
         self.field_work.get()

@@ -5,6 +5,113 @@ fn key(n: u64) -> Key {
     [0, 0, 0, n]
 }
 
+// Loss of page packing must fail the storage assertion; incorrect COW,
+// boundary classification, or payload tracing must fail the independent map.
+#[test]
+fn dense_tail_pages_preserve_snapshots_ranges_and_bounded_reclamation() {
+    let mut store = Store::default();
+    let mut root = store.empty();
+    let mut expected = BTreeMap::new();
+    for n in 0..256 {
+        expected.insert(key(n), n);
+        root = store.insert(root, key(n), n);
+    }
+    while !store.release_tick() {}
+    assert!(
+        store.node_count() < 128,
+        "dense rows must avoid per-entry tree records"
+    );
+    let old = root.clone();
+    for n in (0..256).step_by(3) {
+        root = store.remove(root, &key(n));
+        expected.remove(&key(n));
+    }
+    for n in [0, 7, 8, 15, 255, 256, u64::MAX] {
+        root = store.batch(root, &mut [(key(n), Some(n ^ 999))]);
+        expected.insert(key(n), n ^ 999);
+    }
+    assert_eq!(snapshot_rows(&store, root.clone()), expected);
+    assert_eq!(
+        snapshot_rows(&store, old.clone()),
+        (0..256).map(|n| (key(n), n)).collect()
+    );
+    for lo in 0..260 {
+        for hi in [lo, lo + 3, lo + 17] {
+            let want: Vec<_> = expected
+                .range(key(lo)..=key(hi))
+                .map(|(&k, &v)| (k, v))
+                .collect();
+            let mut cursor = store.range(root.clone(), key(lo), key(hi));
+            let got: Vec<_> = std::iter::from_fn(|| cursor.next(&store)).collect();
+            assert_eq!(got, want);
+            assert_eq!(store.count(&root, key(lo), key(hi)), want.len());
+        }
+    }
+    let mut gc = store.collect([old.clone(), root.clone()].into_iter());
+    let mut traced = BTreeMap::new();
+    while !gc.done() {
+        if let Some((k, v)) = gc.tick(&mut store) {
+            traced.insert((k, v), ());
+        }
+    }
+    drop(gc);
+    for (&k, &v) in &expected {
+        assert!(traced.contains_key(&(k, v)));
+    }
+    for n in 0..256 {
+        assert!(traced.contains_key(&(key(n), n)));
+    }
+    drop((root, old));
+    while store.release_pending() {
+        let before = store.node_count();
+        store.release_tick();
+        assert!(before - store.node_count() <= 2);
+    }
+    assert_eq!(store.node_count(), 0);
+}
+
+#[test]
+fn dense_page_filter_keeps_pending_payloads_through_every_collection_and_discard() {
+    use chr::store::FilterStatus;
+    for cutoff in 0..70 {
+        let mut store = Store::default();
+        let mut root = store.empty();
+        for n in 0..24 {
+            root = store.insert(root, key(n), n);
+        }
+        let old = root.clone();
+        let mut filter = store.filter(root);
+        for _ in 0..cutoff {
+            let status = filter.tick(&mut store);
+            if let FilterStatus::Leaf { value, .. } = status {
+                filter.replace((value % 3 != 0).then_some(value + 1000));
+            }
+            let mut gc = store.collect(filter.roots().chain([old.clone()]));
+            while !gc.done() {
+                gc.tick(&mut store);
+            }
+            drop(gc);
+            if let FilterStatus::Complete(result) = status {
+                assert_eq!(
+                    snapshot_rows(&store, result),
+                    (0..24)
+                        .filter(|n| n % 3 != 0)
+                        .map(|n| (key(n), n + 1000))
+                        .collect()
+                );
+                break;
+            }
+        }
+        assert_eq!(
+            snapshot_rows(&store, old.clone()),
+            (0..24).map(|n| (key(n), n)).collect()
+        );
+        drop((filter, old));
+        while !store.release_tick() {}
+        assert_eq!(store.node_count(), 0, "discard at {cutoff}");
+    }
+}
+
 #[test]
 fn roots_share_unchanged_paths_and_preserve_old_values() {
     let mut store = Store::default();
@@ -13,7 +120,7 @@ fn roots_share_unchanged_paths_and_preserve_old_values() {
         root = store.insert(root, key(n), n);
     }
     let snapshot = root.clone();
-    let before = store.node_count();
+    let before = store.allocations();
     root = store.insert(root, key(2048), 77);
     assert_eq!(store.get(&snapshot, &key(2048)), Some(2048));
     assert_eq!(store.get(&root, &key(2048)), Some(77));
@@ -97,7 +204,7 @@ fn collection_preserves_snapshot_and_cursor_roots_and_reclaims_dead_versions() {
         }
     }
     drop(gc);
-    assert_eq!(store.node_count(), 3998); // two live 1000-leaf snapshots; unique updates leave no arena garbage
+    assert!(store.node_count() <= 3998); // two live snapshots, possibly packed
     assert!(store.node_count() <= before);
     assert_eq!(store.get(&snapshot, &key(42)), Some(42));
     assert_eq!(store.get(&root, &key(42)), Some(1042));
@@ -384,9 +491,9 @@ fn filter_rows(
     loop {
         ticks += 1;
         assert!(ticks <= 8 * (visited.len() + 257), "bounded traversal work");
-        let count = store.node_count();
+        let count = store.allocations();
         let status = filter.tick(store);
-        assert!(store.node_count() - count <= 1, "one allocation per tick");
+        assert!(store.allocations() - count <= 1, "one allocation per tick");
         match status {
             FilterStatus::Pending => {}
             FilterStatus::Leaf { key, value } => {
@@ -417,7 +524,8 @@ fn filter_full_width_keys_reuses_noop_and_rebuilds_each_changed_node_once() {
     assert_eq!(allocations, 0);
     assert_eq!(visited, original.keys().copied().collect::<Vec<_>>());
 
-    let old_nodes = 2 * original.len() - 1;
+    while !store.release_tick() {}
+    let old_nodes = store.node_count();
     let (changed, _, allocations) =
         filter_rows(&mut store, root.clone(), |_, value| Some(value + 1000));
     assert_eq!(
@@ -512,10 +620,13 @@ fn filter_survives_gc_between_every_transition_and_traces_pending_values() {
         .filter_map(|(k, v)| (v % 3 != 0).then_some((k, v + 1000)))
         .collect();
     assert_eq!(snapshot_rows(&store, result), expected);
+    assert!(store.node_count() < 2 * expected.len());
+    drop(filter);
+    while !store.release_tick() {}
     assert_eq!(
         store.node_count(),
-        2 * expected.len() - 1,
-        "completed filter retains only its resulting tree"
+        0,
+        "completed filter releases its resulting tree"
     );
 }
 

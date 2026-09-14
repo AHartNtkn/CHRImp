@@ -106,6 +106,14 @@ paths, including ownership checks and metadata refresh, not semantic rule work.
 Batching can reduce these counts without changing applications or allocation;
 charge batch normalization, finalization and release work separately.
 
+The `graph_pages` diagnostic array reports cumulative page record allocations,
+copied entries (COW and packing), entry writes, sparse-boundary splits, packed
+merges, and entries returned by page cursors. In-place leaf-to-page conversions
+count as merges, not new record allocations. Cursor node visits count a page
+once; its returned entries are separate work and must also be charged. Sorted
+updates additionally shift at most seven entries per write. Pages contain at
+most eight entries; their vectors use ordinary bounded capacity growth.
+
 ## External limits and process resources
 
 Build the desired binary first, then run it directly:
