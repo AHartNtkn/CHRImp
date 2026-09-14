@@ -670,7 +670,7 @@ fn report_diagnostics(phase: &str, e: &Engine) {
         let allocation = allocation::snapshot();
         report::emit(
             "diagnostics",
-            serde_json::json!({"phase": phase, "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "normalization": e.normalization_stats(), "allocation": allocation, "memory_counts": report::memory(memory(e))}),
+            serde_json::json!({"phase": phase, "work": e.diagnostics(), "shared_restrictions": e.restriction_diagnostics(), "normalization": e.normalization_stats(), "field_updates": e.graph().field_update_diagnostics(), "preparation": e.program().preparation_diagnostics(), "allocation": allocation, "memory_counts": report::memory(memory(e))}),
         );
         println!(
             "diagnostics={}",
@@ -864,7 +864,10 @@ fn main() -> ExitCode {
             );
         }
         let interaction = matches!(
-            args[0].strip_suffix("-conditional").unwrap_or(&args[0]),
+            args[0]
+                .strip_suffix("-conditional")
+                .or_else(|| args[0].strip_suffix("-structural"))
+                .unwrap_or(&args[0]),
             "life-held-output" | "life-archive-fixed" | "life-archive-rotate" | "life-inspections"
         );
         if interaction_options && !interaction {

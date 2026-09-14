@@ -1,0 +1,1069 @@
+{
+  "schema": 1,
+  "baseline_revision": "e96efeef47a0de272ec3f24fd9169b270c36581d",
+  "raw_root": "/tmp/chrimp-opt-theory-derived-execution/evidence",
+  "metric_format": [
+    "median",
+    "minimum",
+    "maximum"
+  ],
+  "note": "Descriptive native observations. Censored samples are work intervals, never completed searches. Runtime is not an acceptance metric. Full source records and process metadata remain at raw_root.",
+  "cohorts": {
+    "baseline-native": {
+      "notebook-behavior-b-1": {
+        "samples": [
+          "baseline-native/notebook-behavior-b-1/0.json",
+          "baseline-native/notebook-behavior-b-1/1.json",
+          "baseline-native/notebook-behavior-b-1/2.json",
+          "baseline-native/notebook-behavior-b-1/3.json",
+          "baseline-native/notebook-behavior-b-1/4.json"
+        ],
+        "statuses": {
+          "censored": 5
+        },
+        "configuration": {
+          "case": "notebook-behavior-b",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": false,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 1,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            60076,
+            57620,
+            61011
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            160709,
+            159581,
+            162106
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            4660,
+            4634,
+            4691
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            4335,
+            4161,
+            4620
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            94523,
+            94517,
+            94556
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            164975,
+            164975,
+            165001
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            4801,
+            4801,
+            4801
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            4941,
+            4939,
+            4950
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            74496,
+            74420,
+            74524
+          ],
+          "process.peak_rss_kib": [
+            74180,
+            74120,
+            74332
+          ],
+          "process.wall_seconds": [
+            3.0457050430122763,
+            3.045252639101818,
+            3.0462463370058686
+          ],
+          "time_ms.cleanup": [
+            39.49738,
+            38.664839,
+            40.058559
+          ],
+          "time_ms.engine_init": [
+            0.008916,
+            0.007837,
+            0.018182
+          ],
+          "time_ms.parse": [
+            0.801318,
+            0.555347,
+            0.816233
+          ],
+          "time_ms.prepare": [
+            0.208757,
+            0.150894,
+            0.238989
+          ],
+          "time_ms.source_delivery": [
+            3000.2794430000004,
+            3000.03955,
+            3000.2931710000003
+          ],
+          "work.advance1_ticks": [
+            19165184,
+            19066880,
+            19232768
+          ],
+          "work.answers": [
+            0,
+            0,
+            0
+          ],
+          "work.applications": [
+            4611,
+            4562,
+            4654
+          ],
+          "work.cleanup_ticks": [
+            207214,
+            206788,
+            207919
+          ],
+          "work.collections": [
+            19,
+            19,
+            19
+          ],
+          "work.scalars": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "notebook-behavior-c-1": {
+        "samples": [
+          "baseline-native/notebook-behavior-c-1/0.json",
+          "baseline-native/notebook-behavior-c-1/1.json",
+          "baseline-native/notebook-behavior-c-1/2.json",
+          "baseline-native/notebook-behavior-c-1/3.json",
+          "baseline-native/notebook-behavior-c-1/4.json"
+        ],
+        "statuses": {
+          "censored": 5
+        },
+        "configuration": {
+          "case": "notebook-behavior-c",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": false,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 1,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            54236,
+            53284,
+            56422
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            153479,
+            152159,
+            154200
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            4592,
+            4578,
+            4617
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            4480,
+            4449,
+            4610
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            74473,
+            74449,
+            74557
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            153479,
+            152159,
+            154574
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            4592,
+            4578,
+            4617
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            5157,
+            5143,
+            5159
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            62816,
+            62760,
+            62868
+          ],
+          "process.peak_rss_kib": [
+            62468,
+            62436,
+            62660
+          ],
+          "process.wall_seconds": [
+            3.043097840156406,
+            3.042463236954063,
+            3.044110342860222
+          ],
+          "time_ms.cleanup": [
+            36.959213,
+            36.473837,
+            37.53554
+          ],
+          "time_ms.engine_init": [
+            0.009757,
+            0.0074730000000000005,
+            0.013491
+          ],
+          "time_ms.parse": [
+            0.750508,
+            0.565182,
+            0.82135
+          ],
+          "time_ms.prepare": [
+            0.21211600000000003,
+            0.145183,
+            0.217344
+          ],
+          "time_ms.source_delivery": [
+            3000.2866830000003,
+            3000.011646,
+            3000.5608549999997
+          ],
+          "work.advance1_ticks": [
+            19896320,
+            19861504,
+            19961856
+          ],
+          "work.answers": [
+            0,
+            0,
+            0
+          ],
+          "work.applications": [
+            4449,
+            4443,
+            4466
+          ],
+          "work.cleanup_ticks": [
+            198285,
+            196104,
+            201222
+          ],
+          "work.collections": [
+            22,
+            22,
+            22
+          ],
+          "work.scalars": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "notebook-behavior-i-1": {
+        "samples": [
+          "baseline-native/notebook-behavior-i-1/0.json",
+          "baseline-native/notebook-behavior-i-1/1.json",
+          "baseline-native/notebook-behavior-i-1/2.json",
+          "baseline-native/notebook-behavior-i-1/3.json",
+          "baseline-native/notebook-behavior-i-1/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "notebook-behavior-i",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": false,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 1,
+          "timeout_seconds": 3
+        },
+        "witnesses": [
+          "App(App(S, K), Hole(16))"
+        ],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            509,
+            509,
+            509
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            3518,
+            3518,
+            3518
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            134,
+            134,
+            134
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            97,
+            97,
+            97
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            587,
+            587,
+            587
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            3540,
+            3540,
+            3540
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            136,
+            136,
+            136
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            189,
+            189,
+            189
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            6432,
+            6380,
+            6448
+          ],
+          "process.peak_rss_kib": [
+            10620,
+            10456,
+            10776
+          ],
+          "process.wall_seconds": [
+            0.02351137506775558,
+            0.0231003079097718,
+            0.026012619957327843
+          ],
+          "time_ms.cleanup": [
+            0.400876,
+            0.396168,
+            0.41006000000000004
+          ],
+          "time_ms.engine_init": [
+            0.009875,
+            0.008561,
+            0.014312
+          ],
+          "time_ms.parse": [
+            0.7942710000000001,
+            0.6201800000000001,
+            0.809852
+          ],
+          "time_ms.prepare": [
+            0.21807,
+            0.16588599999999998,
+            0.233858
+          ],
+          "time_ms.source_delivery": [
+            19.564936000000003,
+            18.974187999999998,
+            21.996495000000003
+          ],
+          "work.advance1_ticks": [
+            166080,
+            166073,
+            166080
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            128,
+            128,
+            128
+          ],
+          "work.cleanup_ticks": [
+            4115,
+            4115,
+            4115
+          ],
+          "work.collections": [
+            6,
+            6,
+            6
+          ],
+          "work.scalars": [
+            73,
+            73,
+            73
+          ]
+        }
+      },
+      "notebook-behavior-s-1": {
+        "samples": [
+          "baseline-native/notebook-behavior-s-1/0.json",
+          "baseline-native/notebook-behavior-s-1/1.json",
+          "baseline-native/notebook-behavior-s-1/2.json",
+          "baseline-native/notebook-behavior-s-1/3.json",
+          "baseline-native/notebook-behavior-s-1/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "notebook-behavior-s",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": false,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 1,
+          "timeout_seconds": 3
+        },
+        "witnesses": [
+          "S"
+        ],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            623,
+            623,
+            623
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            3169,
+            3169,
+            3169
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            158,
+            158,
+            158
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            87,
+            87,
+            87
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            623,
+            623,
+            623
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            3352,
+            3352,
+            3352
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            158,
+            158,
+            158
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            170,
+            170,
+            170
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            6352,
+            6352,
+            6356
+          ],
+          "process.peak_rss_kib": [
+            10592,
+            10372,
+            10744
+          ],
+          "process.wall_seconds": [
+            0.02228778414428234,
+            0.020476312143728137,
+            0.023732783971354365
+          ],
+          "time_ms.cleanup": [
+            0.418706,
+            0.39584800000000003,
+            0.456266
+          ],
+          "time_ms.engine_init": [
+            0.012974,
+            0.010159999999999999,
+            0.016090999999999998
+          ],
+          "time_ms.parse": [
+            0.805872,
+            0.54423,
+            0.858381
+          ],
+          "time_ms.prepare": [
+            0.221311,
+            0.144601,
+            0.234135
+          ],
+          "time_ms.source_delivery": [
+            18.264236,
+            16.936677,
+            19.520303
+          ],
+          "work.advance1_ticks": [
+            141334,
+            141334,
+            141334
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            135,
+            135,
+            135
+          ],
+          "work.cleanup_ticks": [
+            4497,
+            4497,
+            4497
+          ],
+          "work.collections": [
+            3,
+            3,
+            3
+          ],
+          "work.scalars": [
+            125,
+            125,
+            125
+          ]
+        }
+      },
+      "notebook-behavior-w-1": {
+        "samples": [
+          "baseline-native/notebook-behavior-w-1/0.json",
+          "baseline-native/notebook-behavior-w-1/1.json",
+          "baseline-native/notebook-behavior-w-1/2.json",
+          "baseline-native/notebook-behavior-w-1/3.json",
+          "baseline-native/notebook-behavior-w-1/4.json"
+        ],
+        "statuses": {
+          "censored": 5
+        },
+        "configuration": {
+          "case": "notebook-behavior-w",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": false,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 1,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            100427,
+            99778,
+            100487
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            132515,
+            132515,
+            132528
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            4394,
+            4394,
+            4394
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            5059,
+            5059,
+            5059
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            100427,
+            99778,
+            100487
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            146080,
+            146080,
+            146080
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            4394,
+            4394,
+            4394
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            5252,
+            5252,
+            5252
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            70332,
+            70308,
+            70380
+          ],
+          "process.peak_rss_kib": [
+            70036,
+            69936,
+            70180
+          ],
+          "process.wall_seconds": [
+            3.123912987066433,
+            3.103944833856076,
+            3.1505638288799673
+          ],
+          "time_ms.cleanup": [
+            117.318539,
+            97.922502,
+            144.64722799999998
+          ],
+          "time_ms.engine_init": [
+            0.009548000000000001,
+            0.005425,
+            0.017329
+          ],
+          "time_ms.parse": [
+            0.7919889999999999,
+            0.599941,
+            0.841857
+          ],
+          "time_ms.prepare": [
+            0.207285,
+            0.145071,
+            0.217444
+          ],
+          "time_ms.source_delivery": [
+            3000.130137,
+            3000.04013,
+            3000.3651160000004
+          ],
+          "work.advance1_ticks": [
+            19726336,
+            19441664,
+            20051968
+          ],
+          "work.answers": [
+            0,
+            0,
+            0
+          ],
+          "work.applications": [
+            4368,
+            4368,
+            4368
+          ],
+          "work.cleanup_ticks": [
+            857959,
+            532700,
+            1143563
+          ],
+          "work.collections": [
+            22,
+            22,
+            22
+          ],
+          "work.scalars": [
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+}

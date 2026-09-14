@@ -1,0 +1,114 @@
+{
+  "status": "compared",
+  "observer_overhead": false,
+  "observation_changes": {},
+  "environment_differences": {},
+  "before": "evidence/baseline-diag/notebook-behavior-i-1",
+  "after": "evidence/candidate-diag/notebook-behavior-i-1",
+  "configuration": {
+    "case": "notebook-behavior-i",
+    "detailed": false,
+    "diagnostics_feature": true,
+    "max_ticks": 50000000,
+    "rows": 1,
+    "seed": 0,
+    "shape": "chain",
+    "size": 1,
+    "timeout_seconds": 3
+  },
+  "measurement_scope": "Completed measurement intervals only. Censored resource observations describe the measured prefix, not whole-search cost or adverse amplification; inspect raw work and elapsed observations.",
+  "metrics": {
+    "allocations.total_allocated_bytes": {
+      "status": "decrease",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 16168004.0,
+      "after_mean": 15842501.0,
+      "before_median": 16168244,
+      "after_median": 15842541,
+      "absolute_change": -325503.0,
+      "ratio": 0.9798674592114154,
+      "before_range": [
+        16167044,
+        16168244
+      ],
+      "after_range": [
+        15840005,
+        15845045
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "holm_threshold": 0.025
+    },
+    "allocations.process_peak_requested_bytes": {
+      "status": "decrease",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 2029024.0,
+      "after_mean": 2009426.0,
+      "before_median": 2029024,
+      "after_median": 2009426,
+      "absolute_change": -19598.0,
+      "ratio": 0.9903411689561089,
+      "before_range": [
+        2029024,
+        2029024
+      ],
+      "after_range": [
+        2009426,
+        2009426
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "holm_threshold": 0.016666666666666666
+    },
+    "workload.memory_counts.sampled_peak.graph_nodes": {
+      "status": "decrease",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 3540.0,
+      "after_mean": 3088.0,
+      "before_median": 3540,
+      "after_median": 3088,
+      "absolute_change": -452.0,
+      "ratio": 0.8723163841807909,
+      "before_range": [
+        3540,
+        3540
+      ],
+      "after_range": [
+        3088,
+        3088
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "holm_threshold": 0.05
+    }
+  },
+  "sample_paths": {
+    "before": [
+      "evidence/baseline-diag/notebook-behavior-i-1/0.json",
+      "evidence/baseline-diag/notebook-behavior-i-1/1.json",
+      "evidence/baseline-diag/notebook-behavior-i-1/2.json",
+      "evidence/baseline-diag/notebook-behavior-i-1/3.json",
+      "evidence/baseline-diag/notebook-behavior-i-1/4.json"
+    ],
+    "after": [
+      "evidence/candidate-diag/notebook-behavior-i-1/0.json",
+      "evidence/candidate-diag/notebook-behavior-i-1/1.json",
+      "evidence/candidate-diag/notebook-behavior-i-1/2.json",
+      "evidence/candidate-diag/notebook-behavior-i-1/3.json",
+      "evidence/candidate-diag/notebook-behavior-i-1/4.json"
+    ]
+  },
+  "before_outcomes": {
+    "completed": 5
+  },
+  "after_outcomes": {
+    "completed": 5
+  },
+  "interpretation": "At most 9,999 resampling draws per hypothesis; processing deadline bounds the comparison. Two-sided mean-difference permutation evidence with Holm family correction; increases need materiality/scaling assessment. Sparse, censored or missing observations cannot establish absence of regression. Machine drift and serial group order can confound differences. Native RSS is the whole harness address-space peak; wait4 RSS includes launcher overhead."
+}

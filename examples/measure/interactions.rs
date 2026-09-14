@@ -111,13 +111,30 @@ fn capture(
     width: usize,
     conditional: bool,
 ) -> Result<Option<ViewId>, String> {
+    let structural = e
+        .program()
+        .signatures()
+        .iter()
+        .any(|s| s.name == "keep" && s.arity == 3);
     let relation = e
         .program()
         .signatures()
         .iter()
-        .position(|s| s.name == if conditional { "turn" } else { "loop" })
+        .position(|s| {
+            s.name
+                == if conditional || structural {
+                    "turn"
+                } else {
+                    "loop"
+                }
+        })
         .unwrap();
     let mut last_choice = e.choices().next_back().map(|(&id, _)| id);
+    let structural_payload = e
+        .program()
+        .signatures()
+        .iter()
+        .position(|s| s.name == "keep" && s.arity == 3);
     while b.step(e) {
         check(
             e.take_output().is_none(),
@@ -132,7 +149,14 @@ fn capture(
             if !born {
                 continue;
             }
-        } else if e.facts(relation).map_err(|e| e.to_string())?.count() != width {
+        } else if e.facts(relation).map_err(|e| e.to_string())?.count()
+            != if structural { 1 } else { width }
+        {
+            continue;
+        }
+        if let Some(payload) = structural_payload
+            && e.facts(payload).map_err(|e| e.to_string())?.count() != width
+        {
             continue;
         }
         match e.capture_snapshot() {
@@ -332,7 +356,11 @@ pub(super) fn run(
         "interaction dimensions overflow",
     )?;
     let conditional = case.ends_with("-conditional");
-    let case = case.strip_suffix("-conditional").unwrap_or(case);
+    let structural = case.ends_with("-structural");
+    let case = case
+        .strip_suffix("-conditional")
+        .or_else(|| case.strip_suffix("-structural"))
+        .unwrap_or(case);
     check(
         matches!(
             case,
@@ -346,17 +374,27 @@ pub(super) fn run(
             "({});{}",
             vec!["loop(V0)"; n].join(";"),
             (0..rows)
-                .map(|i| format!("done(V{i})"))
+                .map(|i| if structural {
+                    format!("done(V{i},V{i},V{i})")
+                } else {
+                    format!("done(V{i})")
+                })
                 .collect::<Vec<_>>()
                 .join(",")
         )
     } else {
         (0..rows)
-            .map(|i| format!("keep(V{i}),loop(V{i})"))
+            .map(|i| {
+                if structural {
+                    format!("keep(V{i},V{i},V{i}),loop(V{i})")
+                } else {
+                    format!("keep(V{i}),loop(V{i})")
+                }
+            })
             .collect::<Vec<_>>()
             .join(",")
     };
-    if conditional && !held {
+    if (conditional || structural) && !held {
         query.push_str(",turn()");
     }
     let code = Arc::new(
@@ -365,6 +403,10 @@ pub(super) fn run(
                 CONDITIONAL_HELD_RULE
             } else if conditional {
                 CONDITIONAL_RULE
+            } else if structural && held {
+                "loop(X) <=> loop(X). keep(K,A,B) \\ keep(K,C,D) <=> A=C,B=D. done(K,A,B) \\ done(K,C,D) <=> A=C,B=D."
+            } else if structural {
+                "turn() <=> turn(). keep(K,A,B) \\ keep(K,C,D) <=> A=C,B=D."
             } else {
                 "loop(X) <=> loop(X)."
             })
@@ -602,7 +644,7 @@ pub(super) fn run(
             &e,
             &b,
             json!({"answers":if held {output.answers} else {readers.iter().map(|(_,r)|r.answers).sum()},
-                "projection_only":conditional && !held,
+                "projection_only":(conditional || structural) && !held,
                 "source_applications_during_projection":e.applications()-projection_start}),
         );
         if conditional {
@@ -647,6 +689,30 @@ pub(super) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn structural_payloads_survive_held_output_and_retained_readers() {
+        for case in [
+            "life-held-output-structural",
+            "life-archive-fixed-structural",
+            "life-inspections-structural",
+        ] {
+            assert!(
+                run(
+                    case,
+                    2,
+                    Options {
+                        rows: 16,
+                        work: 16,
+                        cadence: 4
+                    },
+                    500_000,
+                    Duration::from_secs(5)
+                )
+                .unwrap(),
+                "{case}"
+            );
+        }
+    }
     #[test]
     fn independent_interaction_dimensions_and_censoring() {
         for case in [

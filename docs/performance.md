@@ -322,3 +322,26 @@ target/release/examples/constructor_probe program.chr --query 'app(R,A,B),app(R,
 ```
 
 The probe reports source progress and bounded cleanup separately. A cleanup limit is a censored release, not a completed timing. Its normalization counters describe admitted work, not CPU shares. Preparation-reuse measurements use the shared immutable prepared plan; source recognition is not repeated for each engine. Historical comparison modes remain on the research branches.
+
+## Certified structural storage probes
+
+The four retained-reader interaction cases also accept `-structural`. They use
+cyclic ternary payloads with source-defined structural consistency rules and
+validate every ordered field identity. Archive/inspector payloads remain static
+beside a separate live rewrite driver; draining projections must perform zero
+additional source applications. For example:
+
+```sh
+python3 examples/perf.py --binary target/release/examples/measure \
+  --out /tmp/structural-retention --repeat 5 --warmup 0 --seconds 10 --total-seconds 60 -- \
+  life-archive-fixed-structural 4 50000000 3 --rows 64 --work 64 --cadence 4
+```
+
+Notebook result records include `times_ms.engine_and_prepared_drop` after the
+existing cancellation/collection phase and `prepared_released`, a check that
+final destruction released the last strong prepared-program owner. With
+`--detail`, validator time remains a subset of source-to-End time, not an
+additional phase to add twice. Diagnostic records expose preparation recognition
+and sparse-update plan costs plus executed/avoided field-index writes and raw
+lookup fallback work. See the [Rehearse 001 evaluation](optimization-evidence/rehearse/round001-theory-derived/README.md)
+for scope, common-baseline harness patch, retention evidence and limitations.

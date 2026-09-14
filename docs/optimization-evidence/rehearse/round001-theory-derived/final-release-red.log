@@ -1,0 +1,13 @@
+F
+======================================================================
+FAIL: test_notebook_final_release_includes_last_prepared_owner (measure_observation_test.ObservationTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/chrimp-opt-theory-derived-execution/tests/measure_observation_test.py", line 31, in test_notebook_final_release_includes_last_prepared_owner
+    self.assertIn('prepared_released', data, 'final prepared ownership release is not checked')
+AssertionError: 'prepared_released' not found in {'case': 'notebook-behavior-i', 'censor_reason': None, 'cleanup_done': True, 'cleanup_in_time': True, 'delivery_done': False, 'error': None, 'first_answer': {'ms': 19.631543, 'tick': 157222}, 'first_complete_answer': 'App(App(S, K), Hole(16))', 'first_event': {'ms': 19.184122000000002, 'tick': 154718}, 'goal': 'answer_prefix', 'goal_count': 1, 'max_ticks': 5000000, 'memory_counts': {'after_cleanup': {'choices': 0, 'conditions': 0, 'coordinate_records': 1, 'graph_nodes': 0, 'history_nodes': 0, 'history_records': 0, 'inspections': 0, 'obligation_descriptors': 0, 'occurrences': 0, 'pending_nodes': 0, 'pending_tasks': 0, 'release_batches': 0, 'restriction_nodes': 0, 'snapshots': 0}, 'before_cleanup': {'choices': 32, 'conditions': 485, 'coordinate_records': 1, 'graph_nodes': 3088, 'history_nodes': 0, 'history_records': 0, 'inspections': 0, 'obligation_descriptors': 46, 'occurrences': 129, 'pending_nodes': 105, 'pending_tasks': 53, 'release_batches': 0, 'restriction_nodes': 0, 'snapshots': 0}, 'sampled_peak': {'choices': 32, 'conditions': 673, 'coordinate_records': 7, 'graph_nodes': 3088, 'history_nodes': 0, 'history_records': 0, 'inspections': 0, 'obligation_descriptors': 143, 'occurrences': 136, 'pending_nodes': 188, 'pending_tasks': 56, 'release_batches': 6, 'restriction_nodes': 0, 'snapshots': 0}}, 'native_peak_rss_estimate_kib': 6696, 'search_exhausted': False, 'size': 1, 'source_goal_reached': True, 'status': 'PREFIX_COMPLETE', 'timed_out': False, 'timeout_ms': 5000.0, 'times_ms': {'cleanup': 0.429008, 'engine_init': 0.0074410000000000006, 'parse': 0.7556970000000001, 'prepare': 0.201323, 'source_delivery': 19.639608, 'source_delivery_without_validator': None, 'validator': None}, 'work': {'advance1_ticks': 157222, 'answers': 1, 'applications': 126, 'cleanup_ticks': 3643, 'collection_status_ticks': None, 'collections': 6, 'scalars': 73}} : final prepared ownership release is not checked
+
+----------------------------------------------------------------------
+Ran 1 test in 0.025s
+
+FAILED (failures=1)

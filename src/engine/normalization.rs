@@ -549,3 +549,84 @@ impl Trace for Normalizer {
         }
     }
 }
+
+#[cfg(test)]
+mod structural_field_tests {
+    use super::*;
+    use crate::syntax::{parse_program, parse_query};
+
+    #[test]
+    fn certified_fields_preserve_conditional_identity_and_raw_observation_without_port_index() {
+        let code = Arc::new(crate::program::prepare(
+            &parse_program("same @ app(K,X,Y) \\ app(K,U,V) <=> X=U,Y=V. app(K,X,Y) \\ read(K) <=> seen(X,Y).").unwrap(),
+            &parse_query("app(K,A,B),app(L,C,D),(K=L;true),read(K)").unwrap(),
+        ).unwrap());
+        let mut e = Engine::new(code);
+        let mut variables = Vec::new();
+        let mut answers = Vec::new();
+        let mut observed = false;
+        for _ in 0..200_000 {
+            e.advance(1);
+            if !observed && let Some(fact) = e.facts(0).unwrap().next() {
+                let id = fact.id;
+                let args = fact.args.to_vec();
+                let support = fact.support;
+                let root = e.state.graph.clone();
+                for (port, &variable) in args.iter().enumerate().skip(1) {
+                    assert_eq!(
+                        e.graph
+                            .port(root.clone(), 0, port, variable)
+                            .unwrap()
+                            .next(&e.graph),
+                        Some((id, support))
+                    );
+                }
+                // A real committed post remains observable, but fields used
+                // only as payload must not allocate matching index leaves.
+                assert_eq!(
+                    e.graph
+                        .index
+                        .count(&root, [2, 1, 0, 0], [2, 2, u64::MAX, u64::MAX]),
+                    0,
+                    "certified field posts still construct unused lookup indexes"
+                );
+                observed = true;
+            }
+            if let Some(output) = e.take_output() {
+                match output {
+                    Output::Begin { .. } => variables.clear(),
+                    Output::Variable { variable, .. } => variables.push(variable),
+                    Output::End => {
+                        // Query slots: K,A,B,L,C,D. Heads must not merge K/L;
+                        // only the first explicit arm identifies their fields.
+                        assert_eq!(variables.len(), 6);
+                        assert_eq!(variables[1] == variables[4], variables[0] == variables[3]);
+                        assert_eq!(variables[2] == variables[5], variables[0] == variables[3]);
+                        assert_ne!(variables[1], variables[2]);
+                        answers.push(variables[0] == variables[3]);
+                    }
+                    _ => {}
+                }
+            }
+            if e.delivery_done() {
+                break;
+            }
+        }
+        assert!(observed && e.delivery_done());
+        answers.sort();
+        assert_eq!(answers, [false, true]);
+        e.cancel();
+        for _ in 0..200_000 {
+            e.advance(1);
+            if e.cancel_done() {
+                break;
+            }
+        }
+        assert!(e.cancel_done());
+        let m = e.memory();
+        assert_eq!(
+            (m.graph_nodes, m.occurrences, m.conditions, m.pending_nodes),
+            (0, 0, 0, 0)
+        );
+    }
+}

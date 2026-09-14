@@ -54,6 +54,85 @@ struct Row {
     marked: u64,
 }
 
+#[derive(Clone, Copy)]
+enum IndexWrite {
+    Relation,
+    Port(usize),
+    Incidence(usize),
+    Tuple,
+}
+
+/// Immutable graph-update code shared with the prepared source. Every physical
+/// write is explicit; omitted field indexes incur neither writes nor skip jobs.
+pub(crate) struct UpdatePlan {
+    ports: Vec<bool>,
+    writes: Vec<IndexWrite>,
+}
+#[cfg(feature = "diagnostics")]
+#[derive(Clone, Copy, Default, Debug, serde::Serialize)]
+pub struct FieldUpdateDiagnostics {
+    /// All calls to Graph::write, including identities and attachments.
+    pub graph_writes: u64,
+    /// Executed writes from a compiler-certified sparse update plan.
+    pub specialized_writes: u64,
+    /// Missing port writes paired with executed incidence writes; cancellation
+    /// before reaching that field contributes nothing.
+    pub avoided_port_writes: u64,
+    pub fallback_lookups: u64,
+    pub fallback_candidates: u64,
+}
+impl UpdatePlan {
+    #[cfg(feature = "diagnostics")]
+    pub(crate) fn statistics(plans: Option<&Arc<[Option<Self>]>>) -> (usize, usize, usize, usize) {
+        let Some(plans) = plans else {
+            return (0, 0, 0, 0);
+        };
+        let mut result = (0, 0, 0, std::mem::size_of_val(plans.as_ref()));
+        for plan in plans.iter().flatten() {
+            result.0 += 1;
+            result.1 += plan.ports.iter().filter(|p| !**p).count();
+            result.2 += plan.writes.len();
+            result.3 +=
+                plan.ports.capacity() + plan.writes.capacity() * std::mem::size_of::<IndexWrite>();
+        }
+        result
+    }
+    pub(crate) fn prepare(
+        signatures: &[Signature],
+        tuples: &[bool],
+        ports: Option<Vec<Vec<bool>>>,
+    ) -> Option<Arc<[Option<Self>]>> {
+        let ports = ports?;
+        if ports.iter().flatten().all(|p| *p) {
+            return None;
+        }
+        Some(
+            signatures
+                .iter()
+                .enumerate()
+                .map(|(r, s)| {
+                    let ports = ports[r].clone();
+                    debug_assert_eq!(ports.len(), s.arity);
+                    if ports.iter().all(|p| *p) {
+                        return None;
+                    }
+                    let mut writes = vec![IndexWrite::Relation];
+                    for (port, &indexed) in ports.iter().enumerate() {
+                        if indexed {
+                            writes.push(IndexWrite::Port(port));
+                        }
+                        writes.push(IndexWrite::Incidence(port));
+                    }
+                    if tuples[r] {
+                        writes.push(IndexWrite::Tuple);
+                    }
+                    Some(Self { ports, writes })
+                })
+                .collect(),
+        )
+    }
+}
+
 pub struct Fact<'a> {
     pub id: u64,
     pub relation: usize,
@@ -64,6 +143,8 @@ pub struct Fact<'a> {
 /// Immutable occurrence payloads and a persistent supported index. The executor
 /// owns the current root; updates return a new root for atomic publication.
 pub struct Graph {
+    #[cfg(feature = "diagnostics")]
+    field_work: std::cell::Cell<FieldUpdateDiagnostics>,
     pub(crate) shared_restrictions: restriction::Cache,
     semantic_debt: usize,
     pub(crate) index: Store<Condition>,
@@ -71,6 +152,7 @@ pub struct Graph {
     unprotected: Option<BTreeSet<u64>>,
     arities: Vec<usize>,
     tuple_indexes: Vec<bool>,
+    updates: Option<Arc<[Option<UpdatePlan>]>>,
     port_bases: Vec<u64>,
     next_occurrence: u64,
     epoch: u64,
@@ -88,6 +170,14 @@ impl Graph {
     /// Immutable index configuration: one flag per relation signature. Ordinary
     /// port and incidence indexes always exist; whole-tuple indexes require arity >= 2.
     pub fn with_tuple_indexes(signatures: &[Signature], tuple_indexes: &[bool]) -> Self {
+        Self::with_update_plans(signatures, tuple_indexes, None)
+    }
+
+    pub(crate) fn with_update_plans(
+        signatures: &[Signature],
+        tuple_indexes: &[bool],
+        updates: Option<Arc<[Option<UpdatePlan>]>>,
+    ) -> Self {
         assert_eq!(
             signatures.len(),
             tuple_indexes.len(),
@@ -113,6 +203,8 @@ impl Graph {
             })
             .collect();
         Self {
+            #[cfg(feature = "diagnostics")]
+            field_work: std::cell::Cell::default(),
             shared_restrictions: restriction::Cache::default(),
             semantic_debt: 0,
             index: Store::default(),
@@ -120,6 +212,7 @@ impl Graph {
             unprotected: None,
             arities: signatures.iter().map(|s| s.arity).collect(),
             tuple_indexes: tuple_indexes.to_vec(),
+            updates,
             port_bases,
             next_occurrence: 0,
             epoch: 0,
@@ -127,6 +220,22 @@ impl Graph {
     }
     pub fn index_allocations(&self) -> usize {
         self.index.allocations()
+    }
+    #[cfg(feature = "diagnostics")]
+    pub fn field_update_diagnostics(&self) -> FieldUpdateDiagnostics {
+        self.field_work.get()
+    }
+    fn update_plan(&self, relation: usize) -> Option<&UpdatePlan> {
+        self.updates.as_ref().and_then(|p| p[relation].as_ref())
+    }
+    fn has_port_index(&self, relation: usize, port: usize) -> bool {
+        self.update_plan(relation).is_none_or(|p| p.ports[port])
+    }
+    fn update_length(&self, relation: usize, arity: usize) -> usize {
+        self.update_plan(relation).map_or(
+            1 + 2 * arity + usize::from(self.tuple_indexes[relation]),
+            |p| p.writes.len(),
+        )
     }
     pub fn release_tick(&mut self) -> bool {
         self.index.release_tick()
@@ -257,9 +366,9 @@ impl Graph {
         // traceable. All remaining port/index updates yield separately.
         let staged = self.write(base, [FACT, id, 0, 0], support);
         let position = if !changed {
-            2 + 2 * args.len() + usize::from(self.tuple_indexes[relation])
+            self.update_length(relation, args.len())
         } else {
-            1
+            0
         };
         Update {
             owner: self.index.owner(),
@@ -275,6 +384,11 @@ impl Graph {
     }
 
     pub(crate) fn write(&mut self, root: Root, key: Key, support: Condition) -> Root {
+        #[cfg(feature = "diagnostics")]
+        self.field_work.update(|mut w| {
+            w.graph_writes += 1;
+            w
+        });
         self.index.assert_mutable();
         let previous = self.index.get(&root, &key);
         if previous.unwrap_or(Condition::FALSE) != support
@@ -301,6 +415,7 @@ impl Graph {
                 [RELATION, relation as u64, u64::MAX, 0],
             ),
             id_word: 2,
+            filter: None,
         })
     }
 
@@ -330,6 +445,19 @@ impl Graph {
         if port >= arity {
             return Err(GraphError::InvalidPort);
         }
+        if !self.has_port_index(relation, port) {
+            #[cfg(feature = "diagnostics")]
+            self.field_work.update(|mut w| {
+                w.fallback_lookups += 1;
+                w
+            });
+            // Public raw lookup retains exact occurrence/port semantics. Source
+            // matching cannot request this field under the whole-program proof.
+            // Incidence is retained for identity wakeup and ownership regardless.
+            let mut occurrences = self.incidence(root, variable);
+            occurrences.filter = Some((relation, port));
+            return Ok(occurrences);
+        }
         let port = self.port_bases[relation] + port as u64;
         Ok(Occurrences {
             cursor: self.index.range(
@@ -338,6 +466,7 @@ impl Graph {
                 [PORT, port, variable, u64::MAX],
             ),
             id_word: 3,
+            filter: None,
         })
     }
 
@@ -351,6 +480,11 @@ impl Graph {
         variable: u64,
     ) -> usize {
         assert!(port < self.arities[relation]);
+        if !self.has_port_index(relation, port) {
+            // Defensive fallback for direct library matchers over this graph.
+            // This is an upper bound, so it cannot hide candidate occurrences.
+            return self.relation_count(root, relation);
+        }
         let port = self.port_bases[relation] + port as u64;
         self.index.count(
             root,
@@ -386,6 +520,7 @@ impl Graph {
                 .index
                 .range(root, [PORT, port, hash, 0], [PORT, port, hash, u64::MAX]),
             id_word: 3,
+            filter: None,
         }
     }
 
@@ -407,6 +542,7 @@ impl Graph {
                 [INCIDENCE, variable, u64::MAX, 0],
             ),
             id_word: 2,
+            filter: None,
         }
     }
 
@@ -455,6 +591,7 @@ impl Graph {
 pub struct Occurrences {
     cursor: store::Cursor,
     id_word: usize,
+    filter: Option<(usize, usize)>,
 }
 impl Occurrences {
     pub fn root(&self) -> Root {
@@ -464,9 +601,22 @@ impl Occurrences {
         self.cursor.visits()
     }
     pub fn next(&mut self, graph: &Graph) -> Option<(u64, Condition)> {
-        self.cursor
-            .next(&graph.index)
-            .map(|(key, support)| (key[self.id_word], support))
+        while let Some((key, support)) = self.cursor.next(&graph.index) {
+            let id = key[self.id_word];
+            if let Some((relation, port)) = self.filter {
+                #[cfg(feature = "diagnostics")]
+                graph.field_work.update(|mut w| {
+                    w.fallback_candidates += 1;
+                    w
+                });
+                let row = graph.rows.get(&id).expect("pinned incidence payload");
+                if row.relation != relation || row.args[port] != key[1] {
+                    continue;
+                }
+            }
+            return Some((id, support));
+        }
+        None
     }
 }
 
@@ -499,27 +649,44 @@ impl Update {
     pub fn tick(&mut self, graph: &mut Graph) -> UpdateStatus {
         graph.index.assert_mutable();
         assert_eq!(self.owner, graph.index.owner(), "foreign graph update");
-        let end = 2 + 2 * self.args.len() + usize::from(graph.tuple_indexes[self.relation]);
+        let end = graph.update_length(self.relation, self.args.len());
         if self.position >= end {
             return UpdateStatus::Complete(self.staged.clone());
         }
-        let key = if self.position == 1 {
-            [RELATION, self.relation as u64, self.id, 0]
-        } else if self.position == 2 + 2 * self.args.len() {
-            [
+        let instruction = if let Some(plan) = graph.update_plan(self.relation) {
+            #[cfg(feature = "diagnostics")]
+            graph.field_work.update(|mut w| {
+                w.specialized_writes += 1;
+                if let IndexWrite::Incidence(port) = plan.writes[self.position] {
+                    w.avoided_port_writes += u64::from(!plan.ports[port]);
+                }
+                w
+            });
+            plan.writes[self.position]
+        } else if self.position == 0 {
+            IndexWrite::Relation
+        } else if self.position == 1 + 2 * self.args.len() {
+            IndexWrite::Tuple
+        } else if self.position % 2 == 1 {
+            IndexWrite::Port((self.position - 1) / 2)
+        } else {
+            IndexWrite::Incidence((self.position - 1) / 2)
+        };
+        let key = match instruction {
+            IndexWrite::Relation => [RELATION, self.relation as u64, self.id, 0],
+            IndexWrite::Tuple => [
                 PORT,
                 self.port_base + self.args.len() as u64,
                 self.tuple_hash,
                 self.id,
-            ]
-        } else {
-            let port = (self.position - 2) / 2;
-            if self.position.is_multiple_of(2) {
+            ],
+            IndexWrite::Port(port) => {
+                [PORT, self.port_base + port as u64, self.args[port], self.id]
+            }
+            IndexWrite::Incidence(port) => {
                 if graph.tuple_indexes[self.relation] {
                     self.tuple_hash = tuple_hash(self.tuple_hash, self.args[port]);
                 }
-                [PORT, self.port_base + port as u64, self.args[port], self.id]
-            } else {
                 [INCIDENCE, self.args[port], self.id, 0]
             }
         };
@@ -713,6 +880,71 @@ mod update_ownership_tests {
                 return r;
             }
         }
+    }
+    #[test]
+    fn certified_field_lookup_filters_incidence_and_retains_old_conditional_occurrences() {
+        use crate::{
+            program::prepare,
+            syntax::{parse_program, parse_query},
+        };
+        let code = prepare(
+            &parse_program("app(K,A,B) \\ app(K,C,D) <=> A=C,B=D.").unwrap(),
+            &parse_query("other(A)").unwrap(),
+        )
+        .unwrap();
+        let mut g =
+            Graph::with_update_plans(&code.signatures, &code.tuple_indexes, code.graph_updates);
+        let mut a = Arena::default();
+        let c = a.fresh_choice().1;
+        let mut root = g.empty();
+        // Shared raw identities in a different relation or wrong port are not
+        // hits. Equal rows still have distinct occurrence identities.
+        let mut ids = vec![];
+        for (relation, args) in [
+            (0, vec![1, 7, 8]),
+            (0, vec![2, 7, 8]),
+            (0, vec![7, 9, 7]),
+            (1, vec![7]),
+        ] {
+            let update = g.post(root, relation, args, c).unwrap();
+            ids.push(update.occurrence());
+            root = finish(&mut g, update);
+        }
+        assert_eq!(
+            g.index
+                .count(&root, [PORT, 1, 0, 0], [PORT, 2, u64::MAX, u64::MAX]),
+            0
+        );
+        let mut old = g.port(root.clone(), 0, 1, 7).unwrap();
+        assert_eq!(old.next(&g), Some((ids[0], c)));
+        let update = g
+            .set_liveness(root.clone(), ids[1], Condition::FALSE)
+            .unwrap();
+        let current = finish(&mut g, update);
+        let mut gc = g.collect([root, current.clone(), old.root()].into_iter());
+        while !gc.done() {
+            gc.tick(&mut g);
+        }
+        drop(gc);
+        assert_eq!(old.next(&g), Some((ids[1], c)));
+        assert_eq!(old.next(&g), None);
+        let mut now = g.port(current.clone(), 0, 1, 7).unwrap();
+        assert_eq!(now.next(&g), Some((ids[0], c)));
+        assert_eq!(now.next(&g), None);
+        assert_eq!(
+            g.port(current.clone(), 0, 2, 7).unwrap().next(&g),
+            Some((ids[2], c))
+        );
+        assert_eq!(g.port(current, 0, 1, 100).unwrap().next(&g), None);
+        drop(old);
+        drop(now);
+        let mut gc = g.collect(std::iter::empty());
+        while !gc.done() {
+            gc.tick(&mut g);
+        }
+        drop(gc);
+        while !g.release_tick() {}
+        assert_eq!((g.occurrence_count(), g.index_node_count()), (0, 0));
     }
     #[test]
     fn unique_changed_support_updates_all_indexes_without_copying() {

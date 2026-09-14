@@ -1,0 +1,2955 @@
+{
+  "schema": 1,
+  "baseline_revision": "e96efeef47a0de272ec3f24fd9169b270c36581d",
+  "raw_root": "/tmp/chrimp-opt-theory-derived-execution/evidence",
+  "metric_format": [
+    "median",
+    "minimum",
+    "maximum"
+  ],
+  "note": "Descriptive native observations. Censored samples are work intervals, never completed searches. Runtime is not an acceptance metric. Full source records and process metadata remain at raw_root.",
+  "cohorts": {
+    "retention-final-candidate": {
+      "life-archive-fixed-16": {
+        "samples": [
+          "retention-final-candidate/life-archive-fixed-16/0.json",
+          "retention-final-candidate/life-archive-fixed-16/1.json",
+          "retention-final-candidate/life-archive-fixed-16/2.json",
+          "retention-final-candidate/life-archive-fixed-16/3.json",
+          "retention-final-candidate/life-archive-fixed-16/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "life-archive-fixed-structural",
+          "continued_work": 64,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": 4,
+          "rows": 16,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 4,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 10,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1877,
+            1877,
+            1877
+          ],
+          "allocation.peak_bytes": [
+            185868,
+            185868,
+            185868
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            14520,
+            14520,
+            14520
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            847720,
+            847720,
+            847720
+          ],
+          "allocation.phase_bytes.inspection": [
+            107704,
+            107704,
+            107704
+          ],
+          "allocation.phase_bytes.other": [
+            467193,
+            467193,
+            467193
+          ],
+          "allocation.phase_bytes.setup": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.validator": [
+            0,
+            0,
+            0
+          ],
+          "allocation.total_bytes": [
+            1437137,
+            1437137,
+            1437137
+          ],
+          "allocation.total_calls": [
+            9173,
+            9173,
+            9173
+          ],
+          "collection.arena": [
+            30,
+            30,
+            30
+          ],
+          "collection.graph": [
+            558,
+            558,
+            558
+          ],
+          "collection.prune_graph": [
+            3,
+            3,
+            3
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            32,
+            32,
+            32
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            432,
+            432,
+            432
+          ],
+          "fields.specialized_writes": [
+            80,
+            80,
+            80
+          ],
+          "native_peak_rss_estimate_kib": [
+            4520,
+            4464,
+            4588
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            128,
+            128,
+            128
+          ],
+          "normalization.transactions": [
+            16,
+            16,
+            16
+          ],
+          "phase.cancel.applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.cancel.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.elapsed_ms": [
+            0.01831,
+            0.013653,
+            0.035384
+          ],
+          "phase.cancel.graph_nodes": [
+            289,
+            289,
+            289
+          ],
+          "phase.cancel.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.occurrences": [
+            33,
+            33,
+            33
+          ],
+          "phase.cancel.snapshots": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_admitted.applications": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.elapsed_ms": [
+            0.840345,
+            0.619262,
+            0.8897619999999999
+          ],
+          "phase.interaction_admitted.graph_nodes": [
+            297,
+            297,
+            297
+          ],
+          "phase.interaction_admitted.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.occurrences": [
+            33,
+            33,
+            33
+          ],
+          "phase.interaction_admitted.snapshots": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_exit.applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_exit.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.elapsed_ms": [
+            1.607715,
+            1.288681,
+            1.8983139999999998
+          ],
+          "phase.interaction_exit.graph_nodes": [
+            303,
+            303,
+            303
+          ],
+          "phase.interaction_exit.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.occurrences": [
+            33,
+            33,
+            33
+          ],
+          "phase.interaction_exit.snapshots": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_held.applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_held.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_held.continued_applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_held.elapsed_ms": [
+            1.234348,
+            0.951624,
+            1.369872
+          ],
+          "phase.interaction_held.graph_nodes": [
+            310,
+            310,
+            310
+          ],
+          "phase.interaction_held.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_held.occurrences": [
+            96,
+            96,
+            96
+          ],
+          "phase.interaction_held.snapshots": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_resumed.answers": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_resumed.applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_resumed.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.elapsed_ms": [
+            1.592375,
+            1.2757260000000001,
+            1.875034
+          ],
+          "phase.interaction_resumed.graph_nodes": [
+            303,
+            303,
+            303
+          ],
+          "phase.interaction_resumed.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.occurrences": [
+            33,
+            33,
+            33
+          ],
+          "phase.interaction_resumed.snapshots": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_resumed.source_applications_during_projection": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.elapsed_ms": [
+            0.034919000000000006,
+            0.034206,
+            0.052771
+          ],
+          "phase.release.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            18411,
+            16556,
+            23097
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1702,
+            1359,
+            1893
+          ],
+          "preparation.omitted_fields": [
+            2,
+            2,
+            2
+          ],
+          "preparation.plan_payload_bytes": [
+            275,
+            275,
+            275
+          ],
+          "preparation.specialized_relations": [
+            1,
+            1,
+            1
+          ],
+          "preparation.update_opcodes": [
+            5,
+            5,
+            5
+          ],
+          "process.peak_rss_kib": [
+            10528,
+            10252,
+            10672
+          ],
+          "process.wall_seconds": [
+            0.004255487117916346,
+            0.003281590063124895,
+            0.004612254211679101
+          ],
+          "source.match_candidates": [
+            0,
+            0,
+            0
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            96,
+            96,
+            96
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "life-archive-fixed-64": {
+        "samples": [
+          "retention-final-candidate/life-archive-fixed-64/0.json",
+          "retention-final-candidate/life-archive-fixed-64/1.json",
+          "retention-final-candidate/life-archive-fixed-64/2.json",
+          "retention-final-candidate/life-archive-fixed-64/3.json",
+          "retention-final-candidate/life-archive-fixed-64/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "life-archive-fixed-structural",
+          "continued_work": 64,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": 4,
+          "rows": 64,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 4,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 10,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1877,
+            1877,
+            1877
+          ],
+          "allocation.peak_bytes": [
+            503751,
+            503751,
+            503751
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            14520,
+            14520,
+            14520
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            1727608,
+            1727608,
+            1727608
+          ],
+          "allocation.phase_bytes.inspection": [
+            362448,
+            362448,
+            362448
+          ],
+          "allocation.phase_bytes.other": [
+            1039655,
+            1039655,
+            1039655
+          ],
+          "allocation.phase_bytes.setup": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.validator": [
+            0,
+            0,
+            0
+          ],
+          "allocation.total_bytes": [
+            3144231,
+            3144231,
+            3144231
+          ],
+          "allocation.total_calls": [
+            25132,
+            25132,
+            25132
+          ],
+          "collection.arena": [
+            30,
+            30,
+            30
+          ],
+          "collection.graph": [
+            1543,
+            1543,
+            1543
+          ],
+          "collection.prune_graph": [
+            3,
+            3,
+            3
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            128,
+            128,
+            128
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            960,
+            960,
+            960
+          ],
+          "fields.specialized_writes": [
+            320,
+            320,
+            320
+          ],
+          "native_peak_rss_estimate_kib": [
+            4856,
+            4856,
+            4924
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            512,
+            512,
+            512
+          ],
+          "normalization.transactions": [
+            64,
+            64,
+            64
+          ],
+          "phase.cancel.applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.cancel.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.elapsed_ms": [
+            0.016407,
+            0.015305,
+            0.016807
+          ],
+          "phase.cancel.graph_nodes": [
+            1153,
+            1153,
+            1153
+          ],
+          "phase.cancel.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.occurrences": [
+            129,
+            129,
+            129
+          ],
+          "phase.cancel.snapshots": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_admitted.applications": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.elapsed_ms": [
+            3.892983,
+            2.8677490000000003,
+            3.941646
+          ],
+          "phase.interaction_admitted.graph_nodes": [
+            1165,
+            1165,
+            1165
+          ],
+          "phase.interaction_admitted.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.occurrences": [
+            129,
+            129,
+            129
+          ],
+          "phase.interaction_admitted.snapshots": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_exit.applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_exit.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.elapsed_ms": [
+            5.302077,
+            4.228991,
+            5.65714
+          ],
+          "phase.interaction_exit.graph_nodes": [
+            1171,
+            1171,
+            1171
+          ],
+          "phase.interaction_exit.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.occurrences": [
+            129,
+            129,
+            129
+          ],
+          "phase.interaction_exit.snapshots": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_held.applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_held.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_held.continued_applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_held.elapsed_ms": [
+            4.318212,
+            3.232329,
+            4.424645
+          ],
+          "phase.interaction_held.graph_nodes": [
+            1179,
+            1179,
+            1179
+          ],
+          "phase.interaction_held.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_held.occurrences": [
+            192,
+            192,
+            192
+          ],
+          "phase.interaction_held.snapshots": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_resumed.answers": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_resumed.applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_resumed.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.elapsed_ms": [
+            5.286318,
+            4.213503,
+            5.634434
+          ],
+          "phase.interaction_resumed.graph_nodes": [
+            1171,
+            1171,
+            1171
+          ],
+          "phase.interaction_resumed.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.occurrences": [
+            129,
+            129,
+            129
+          ],
+          "phase.interaction_resumed.snapshots": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_resumed.source_applications_during_projection": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.elapsed_ms": [
+            0.105785,
+            0.10276300000000001,
+            0.109632
+          ],
+          "phase.release.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            17591,
+            14478,
+            22846
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1653,
+            1188,
+            1902
+          ],
+          "preparation.omitted_fields": [
+            2,
+            2,
+            2
+          ],
+          "preparation.plan_payload_bytes": [
+            275,
+            275,
+            275
+          ],
+          "preparation.specialized_relations": [
+            1,
+            1,
+            1
+          ],
+          "preparation.update_opcodes": [
+            5,
+            5,
+            5
+          ],
+          "process.peak_rss_kib": [
+            10480,
+            10216,
+            10636
+          ],
+          "process.wall_seconds": [
+            0.008086238987743855,
+            0.006789923878386617,
+            0.008463768986985087
+          ],
+          "source.match_candidates": [
+            0,
+            0,
+            0
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            192,
+            192,
+            192
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "life-held-output-16": {
+        "samples": [
+          "retention-final-candidate/life-held-output-16/0.json",
+          "retention-final-candidate/life-held-output-16/1.json",
+          "retention-final-candidate/life-held-output-16/2.json",
+          "retention-final-candidate/life-held-output-16/3.json",
+          "retention-final-candidate/life-held-output-16/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "life-held-output-structural",
+          "continued_work": 64,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": 4,
+          "rows": 16,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 4,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 10,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1875,
+            1875,
+            1875
+          ],
+          "allocation.peak_bytes": [
+            183182,
+            183182,
+            183182
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4792,
+            4792,
+            4792
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            1192888,
+            1192888,
+            1192888
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            296801,
+            296801,
+            296801
+          ],
+          "allocation.phase_bytes.setup": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.validator": [
+            0,
+            0,
+            0
+          ],
+          "allocation.total_bytes": [
+            1494481,
+            1494481,
+            1494481
+          ],
+          "allocation.total_calls": [
+            7375,
+            7375,
+            7375
+          ],
+          "collection.arena": [
+            237,
+            237,
+            237
+          ],
+          "collection.graph": [
+            218,
+            218,
+            218
+          ],
+          "collection.prune_graph": [
+            727,
+            727,
+            727
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            71,
+            71,
+            71
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            32,
+            32,
+            32
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            868,
+            868,
+            868
+          ],
+          "fields.specialized_writes": [
+            80,
+            80,
+            80
+          ],
+          "native_peak_rss_estimate_kib": [
+            4508,
+            4504,
+            4568
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            128,
+            128,
+            128
+          ],
+          "normalization.transactions": [
+            16,
+            16,
+            16
+          ],
+          "phase.cancel.applications": [
+            93,
+            93,
+            93
+          ],
+          "phase.cancel.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.elapsed_ms": [
+            0.055308,
+            0.054731999999999996,
+            0.083939
+          ],
+          "phase.cancel.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.applications": [
+            11,
+            11,
+            11
+          ],
+          "phase.interaction_admitted.conditions": [
+            14,
+            14,
+            14
+          ],
+          "phase.interaction_admitted.elapsed_ms": [
+            0.682886,
+            0.485638,
+            0.748243
+          ],
+          "phase.interaction_admitted.graph_nodes": [
+            182,
+            182,
+            182
+          ],
+          "phase.interaction_admitted.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.occurrences": [
+            24,
+            24,
+            24
+          ],
+          "phase.interaction_admitted.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.applications": [
+            93,
+            93,
+            93
+          ],
+          "phase.interaction_exit.conditions": [
+            14,
+            14,
+            14
+          ],
+          "phase.interaction_exit.elapsed_ms": [
+            1.631313,
+            1.1522430000000001,
+            1.7764499999999999
+          ],
+          "phase.interaction_exit.graph_nodes": [
+            198,
+            198,
+            198
+          ],
+          "phase.interaction_exit.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.occurrences": [
+            108,
+            108,
+            108
+          ],
+          "phase.interaction_exit.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_held.applications": [
+            75,
+            75,
+            75
+          ],
+          "phase.interaction_held.conditions": [
+            14,
+            14,
+            14
+          ],
+          "phase.interaction_held.continued_applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_held.elapsed_ms": [
+            1.353361,
+            0.9423889999999999,
+            1.444859
+          ],
+          "phase.interaction_held.graph_nodes": [
+            192,
+            192,
+            192
+          ],
+          "phase.interaction_held.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_held.occurrences": [
+            88,
+            88,
+            88
+          ],
+          "phase.interaction_held.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.answers": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_resumed.applications": [
+            93,
+            93,
+            93
+          ],
+          "phase.interaction_resumed.conditions": [
+            14,
+            14,
+            14
+          ],
+          "phase.interaction_resumed.elapsed_ms": [
+            1.609454,
+            1.140117,
+            1.754883
+          ],
+          "phase.interaction_resumed.graph_nodes": [
+            198,
+            198,
+            198
+          ],
+          "phase.interaction_resumed.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.occurrences": [
+            108,
+            108,
+            108
+          ],
+          "phase.interaction_resumed.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.source_applications_during_projection": [
+            18,
+            18,
+            18
+          ],
+          "phase.release.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.elapsed_ms": [
+            0.002527,
+            0.002167,
+            0.004104999999999999
+          ],
+          "phase.release.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            20031,
+            17979,
+            33908
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            2183,
+            1658,
+            5794
+          ],
+          "preparation.omitted_fields": [
+            4,
+            4,
+            4
+          ],
+          "preparation.plan_payload_bytes": [
+            406,
+            406,
+            406
+          ],
+          "preparation.specialized_relations": [
+            2,
+            2,
+            2
+          ],
+          "preparation.update_opcodes": [
+            10,
+            10,
+            10
+          ],
+          "process.peak_rss_kib": [
+            10528,
+            10120,
+            10664
+          ],
+          "process.wall_seconds": [
+            0.004276295891031623,
+            0.003545127110555768,
+            0.004731560125946999
+          ],
+          "source.match_candidates": [
+            0,
+            0,
+            0
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            112,
+            112,
+            112
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "life-held-output-64": {
+        "samples": [
+          "retention-final-candidate/life-held-output-64/0.json",
+          "retention-final-candidate/life-held-output-64/1.json",
+          "retention-final-candidate/life-held-output-64/2.json",
+          "retention-final-candidate/life-held-output-64/3.json",
+          "retention-final-candidate/life-held-output-64/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "life-held-output-structural",
+          "continued_work": 64,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": 4,
+          "rows": 64,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 4,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 10,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1875,
+            1875,
+            1875
+          ],
+          "allocation.peak_bytes": [
+            307142,
+            307142,
+            307142
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4752,
+            4752,
+            4752
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            2353884,
+            2353884,
+            2353884
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            356969,
+            356969,
+            356969
+          ],
+          "allocation.phase_bytes.setup": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.validator": [
+            0,
+            0,
+            0
+          ],
+          "allocation.total_bytes": [
+            2715605,
+            2715605,
+            2715605
+          ],
+          "allocation.total_calls": [
+            13266,
+            13266,
+            13266
+          ],
+          "collection.arena": [
+            483,
+            483,
+            483
+          ],
+          "collection.graph": [
+            746,
+            746,
+            746
+          ],
+          "collection.prune_graph": [
+            2551,
+            2551,
+            2551
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            71,
+            71,
+            71
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            128,
+            128,
+            128
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            1711,
+            1711,
+            1711
+          ],
+          "fields.specialized_writes": [
+            320,
+            320,
+            320
+          ],
+          "native_peak_rss_estimate_kib": [
+            4656,
+            4652,
+            4720
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            512,
+            512,
+            512
+          ],
+          "normalization.transactions": [
+            64,
+            64,
+            64
+          ],
+          "phase.cancel.applications": [
+            156,
+            156,
+            156
+          ],
+          "phase.cancel.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.elapsed_ms": [
+            0.155236,
+            0.103484,
+            0.163912
+          ],
+          "phase.cancel.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.applications": [
+            20,
+            20,
+            20
+          ],
+          "phase.interaction_admitted.conditions": [
+            14,
+            14,
+            14
+          ],
+          "phase.interaction_admitted.elapsed_ms": [
+            1.60318,
+            1.168702,
+            1.823306
+          ],
+          "phase.interaction_admitted.graph_nodes": [
+            686,
+            686,
+            686
+          ],
+          "phase.interaction_admitted.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.occurrences": [
+            84,
+            84,
+            84
+          ],
+          "phase.interaction_admitted.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.applications": [
+            156,
+            156,
+            156
+          ],
+          "phase.interaction_exit.conditions": [
+            14,
+            14,
+            14
+          ],
+          "phase.interaction_exit.elapsed_ms": [
+            2.7009260000000004,
+            2.2490180000000004,
+            3.5433130000000004
+          ],
+          "phase.interaction_exit.graph_nodes": [
+            690,
+            690,
+            690
+          ],
+          "phase.interaction_exit.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.occurrences": [
+            220,
+            220,
+            220
+          ],
+          "phase.interaction_exit.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_held.applications": [
+            84,
+            84,
+            84
+          ],
+          "phase.interaction_held.conditions": [
+            14,
+            14,
+            14
+          ],
+          "phase.interaction_held.continued_applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_held.elapsed_ms": [
+            2.035508,
+            1.588545,
+            2.485296
+          ],
+          "phase.interaction_held.graph_nodes": [
+            661,
+            661,
+            661
+          ],
+          "phase.interaction_held.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_held.occurrences": [
+            144,
+            144,
+            144
+          ],
+          "phase.interaction_held.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.answers": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_resumed.applications": [
+            156,
+            156,
+            156
+          ],
+          "phase.interaction_resumed.conditions": [
+            14,
+            14,
+            14
+          ],
+          "phase.interaction_resumed.elapsed_ms": [
+            2.68951,
+            2.237425,
+            3.521093
+          ],
+          "phase.interaction_resumed.graph_nodes": [
+            690,
+            690,
+            690
+          ],
+          "phase.interaction_resumed.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.occurrences": [
+            220,
+            220,
+            220
+          ],
+          "phase.interaction_resumed.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.source_applications_during_projection": [
+            72,
+            72,
+            72
+          ],
+          "phase.release.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.elapsed_ms": [
+            0.003868,
+            0.002115,
+            0.003925
+          ],
+          "phase.release.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            24862,
+            17183,
+            32927
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            2332,
+            1663,
+            8594
+          ],
+          "preparation.omitted_fields": [
+            4,
+            4,
+            4
+          ],
+          "preparation.plan_payload_bytes": [
+            406,
+            406,
+            406
+          ],
+          "preparation.specialized_relations": [
+            2,
+            2,
+            2
+          ],
+          "preparation.update_opcodes": [
+            10,
+            10,
+            10
+          ],
+          "process.peak_rss_kib": [
+            10388,
+            10112,
+            10556
+          ],
+          "process.wall_seconds": [
+            0.005538343917578459,
+            0.004903180059045553,
+            0.006885946029797196
+          ],
+          "source.match_candidates": [
+            0,
+            0,
+            0
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            223,
+            223,
+            223
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "life-inspections-16": {
+        "samples": [
+          "retention-final-candidate/life-inspections-16/0.json",
+          "retention-final-candidate/life-inspections-16/1.json",
+          "retention-final-candidate/life-inspections-16/2.json",
+          "retention-final-candidate/life-inspections-16/3.json",
+          "retention-final-candidate/life-inspections-16/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "life-inspections-structural",
+          "continued_work": 64,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": 4,
+          "rows": 16,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 4,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 10,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1875,
+            1875,
+            1875
+          ],
+          "allocation.peak_bytes": [
+            301269,
+            301269,
+            301269
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            14520,
+            14520,
+            14520
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            3171620,
+            3171620,
+            3171620
+          ],
+          "allocation.phase_bytes.inspection": [
+            96592,
+            96592,
+            96592
+          ],
+          "allocation.phase_bytes.other": [
+            465167,
+            465167,
+            465167
+          ],
+          "allocation.phase_bytes.setup": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.validator": [
+            0,
+            0,
+            0
+          ],
+          "allocation.total_bytes": [
+            3747899,
+            3747899,
+            3747899
+          ],
+          "allocation.total_calls": [
+            16665,
+            16665,
+            16665
+          ],
+          "collection.arena": [
+            30,
+            30,
+            30
+          ],
+          "collection.graph": [
+            1069,
+            1069,
+            1069
+          ],
+          "collection.prune_graph": [
+            3,
+            3,
+            3
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            32,
+            32,
+            32
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            1460,
+            1460,
+            1460
+          ],
+          "fields.specialized_writes": [
+            80,
+            80,
+            80
+          ],
+          "native_peak_rss_estimate_kib": [
+            4620,
+            4616,
+            4680
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            128,
+            128,
+            128
+          ],
+          "normalization.transactions": [
+            16,
+            16,
+            16
+          ],
+          "phase.cancel.applications": [
+            321,
+            321,
+            321
+          ],
+          "phase.cancel.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.elapsed_ms": [
+            0.015789,
+            0.014691000000000001,
+            0.022962
+          ],
+          "phase.cancel.graph_nodes": [
+            289,
+            289,
+            289
+          ],
+          "phase.cancel.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.occurrences": [
+            33,
+            33,
+            33
+          ],
+          "phase.cancel.snapshots": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_admitted.applications": [
+            257,
+            257,
+            257
+          ],
+          "phase.interaction_admitted.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.elapsed_ms": [
+            2.3191729999999997,
+            2.145386,
+            3.033676
+          ],
+          "phase.interaction_admitted.graph_nodes": [
+            311,
+            311,
+            311
+          ],
+          "phase.interaction_admitted.inspections": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_admitted.occurrences": [
+            290,
+            290,
+            290
+          ],
+          "phase.interaction_admitted.snapshots": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_exit.applications": [
+            321,
+            321,
+            321
+          ],
+          "phase.interaction_exit.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.elapsed_ms": [
+            3.1145449999999997,
+            2.969395,
+            4.208696
+          ],
+          "phase.interaction_exit.graph_nodes": [
+            303,
+            303,
+            303
+          ],
+          "phase.interaction_exit.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.occurrences": [
+            33,
+            33,
+            33
+          ],
+          "phase.interaction_exit.snapshots": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_held.applications": [
+            321,
+            321,
+            321
+          ],
+          "phase.interaction_held.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_held.continued_applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_held.elapsed_ms": [
+            2.67406,
+            2.499817,
+            3.549306
+          ],
+          "phase.interaction_held.graph_nodes": [
+            310,
+            310,
+            310
+          ],
+          "phase.interaction_held.inspections": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_held.occurrences": [
+            353,
+            353,
+            353
+          ],
+          "phase.interaction_held.snapshots": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_resumed.answers": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_resumed.applications": [
+            321,
+            321,
+            321
+          ],
+          "phase.interaction_resumed.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.elapsed_ms": [
+            3.101785,
+            2.956333,
+            4.189293999999999
+          ],
+          "phase.interaction_resumed.graph_nodes": [
+            303,
+            303,
+            303
+          ],
+          "phase.interaction_resumed.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.occurrences": [
+            33,
+            33,
+            33
+          ],
+          "phase.interaction_resumed.snapshots": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_resumed.source_applications_during_projection": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.elapsed_ms": [
+            0.034081,
+            0.033549,
+            0.051285000000000004
+          ],
+          "phase.release.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            22098,
+            18554,
+            22650
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            2067,
+            1591,
+            4572
+          ],
+          "preparation.omitted_fields": [
+            2,
+            2,
+            2
+          ],
+          "preparation.plan_payload_bytes": [
+            275,
+            275,
+            275
+          ],
+          "preparation.specialized_relations": [
+            1,
+            1,
+            1
+          ],
+          "preparation.update_opcodes": [
+            5,
+            5,
+            5
+          ],
+          "process.peak_rss_kib": [
+            10372,
+            10112,
+            10552
+          ],
+          "process.wall_seconds": [
+            0.005844700848683715,
+            0.005346742924302816,
+            0.007159156957641244
+          ],
+          "source.match_candidates": [
+            0,
+            0,
+            0
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            353,
+            353,
+            353
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "life-inspections-64": {
+        "samples": [
+          "retention-final-candidate/life-inspections-64/0.json",
+          "retention-final-candidate/life-inspections-64/1.json",
+          "retention-final-candidate/life-inspections-64/2.json",
+          "retention-final-candidate/life-inspections-64/3.json",
+          "retention-final-candidate/life-inspections-64/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "life-inspections-structural",
+          "continued_work": 64,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": 4,
+          "rows": 64,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 4,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 10,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1875,
+            1875,
+            1875
+          ],
+          "allocation.peak_bytes": [
+            611237,
+            611237,
+            611237
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            14520,
+            14520,
+            14520
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            9769236,
+            9769236,
+            9769236
+          ],
+          "allocation.phase_bytes.inspection": [
+            271432,
+            271432,
+            271432
+          ],
+          "allocation.phase_bytes.other": [
+            1037629,
+            1037629,
+            1037629
+          ],
+          "allocation.phase_bytes.setup": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.validator": [
+            0,
+            0,
+            0
+          ],
+          "allocation.total_bytes": [
+            11092817,
+            11092817,
+            11092817
+          ],
+          "allocation.total_calls": [
+            51620,
+            51620,
+            51620
+          ],
+          "collection.arena": [
+            40,
+            40,
+            40
+          ],
+          "collection.graph": [
+            2858,
+            2858,
+            2858
+          ],
+          "collection.prune_graph": [
+            70,
+            70,
+            70
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            128,
+            128,
+            128
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            4444,
+            4444,
+            4444
+          ],
+          "fields.specialized_writes": [
+            320,
+            320,
+            320
+          ],
+          "native_peak_rss_estimate_kib": [
+            4952,
+            4952,
+            5016
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            512,
+            512,
+            512
+          ],
+          "normalization.transactions": [
+            64,
+            64,
+            64
+          ],
+          "phase.cancel.applications": [
+            935,
+            935,
+            935
+          ],
+          "phase.cancel.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.elapsed_ms": [
+            0.022078,
+            0.01636,
+            0.027052
+          ],
+          "phase.cancel.graph_nodes": [
+            1153,
+            1153,
+            1153
+          ],
+          "phase.cancel.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.cancel.occurrences": [
+            129,
+            129,
+            129
+          ],
+          "phase.cancel.snapshots": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_admitted.applications": [
+            871,
+            871,
+            871
+          ],
+          "phase.interaction_admitted.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_admitted.elapsed_ms": [
+            8.628317,
+            8.337481,
+            9.065566
+          ],
+          "phase.interaction_admitted.graph_nodes": [
+            1171,
+            1171,
+            1171
+          ],
+          "phase.interaction_admitted.inspections": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_admitted.occurrences": [
+            530,
+            530,
+            530
+          ],
+          "phase.interaction_admitted.snapshots": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_exit.applications": [
+            935,
+            935,
+            935
+          ],
+          "phase.interaction_exit.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.elapsed_ms": [
+            10.528464,
+            9.881028,
+            10.631964
+          ],
+          "phase.interaction_exit.graph_nodes": [
+            1171,
+            1171,
+            1171
+          ],
+          "phase.interaction_exit.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_exit.occurrences": [
+            129,
+            129,
+            129
+          ],
+          "phase.interaction_exit.snapshots": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_held.applications": [
+            935,
+            935,
+            935
+          ],
+          "phase.interaction_held.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_held.continued_applications": [
+            64,
+            64,
+            64
+          ],
+          "phase.interaction_held.elapsed_ms": [
+            9.057474,
+            8.744383,
+            9.480081
+          ],
+          "phase.interaction_held.graph_nodes": [
+            1178,
+            1178,
+            1178
+          ],
+          "phase.interaction_held.inspections": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_held.occurrences": [
+            594,
+            594,
+            594
+          ],
+          "phase.interaction_held.snapshots": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_resumed.answers": [
+            4,
+            4,
+            4
+          ],
+          "phase.interaction_resumed.applications": [
+            935,
+            935,
+            935
+          ],
+          "phase.interaction_resumed.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.elapsed_ms": [
+            10.511618,
+            9.856103999999998,
+            10.608482
+          ],
+          "phase.interaction_resumed.graph_nodes": [
+            1171,
+            1171,
+            1171
+          ],
+          "phase.interaction_resumed.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.interaction_resumed.occurrences": [
+            129,
+            129,
+            129
+          ],
+          "phase.interaction_resumed.snapshots": [
+            1,
+            1,
+            1
+          ],
+          "phase.interaction_resumed.source_applications_during_projection": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.conditions": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.elapsed_ms": [
+            0.137577,
+            0.103389,
+            0.14568599999999998
+          ],
+          "phase.release.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.inspections": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "phase.release.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            21930,
+            19744,
+            30366
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1309,
+            1205,
+            1810
+          ],
+          "preparation.omitted_fields": [
+            2,
+            2,
+            2
+          ],
+          "preparation.plan_payload_bytes": [
+            275,
+            275,
+            275
+          ],
+          "preparation.specialized_relations": [
+            1,
+            1,
+            1
+          ],
+          "preparation.update_opcodes": [
+            5,
+            5,
+            5
+          ],
+          "process.peak_rss_kib": [
+            10512,
+            10248,
+            10688
+          ],
+          "process.wall_seconds": [
+            0.013235192047432065,
+            0.013102141907438636,
+            0.014002507086843252
+          ],
+          "source.match_candidates": [
+            0,
+            0,
+            0
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            1063,
+            1063,
+            1063
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+}

@@ -63,7 +63,10 @@ impl RulePlan {
 /// ```
 #[derive(Clone)]
 pub struct Prepared {
+    #[cfg(feature = "diagnostics")]
+    preparation_diagnostics: PreparationDiagnostics,
     pub(crate) constructors: Option<std::sync::Arc<constructors::Constructors>>,
+    pub(crate) graph_updates: Option<std::sync::Arc<[Option<crate::graph::UpdatePlan>]>>,
     pub(crate) signatures: Vec<Signature>,
     pub(crate) instructions: Vec<Instruction>,
     pub(crate) rules: Vec<RulePlan>,
@@ -79,7 +82,23 @@ pub struct Prepared {
     pub(crate) query_variables: Vec<String>,
 }
 
+#[cfg(feature = "diagnostics")]
+#[derive(Clone, Default, serde::Serialize)]
+pub struct PreparationDiagnostics {
+    pub constructor_recognition_ns: u128,
+    pub field_certificate_and_codegen_ns: u128,
+    pub specialized_relations: usize,
+    pub omitted_fields: usize,
+    pub update_opcodes: usize,
+    /// Requested plan buffers, excluding Arc header and allocator overhead.
+    pub plan_payload_bytes: usize,
+}
+
 impl Prepared {
+    #[cfg(feature = "diagnostics")]
+    pub fn preparation_diagnostics(&self) -> &PreparationDiagnostics {
+        &self.preparation_diagnostics
+    }
     pub fn signatures(&self) -> &[Signature] {
         &self.signatures
     }
@@ -235,7 +254,10 @@ pub fn prepare(program: &Program, query: &Body) -> Result<Prepared, ParseError> 
         }
     }
     let mut code = Prepared {
+        #[cfg(feature = "diagnostics")]
+        preparation_diagnostics: PreparationDiagnostics::default(),
         constructors: None,
+        graph_updates: None,
         signatures: builder.signatures,
         instructions: builder.instructions,
         rules,
@@ -247,9 +269,35 @@ pub fn prepare(program: &Program, query: &Body) -> Result<Prepared, ParseError> 
         query,
         query_variables: variables.names,
     };
+    #[cfg(feature = "diagnostics")]
+    let start = std::time::Instant::now();
     if let Ok(plan) = constructors::Constructors::recognize(&code) {
         plan.lower_triggers(&mut code);
         code.constructors = Some(std::sync::Arc::new(plan));
+    }
+    #[cfg(feature = "diagnostics")]
+    {
+        code.preparation_diagnostics.constructor_recognition_ns = start.elapsed().as_nanos();
+    }
+    #[cfg(feature = "diagnostics")]
+    let start = std::time::Instant::now();
+    code.graph_updates = crate::graph::UpdatePlan::prepare(
+        &code.signatures,
+        &code.tuple_indexes,
+        code.constructors
+            .as_ref()
+            .map(|plan| plan.field_indexes(&code)),
+    );
+    #[cfg(feature = "diagnostics")]
+    {
+        let d = &mut code.preparation_diagnostics;
+        d.field_certificate_and_codegen_ns = start.elapsed().as_nanos();
+        (
+            d.specialized_relations,
+            d.omitted_fields,
+            d.update_opcodes,
+            d.plan_payload_bytes,
+        ) = crate::graph::UpdatePlan::statistics(code.graph_updates.as_ref());
     }
     let indexed_end = |targets: &Vec<Vec<(usize, usize)>>| {
         targets

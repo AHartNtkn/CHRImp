@@ -1,0 +1,460 @@
+{
+  "schema": 1,
+  "baseline_revision": "e96efeef47a0de272ec3f24fd9169b270c36581d",
+  "raw_root": "/tmp/chrimp-opt-theory-derived-execution/evidence",
+  "metric_format": [
+    "median",
+    "minimum",
+    "maximum"
+  ],
+  "note": "Descriptive native observations. Censored samples are work intervals, never completed searches. Runtime is not an acceptance metric. Full source records and process metadata remain at raw_root.",
+  "cohorts": {
+    "detailed-candidate-s": {
+      "detailed-candidate-s": {
+        "samples": [
+          "detailed-candidate-s/0.json",
+          "detailed-candidate-s/1.json",
+          "detailed-candidate-s/2.json"
+        ],
+        "statuses": {
+          "completed": 3
+        },
+        "configuration": {
+          "case": "notebook-behavior-s",
+          "continued_work": null,
+          "detailed": true,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 1,
+          "timeout_seconds": 3
+        },
+        "witnesses": [
+          "S"
+        ],
+        "recorded_release_checks": 3,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1729,
+            1729,
+            1729
+          ],
+          "allocation.peak_bytes": [
+            1811278,
+            1811278,
+            1811278
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            6152,
+            6152,
+            6152
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            13526320,
+            13526320,
+            13544360
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            1487182,
+            1487182,
+            1487182
+          ],
+          "allocation.phase_bytes.setup": [
+            129104,
+            129104,
+            129104
+          ],
+          "allocation.phase_bytes.validator": [
+            5056,
+            5056,
+            5056
+          ],
+          "allocation.total_bytes": [
+            15153814,
+            15153814,
+            15171854
+          ],
+          "allocation.total_calls": [
+            60470,
+            60470,
+            60513
+          ],
+          "collection.arena": [
+            7181,
+            7181,
+            7224
+          ],
+          "collection.graph": [
+            6194,
+            6194,
+            6194
+          ],
+          "collection.prune_graph": [
+            20496,
+            20496,
+            20644
+          ],
+          "compaction.graph_index_steps": [
+            8878,
+            8878,
+            8878
+          ],
+          "condition.compaction_work": [
+            1245,
+            1245,
+            1245
+          ],
+          "condition.completion_work": [
+            8638,
+            8638,
+            8638
+          ],
+          "condition.transform_work": [
+            5087,
+            5087,
+            5087
+          ],
+          "fields.avoided_port_writes": [
+            186,
+            186,
+            186
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            2640,
+            2640,
+            2640
+          ],
+          "fields.specialized_writes": [
+            510,
+            510,
+            510
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            554,
+            554,
+            554
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            2153,
+            2153,
+            2153
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            143,
+            143,
+            143
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            93,
+            93,
+            93
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            554,
+            554,
+            584
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            3069,
+            3048,
+            3069
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            143,
+            143,
+            143
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            140,
+            140,
+            141
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            6436,
+            6432,
+            6500
+          ],
+          "normalization.applications": [
+            30,
+            30,
+            30
+          ],
+          "normalization.attachment_overlaps": [
+            30,
+            30,
+            30
+          ],
+          "normalization.clashes": [
+            3,
+            3,
+            3
+          ],
+          "normalization.coalescences": [
+            27,
+            27,
+            27
+          ],
+          "normalization.conditional_dispatches": [
+            36,
+            36,
+            36
+          ],
+          "normalization.field_equalities": [
+            34,
+            34,
+            34
+          ],
+          "normalization.generative_dispatches": [
+            19,
+            19,
+            19
+          ],
+          "normalization.known_arm_admissions": [
+            17,
+            17,
+            17
+          ],
+          "normalization.steps": [
+            3920,
+            3920,
+            3920
+          ],
+          "normalization.transactions": [
+            154,
+            154,
+            154
+          ],
+          "preparation.constructor_recognition_ns": [
+            67086,
+            51690,
+            67216
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            9486,
+            8084,
+            12959
+          ],
+          "preparation.omitted_fields": [
+            5,
+            5,
+            5
+          ],
+          "preparation.plan_payload_bytes": [
+            1048,
+            1048,
+            1048
+          ],
+          "preparation.specialized_relations": [
+            3,
+            3,
+            3
+          ],
+          "preparation.update_opcodes": [
+            14,
+            14,
+            14
+          ],
+          "process.peak_rss_kib": [
+            10668,
+            10260,
+            10828
+          ],
+          "process.wall_seconds": [
+            0.0277769120875746,
+            0.024252532050013542,
+            0.03109033196233213
+          ],
+          "source.match_candidates": [
+            705,
+            705,
+            705
+          ],
+          "source.merges": [
+            36,
+            36,
+            36
+          ],
+          "source.posts": [
+            222,
+            222,
+            222
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ],
+          "time_ms.cleanup": [
+            0.392169,
+            0.379789,
+            0.423175
+          ],
+          "time_ms.engine_init": [
+            0.010778000000000001,
+            0.007068,
+            0.014579
+          ],
+          "time_ms.parse": [
+            0.916014,
+            0.741758,
+            0.939403
+          ],
+          "time_ms.prepare": [
+            0.29577899999999996,
+            0.2041,
+            0.30475599999999997
+          ],
+          "time_ms.source_delivery": [
+            22.729276,
+            19.319989,
+            25.745304
+          ],
+          "time_ms.source_delivery_without_validator": [
+            22.694941999999998,
+            19.305703,
+            25.730642000000003
+          ],
+          "time_ms.validator": [
+            0.014662,
+            0.014286,
+            0.034334
+          ],
+          "work.advance1_ticks": [
+            132664,
+            132664,
+            132855
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            134,
+            134,
+            134
+          ],
+          "work.cleanup_ticks": [
+            3396,
+            3396,
+            3396
+          ],
+          "work.collection_status_ticks": [
+            78483,
+            78483,
+            78674
+          ],
+          "work.collections": [
+            3,
+            3,
+            3
+          ],
+          "work.scalars": [
+            125,
+            125,
+            125
+          ]
+        }
+      }
+    }
+  }
+}

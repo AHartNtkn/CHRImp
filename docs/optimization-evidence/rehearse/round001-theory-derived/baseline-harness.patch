@@ -1,0 +1,104 @@
+--- a/examples/measure.rs
++++ b/examples/measure.rs
+@@ -867 +867,4 @@
+-            args[0].strip_suffix("-conditional").unwrap_or(&args[0]),
++            args[0]
++                .strip_suffix("-conditional")
++                .or_else(|| args[0].strip_suffix("-structural"))
++                .unwrap_or(&args[0]),
+--- a/examples/measure/interactions.rs
++++ b/examples/measure/interactions.rs
+@@ -113,0 +114 @@
++    let structural = e.program().signatures().iter().any(|s| s.name == "keep" && s.arity == 3);
+@@ -118 +119 @@
+-        .position(|s| s.name == if conditional { "turn" } else { "loop" })
++        .position(|s| s.name == if conditional || structural { "turn" } else { "loop" })
+@@ -120,0 +122,5 @@
++    let structural_payload = e
++        .program()
++        .signatures()
++        .iter()
++        .position(|s| s.name == "keep" && s.arity == 3);
+@@ -135 +141,6 @@
+-        } else if e.facts(relation).map_err(|e| e.to_string())?.count() != width {
++        } else if e.facts(relation).map_err(|e| e.to_string())?.count() != if structural { 1 } else { width } {
++            continue;
++        }
++        if let Some(payload) = structural_payload
++            && e.facts(payload).map_err(|e| e.to_string())?.count() != width
++        {
+@@ -335 +346,5 @@
+-    let case = case.strip_suffix("-conditional").unwrap_or(case);
++    let structural = case.ends_with("-structural");
++    let case = case
++        .strip_suffix("-conditional")
++        .or_else(|| case.strip_suffix("-structural"))
++        .unwrap_or(case);
+@@ -349 +364,5 @@
+-                .map(|i| format!("done(V{i})"))
++                .map(|i| if structural {
++                    format!("done(V{i},V{i},V{i})")
++                } else {
++                    format!("done(V{i})")
++                })
+@@ -355 +374,7 @@
+-            .map(|i| format!("keep(V{i}),loop(V{i})"))
++            .map(|i| {
++                if structural {
++                    format!("keep(V{i},V{i},V{i}),loop(V{i})")
++                } else {
++                    format!("keep(V{i}),loop(V{i})")
++                }
++            })
+@@ -359 +384 @@
+-    if conditional && !held {
++    if (conditional || structural) && !held {
+@@ -367,0 +393,4 @@
++            } else if structural && held {
++                "loop(X) <=> loop(X). keep(K,A,B) \\ keep(K,C,D) <=> A=C,B=D. done(K,A,B) \\ done(K,C,D) <=> A=C,B=D."
++            } else if structural {
++                "turn() <=> turn(). keep(K,A,B) \\ keep(K,C,D) <=> A=C,B=D."
+@@ -605 +634 @@
+-                "projection_only":conditional && !held,
++                "projection_only":(conditional || structural) && !held,
+--- a/examples/measure/lifecycle.rs
++++ b/examples/measure/lifecycle.rs
+@@ -24 +24 @@
+-pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive life-held-output life-archive-fixed life-archive-rotate life-inspections life-held-output-conditional life-archive-fixed-conditional life-archive-rotate-conditional life-inspections-conditional runtime";
++pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive life-held-output life-archive-fixed life-archive-rotate life-inspections life-held-output-conditional life-archive-fixed-conditional life-archive-rotate-conditional life-inspections-conditional life-held-output-structural life-archive-fixed-structural life-archive-rotate-structural life-inspections-structural runtime";
+@@ -165,3 +165,7 @@
+-                        self.bindings
+-                            .iter()
+-                            .map(move |v| ((*name).to_owned(), vec![*v]))
++                        self.bindings.iter().map(move |v| {
++                            // The structural interaction inputs are cyclic
++                            // triples (Vi,Vi,Vi); every other input is unary.
++                            // Check all ordered ports, not just the key.
++                            let arity = signatures.iter().find(|s| s.name == *name).unwrap().arity;
++                            ((*name).to_owned(), vec![*v; arity])
++                        })
+@@ -916 +920,3 @@
+-        case.strip_suffix("-conditional").unwrap_or(case),
++        case.strip_suffix("-conditional")
++            .or_else(|| case.strip_suffix("-structural"))
++            .unwrap_or(case),
+--- a/examples/measure/notebooks.rs
++++ b/examples/measure/notebooks.rs
+@@ -628,0 +629 @@
++    let prepared_owner = Arc::downgrade(&code);
+@@ -784,0 +786,8 @@
++    let drop_start = Instant::now();
++    during(Phase::Cleanup, || drop(e));
++    let prepared_released = prepared_owner.strong_count() == 0;
++    during(Phase::Cleanup, || drop(prepared_owner));
++    let engine_and_prepared_drop = drop_start.elapsed();
++    if !prepared_released {
++        error = Some("final engine destruction retained the prepared plan".into());
++    }
+@@ -867 +876 @@
+-            "cleanup_in_time": cleanup_in_time, "error": error, "search_exhausted": exhausted,
++            "cleanup_in_time": cleanup_in_time, "prepared_released": prepared_released, "error": error, "search_exhausted": exhausted,
+@@ -871 +880,2 @@
+-                "source_delivery_without_validator": detailed.then(|| ms(elapsed.saturating_sub(validator))), "cleanup": ms(cleanup_time)},
++                "source_delivery_without_validator": detailed.then(|| ms(elapsed.saturating_sub(validator))), "cleanup": ms(cleanup_time),
++                "engine_and_prepared_drop": ms(engine_and_prepared_drop)},

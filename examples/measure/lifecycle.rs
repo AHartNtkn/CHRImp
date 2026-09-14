@@ -21,7 +21,7 @@ mod interactions;
 pub mod sessions;
 pub use interactions::Options as InteractionOptions;
 
-pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive life-held-output life-archive-fixed life-archive-rotate life-inspections life-held-output-conditional life-archive-fixed-conditional life-archive-rotate-conditional life-inspections-conditional runtime";
+pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive life-held-output life-archive-fixed life-archive-rotate life-inspections life-held-output-conditional life-archive-fixed-conditional life-archive-rotate-conditional life-inspections-conditional life-held-output-structural life-archive-fixed-structural life-archive-rotate-structural life-inspections-structural runtime";
 const REWRITE: &str = "p(X) <=> q(X). q(X) <=> done(X).";
 fn check(ok: bool, why: &str) -> Result<(), String> {
     if ok { Ok(()) } else { Err(why.into()) }
@@ -162,9 +162,13 @@ impl Reader {
                 let mut want = expected
                     .iter()
                     .flat_map(|name| {
-                        self.bindings
-                            .iter()
-                            .map(move |v| ((*name).to_owned(), vec![*v]))
+                        self.bindings.iter().map(move |v| {
+                            // The structural interaction inputs are cyclic
+                            // triples (Vi,Vi,Vi); every other input is unary.
+                            // Check all ordered ports, not just the key.
+                            let arity = signatures.iter().find(|s| s.name == *name).unwrap().arity;
+                            ((*name).to_owned(), vec![*v; arity])
+                        })
                     })
                     .collect::<Vec<_>>();
                 want.sort();
@@ -913,7 +917,9 @@ fn run_inner(
         "lifecycle_limits apply independently to source, checkpoint collection, cancellation, inspection and release; ticks are Engine::advance(1), runtime work is scheduler turns/API reads; collection_ticks counts ticks entered with collection requested/active; timings include checks; memory is object counts, not bytes; runtime excludes HTTP/browser"
     );
     if matches!(
-        case.strip_suffix("-conditional").unwrap_or(case),
+        case.strip_suffix("-conditional")
+            .or_else(|| case.strip_suffix("-structural"))
+            .unwrap_or(case),
         "life-held-output" | "life-archive-fixed" | "life-archive-rotate" | "life-inspections"
     ) {
         interactions::run(case, n, options, max_ticks, timeout)

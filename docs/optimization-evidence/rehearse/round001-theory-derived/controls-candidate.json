@@ -1,0 +1,6007 @@
+{
+  "schema": 1,
+  "baseline_revision": "e96efeef47a0de272ec3f24fd9169b270c36581d",
+  "raw_root": "/tmp/chrimp-opt-theory-derived-execution/evidence",
+  "metric_format": [
+    "median",
+    "minimum",
+    "maximum"
+  ],
+  "note": "Descriptive native observations. Censored samples are work intervals, never completed searches. Runtime is not an acceptance metric. Full source records and process metadata remain at raw_root.",
+  "cohorts": {
+    "controls-candidate": {
+      "duplicates-16": {
+        "samples": [
+          "controls-candidate/duplicates-16/0.json",
+          "controls-candidate/duplicates-16/1.json",
+          "controls-candidate/duplicates-16/2.json",
+          "controls-candidate/duplicates-16/3.json",
+          "controls-candidate/duplicates-16/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "duplicate-heads",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 2,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 16,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1749,
+            1749,
+            1749
+          ],
+          "allocation.peak_bytes": [
+            1270059,
+            1270059,
+            1270059
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            6691400,
+            6691400,
+            6691400
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            227601,
+            227601,
+            227601
+          ],
+          "allocation.phase_bytes.setup": [
+            34493,
+            34493,
+            34493
+          ],
+          "allocation.phase_bytes.validator": [
+            154513,
+            154513,
+            154513
+          ],
+          "allocation.total_bytes": [
+            7112679,
+            7112679,
+            7112679
+          ],
+          "allocation.total_calls": [
+            40815,
+            40815,
+            40815
+          ],
+          "collection.arena": [
+            20,
+            20,
+            20
+          ],
+          "collection.graph": [
+            10336,
+            10336,
+            10336
+          ],
+          "collection.prune_graph": [
+            18190,
+            18190,
+            18190
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            3016,
+            3016,
+            3016
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            6030,
+            6030,
+            6030
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            514,
+            514,
+            514
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            6031,
+            6031,
+            6031
+          ],
+          "memory.sampled_peak.history_nodes": [
+            959,
+            959,
+            959
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            514,
+            514,
+            514
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            221,
+            221,
+            221
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            5732,
+            5668,
+            5796
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            2316,
+            1627,
+            2838
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1772,
+            195,
+            2547
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12644,
+            10744,
+            14344
+          ],
+          "process.wall_seconds": [
+            0.014257331844419241,
+            0.01363890920765698,
+            0.016630213940516114
+          ],
+          "source.match_candidates": [
+            608,
+            608,
+            608
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            514,
+            514,
+            514
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ],
+          "time_ms.cleanup": [
+            0.488005,
+            0.47512,
+            0.495215
+          ],
+          "time_ms.engine_drop": [
+            0.006023,
+            0.005522,
+            0.007061
+          ],
+          "time_ms.engine_init": [
+            0.014417,
+            0.010926,
+            0.016572
+          ],
+          "time_ms.parse_program": [
+            0.011561,
+            0.009472,
+            0.013111000000000001
+          ],
+          "time_ms.parse_query": [
+            0.017193,
+            0.016711,
+            0.031909
+          ],
+          "time_ms.prepare": [
+            0.031309000000000003,
+            0.027951,
+            0.041039
+          ],
+          "time_ms.prepared_drop": [
+            0.001605,
+            0.0013859999999999999,
+            0.0016769999999999999
+          ],
+          "time_ms.source_delivery": [
+            10.715911,
+            10.379933,
+            13.393723
+          ],
+          "work.advance1_ticks": [
+            88234,
+            88234,
+            88234
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            480,
+            480,
+            480
+          ],
+          "work.cleanup_ticks": [
+            3578,
+            3578,
+            3578
+          ],
+          "work.collections": [
+            2,
+            2,
+            2
+          ],
+          "work.facts": [
+            514,
+            514,
+            514
+          ],
+          "work.ports": [
+            994,
+            994,
+            994
+          ],
+          "work.scalars": [
+            2026,
+            2026,
+            2026
+          ]
+        }
+      },
+      "duplicates-2": {
+        "samples": [
+          "controls-candidate/duplicates-2/0.json",
+          "controls-candidate/duplicates-2/1.json",
+          "controls-candidate/duplicates-2/2.json",
+          "controls-candidate/duplicates-2/3.json",
+          "controls-candidate/duplicates-2/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "duplicate-heads",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 2,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 2,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1748,
+            1748,
+            1748
+          ],
+          "allocation.peak_bytes": [
+            86398,
+            86398,
+            86398
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            152960,
+            152960,
+            152960
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            226260,
+            226260,
+            226260
+          ],
+          "allocation.phase_bytes.setup": [
+            9233,
+            9233,
+            9233
+          ],
+          "allocation.phase_bytes.validator": [
+            4273,
+            4273,
+            4273
+          ],
+          "allocation.total_bytes": [
+            397398,
+            397398,
+            397398
+          ],
+          "allocation.total_calls": [
+            2627,
+            2627,
+            2627
+          ],
+          "collection.arena": [
+            10,
+            10,
+            10
+          ],
+          "collection.graph": [
+            110,
+            110,
+            110
+          ],
+          "collection.prune_graph": [
+            295,
+            295,
+            295
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            48,
+            48,
+            48
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            94,
+            94,
+            94
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            10,
+            10,
+            10
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            94,
+            94,
+            94
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            10,
+            10,
+            10
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            1,
+            1,
+            1
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            4332,
+            4268,
+            4336
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            2046,
+            1759,
+            2652
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            2039,
+            1579,
+            2392
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12796,
+            10944,
+            14496
+          ],
+          "process.wall_seconds": [
+            0.0027470530476421118,
+            0.002310456009581685,
+            0.003200456965714693
+          ],
+          "source.match_candidates": [
+            20,
+            20,
+            20
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            10,
+            10,
+            10
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ],
+          "time_ms.cleanup": [
+            0.015931,
+            0.015396,
+            0.023246
+          ],
+          "time_ms.engine_drop": [
+            0.005351,
+            0.0033770000000000002,
+            0.006756
+          ],
+          "time_ms.engine_init": [
+            0.012114,
+            0.008681999999999999,
+            0.014134
+          ],
+          "time_ms.parse_program": [
+            0.009109,
+            0.006324,
+            0.011328000000000001
+          ],
+          "time_ms.parse_query": [
+            0.004340999999999999,
+            0.00408,
+            0.006866
+          ],
+          "time_ms.prepare": [
+            0.01763,
+            0.016409,
+            0.024133
+          ],
+          "time_ms.prepared_drop": [
+            0.0009029999999999999,
+            0.000838,
+            0.0013260000000000001
+          ],
+          "time_ms.source_delivery": [
+            0.198746,
+            0.186248,
+            0.298773
+          ],
+          "work.advance1_ticks": [
+            1249,
+            1249,
+            1249
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            4,
+            4,
+            4
+          ],
+          "work.cleanup_ticks": [
+            106,
+            106,
+            106
+          ],
+          "work.collections": [
+            1,
+            1,
+            1
+          ],
+          "work.facts": [
+            10,
+            10,
+            10
+          ],
+          "work.ports": [
+            14,
+            14,
+            14
+          ],
+          "work.scalars": [
+            38,
+            38,
+            38
+          ]
+        }
+      },
+      "duplicates-4": {
+        "samples": [
+          "controls-candidate/duplicates-4/0.json",
+          "controls-candidate/duplicates-4/1.json",
+          "controls-candidate/duplicates-4/2.json",
+          "controls-candidate/duplicates-4/3.json",
+          "controls-candidate/duplicates-4/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "duplicate-heads",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 2,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 4,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1748,
+            1748,
+            1748
+          ],
+          "allocation.peak_bytes": [
+            161846,
+            161846,
+            161846
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            460888,
+            460888,
+            460888
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            226688,
+            226688,
+            226688
+          ],
+          "allocation.phase_bytes.setup": [
+            12821,
+            12821,
+            12821
+          ],
+          "allocation.phase_bytes.validator": [
+            11041,
+            11041,
+            11041
+          ],
+          "allocation.total_bytes": [
+            716110,
+            716110,
+            716110
+          ],
+          "allocation.total_calls": [
+            4139,
+            4139,
+            4139
+          ],
+          "collection.arena": [
+            10,
+            10,
+            10
+          ],
+          "collection.graph": [
+            406,
+            406,
+            406
+          ],
+          "collection.prune_graph": [
+            1111,
+            1111,
+            1111
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            184,
+            184,
+            184
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            366,
+            366,
+            366
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            34,
+            34,
+            34
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            367,
+            367,
+            367
+          ],
+          "memory.sampled_peak.history_nodes": [
+            45,
+            45,
+            45
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            34,
+            34,
+            34
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            9,
+            9,
+            9
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            4404,
+            4340,
+            4408
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            2339,
+            2018,
+            2731
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1947,
+            1760,
+            2423
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12452,
+            10480,
+            14140
+          ],
+          "process.wall_seconds": [
+            0.003580013057217002,
+            0.0031431009992957115,
+            0.0036586548667401075
+          ],
+          "source.match_candidates": [
+            56,
+            56,
+            56
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            34,
+            34,
+            34
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ],
+          "time_ms.cleanup": [
+            0.051308,
+            0.037725999999999996,
+            0.054291
+          ],
+          "time_ms.engine_drop": [
+            0.00626,
+            0.004312000000000001,
+            0.006777
+          ],
+          "time_ms.engine_init": [
+            0.01273,
+            0.010954,
+            0.014065
+          ],
+          "time_ms.parse_program": [
+            0.009644,
+            0.008153,
+            0.011545999999999999
+          ],
+          "time_ms.parse_query": [
+            0.008418,
+            0.007753,
+            0.008467
+          ],
+          "time_ms.prepare": [
+            0.024352,
+            0.021911,
+            0.030077
+          ],
+          "time_ms.prepared_drop": [
+            0.001285,
+            0.000959,
+            0.001337
+          ],
+          "time_ms.source_delivery": [
+            0.882147,
+            0.873215,
+            0.8880560000000001
+          ],
+          "work.advance1_ticks": [
+            4534,
+            4534,
+            4534
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            24,
+            24,
+            24
+          ],
+          "work.cleanup_ticks": [
+            266,
+            266,
+            266
+          ],
+          "work.collections": [
+            1,
+            1,
+            1
+          ],
+          "work.facts": [
+            34,
+            34,
+            34
+          ],
+          "work.ports": [
+            58,
+            58,
+            58
+          ],
+          "work.scalars": [
+            130,
+            130,
+            130
+          ]
+        }
+      },
+      "duplicates-8": {
+        "samples": [
+          "controls-candidate/duplicates-8/0.json",
+          "controls-candidate/duplicates-8/1.json",
+          "controls-candidate/duplicates-8/2.json",
+          "controls-candidate/duplicates-8/3.json",
+          "controls-candidate/duplicates-8/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "duplicate-heads",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 2,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 8,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1748,
+            1748,
+            1748
+          ],
+          "allocation.peak_bytes": [
+            420610,
+            420610,
+            420610
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            1652952,
+            1652952,
+            1652952
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            226848,
+            226848,
+            226848
+          ],
+          "allocation.phase_bytes.setup": [
+            20045,
+            20045,
+            20045
+          ],
+          "allocation.phase_bytes.validator": [
+            38161,
+            38161,
+            38161
+          ],
+          "allocation.total_bytes": [
+            1942678,
+            1942678,
+            1942678
+          ],
+          "allocation.total_calls": [
+            10767,
+            10767,
+            10767
+          ],
+          "collection.arena": [
+            10,
+            10,
+            10
+          ],
+          "collection.graph": [
+            1622,
+            1622,
+            1622
+          ],
+          "collection.prune_graph": [
+            4471,
+            4471,
+            4471
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            744,
+            744,
+            744
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            1486,
+            1486,
+            1486
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            130,
+            130,
+            130
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            1487,
+            1487,
+            1487
+          ],
+          "memory.sampled_peak.history_nodes": [
+            203,
+            203,
+            203
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            130,
+            130,
+            130
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            83,
+            83,
+            83
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            4700,
+            4636,
+            4704
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            1968,
+            1611,
+            2124
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1888,
+            1269,
+            2101
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12196,
+            10132,
+            13912
+          ],
+          "process.wall_seconds": [
+            0.005009382031857967,
+            0.004343101987615228,
+            0.006059346022084355
+          ],
+          "source.match_candidates": [
+            176,
+            176,
+            176
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            130,
+            130,
+            130
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ],
+          "time_ms.cleanup": [
+            0.123158,
+            0.12121399999999999,
+            0.17749
+          ],
+          "time_ms.engine_drop": [
+            0.005293999999999999,
+            0.004753,
+            0.006438
+          ],
+          "time_ms.engine_init": [
+            0.010998999999999998,
+            0.009239,
+            0.013747
+          ],
+          "time_ms.parse_program": [
+            0.008100999999999999,
+            0.00626,
+            0.010346999999999999
+          ],
+          "time_ms.parse_query": [
+            0.009615,
+            0.009351,
+            0.014142
+          ],
+          "time_ms.prepare": [
+            0.023032,
+            0.02074,
+            0.027504
+          ],
+          "time_ms.prepared_drop": [
+            0.0011099999999999999,
+            0.0010869999999999999,
+            0.001576
+          ],
+          "time_ms.source_delivery": [
+            2.3371199999999996,
+            2.247941,
+            3.454828
+          ],
+          "work.advance1_ticks": [
+            18528,
+            18528,
+            18528
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            112,
+            112,
+            112
+          ],
+          "work.cleanup_ticks": [
+            922,
+            922,
+            922
+          ],
+          "work.collections": [
+            1,
+            1,
+            1
+          ],
+          "work.facts": [
+            130,
+            130,
+            130
+          ],
+          "work.ports": [
+            242,
+            242,
+            242
+          ],
+          "work.scalars": [
+            506,
+            506,
+            506
+          ]
+        }
+      },
+      "partial-hit-128": {
+        "samples": [
+          "controls-candidate/partial-hit-128/0.json",
+          "controls-candidate/partial-hit-128/1.json",
+          "controls-candidate/partial-hit-128/2.json",
+          "controls-candidate/partial-hit-128/3.json",
+          "controls-candidate/partial-hit-128/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "partial-join-hit",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 8,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 128,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1751,
+            1751,
+            1751
+          ],
+          "allocation.peak_bytes": [
+            1154973,
+            1154973,
+            1154973
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            5610064,
+            5610064,
+            5610064
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            259762,
+            259762,
+            259762
+          ],
+          "allocation.phase_bytes.setup": [
+            367659,
+            367659,
+            367659
+          ],
+          "allocation.phase_bytes.validator": [
+            142770,
+            142770,
+            142770
+          ],
+          "allocation.total_bytes": [
+            6384927,
+            6384927,
+            6384927
+          ],
+          "allocation.total_calls": [
+            32135,
+            32135,
+            32135
+          ],
+          "collection.arena": [
+            20,
+            20,
+            20
+          ],
+          "collection.graph": [
+            9670,
+            9670,
+            9670
+          ],
+          "collection.prune_graph": [
+            14631,
+            14631,
+            14631
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            2176,
+            2176,
+            2176
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            4350,
+            4350,
+            4350
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            275,
+            275,
+            275
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            4507,
+            4507,
+            4507
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            275,
+            275,
+            275
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            473,
+            473,
+            473
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            5484,
+            5416,
+            5504
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            2566,
+            2362,
+            2862
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            2297,
+            173,
+            2431
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12732,
+            10836,
+            14416
+          ],
+          "process.wall_seconds": [
+            0.00949963997118175,
+            0.009251164039596915,
+            0.012642398942261934
+          ],
+          "source.match_candidates": [
+            273,
+            273,
+            273
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            275,
+            275,
+            275
+          ],
+          "source.producer_candidates": [
+            256,
+            256,
+            256
+          ],
+          "time_ms.cleanup": [
+            0.330202,
+            0.327671,
+            0.34149
+          ],
+          "time_ms.engine_drop": [
+            0.006094,
+            0.005609,
+            0.010806
+          ],
+          "time_ms.engine_init": [
+            0.015831,
+            0.011392999999999999,
+            0.019962
+          ],
+          "time_ms.parse_program": [
+            0.009417,
+            0.009035000000000001,
+            0.012629999999999999
+          ],
+          "time_ms.parse_query": [
+            0.135163,
+            0.132554,
+            0.19884300000000002
+          ],
+          "time_ms.prepare": [
+            0.205917,
+            0.203747,
+            0.295473
+          ],
+          "time_ms.prepared_drop": [
+            0.01368,
+            0.013635999999999999,
+            0.013961000000000001
+          ],
+          "time_ms.source_delivery": [
+            6.433371999999999,
+            6.113782,
+            9.103958
+          ],
+          "work.advance1_ticks": [
+            55520,
+            55520,
+            55520
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            8,
+            8,
+            8
+          ],
+          "work.cleanup_ticks": [
+            2499,
+            2499,
+            2499
+          ],
+          "work.collections": [
+            2,
+            2,
+            2
+          ],
+          "work.facts": [
+            275,
+            275,
+            275
+          ],
+          "work.ports": [
+            813,
+            813,
+            813
+          ],
+          "work.scalars": [
+            1888,
+            1888,
+            1888
+          ]
+        }
+      },
+      "partial-hit-16": {
+        "samples": [
+          "controls-candidate/partial-hit-16/0.json",
+          "controls-candidate/partial-hit-16/1.json",
+          "controls-candidate/partial-hit-16/2.json",
+          "controls-candidate/partial-hit-16/3.json",
+          "controls-candidate/partial-hit-16/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "partial-join-hit",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 8,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 16,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1750,
+            1750,
+            1750
+          ],
+          "allocation.peak_bytes": [
+            215500,
+            215500,
+            215500
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            859180,
+            859180,
+            859180
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            230305,
+            230305,
+            230305
+          ],
+          "allocation.phase_bytes.setup": [
+            53121,
+            53121,
+            53121
+          ],
+          "allocation.phase_bytes.validator": [
+            21514,
+            21514,
+            21514
+          ],
+          "allocation.total_bytes": [
+            1168792,
+            1168792,
+            1168792
+          ],
+          "allocation.total_calls": [
+            6550,
+            6550,
+            6550
+          ],
+          "collection.arena": [
+            10,
+            10,
+            10
+          ],
+          "collection.graph": [
+            823,
+            823,
+            823
+          ],
+          "collection.prune_graph": [
+            2457,
+            2457,
+            2457
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            384,
+            384,
+            384
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            766,
+            766,
+            766
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            51,
+            51,
+            51
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            767,
+            767,
+            767
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            51,
+            51,
+            51
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            27,
+            27,
+            27
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            4488,
+            4488,
+            4552
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            2412,
+            1902,
+            2700
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1542,
+            101,
+            2480
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12860,
+            11040,
+            14564
+          ],
+          "process.wall_seconds": [
+            0.0036431821063160896,
+            0.002951330039650202,
+            0.004304029978811741
+          ],
+          "source.match_candidates": [
+            49,
+            49,
+            49
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            51,
+            51,
+            51
+          ],
+          "source.producer_candidates": [
+            16,
+            16,
+            16
+          ],
+          "time_ms.cleanup": [
+            0.066363,
+            0.065619,
+            0.10783999999999999
+          ],
+          "time_ms.engine_drop": [
+            0.005490999999999999,
+            0.003778,
+            0.010353999999999999
+          ],
+          "time_ms.engine_init": [
+            0.010091000000000001,
+            0.008457999999999999,
+            0.028325
+          ],
+          "time_ms.parse_program": [
+            0.007889,
+            0.0074259999999999994,
+            0.010682
+          ],
+          "time_ms.parse_query": [
+            0.024638999999999998,
+            0.023459,
+            0.037522
+          ],
+          "time_ms.prepare": [
+            0.054576,
+            0.043507000000000004,
+            0.066845
+          ],
+          "time_ms.prepared_drop": [
+            0.002899,
+            0.002657,
+            0.004825
+          ],
+          "time_ms.source_delivery": [
+            1.008035,
+            0.9436209999999999,
+            1.503304
+          ],
+          "work.advance1_ticks": [
+            8184,
+            8184,
+            8184
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            8,
+            8,
+            8
+          ],
+          "work.cleanup_ticks": [
+            483,
+            483,
+            483
+          ],
+          "work.collections": [
+            1,
+            1,
+            1
+          ],
+          "work.facts": [
+            51,
+            51,
+            51
+          ],
+          "work.ports": [
+            141,
+            141,
+            141
+          ],
+          "work.scalars": [
+            320,
+            320,
+            320
+          ]
+        }
+      },
+      "partial-hit-32": {
+        "samples": [
+          "controls-candidate/partial-hit-32/0.json",
+          "controls-candidate/partial-hit-32/1.json",
+          "controls-candidate/partial-hit-32/2.json",
+          "controls-candidate/partial-hit-32/3.json",
+          "controls-candidate/partial-hit-32/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "partial-join-hit",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 8,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 32,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1750,
+            1750,
+            1750
+          ],
+          "allocation.peak_bytes": [
+            344612,
+            344612,
+            344612
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            1490668,
+            1490668,
+            1490668
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            234497,
+            234497,
+            234497
+          ],
+          "allocation.phase_bytes.setup": [
+            97873,
+            97873,
+            97873
+          ],
+          "allocation.phase_bytes.validator": [
+            38202,
+            38202,
+            38202
+          ],
+          "allocation.total_bytes": [
+            1865912,
+            1865912,
+            1865912
+          ],
+          "allocation.total_calls": [
+            9958,
+            9958,
+            9958
+          ],
+          "collection.arena": [
+            10,
+            10,
+            10
+          ],
+          "collection.graph": [
+            1367,
+            1367,
+            1367
+          ],
+          "collection.prune_graph": [
+            4121,
+            4121,
+            4121
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            640,
+            640,
+            640
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            1278,
+            1278,
+            1278
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            83,
+            83,
+            83
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            1279,
+            1279,
+            1279
+          ],
+          "memory.sampled_peak.history_nodes": [
+            15,
+            15,
+            15
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            83,
+            83,
+            83
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            99,
+            99,
+            99
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            4552,
+            4552,
+            4680
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            1963,
+            1553,
+            2713
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1299,
+            99,
+            1811
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12292,
+            10260,
+            14008
+          ],
+          "process.wall_seconds": [
+            0.0040166780818253756,
+            0.0038306519854813814,
+            0.004488274920731783
+          ],
+          "source.match_candidates": [
+            81,
+            81,
+            81
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            83,
+            83,
+            83
+          ],
+          "source.producer_candidates": [
+            32,
+            32,
+            32
+          ],
+          "time_ms.cleanup": [
+            0.103008,
+            0.10207100000000001,
+            0.107311
+          ],
+          "time_ms.engine_drop": [
+            0.00519,
+            0.004218,
+            0.00715
+          ],
+          "time_ms.engine_init": [
+            0.008110000000000001,
+            0.007713,
+            0.009971
+          ],
+          "time_ms.parse_program": [
+            0.007184,
+            0.0060739999999999995,
+            0.011278999999999999
+          ],
+          "time_ms.parse_query": [
+            0.039715999999999994,
+            0.039296,
+            0.042279
+          ],
+          "time_ms.prepare": [
+            0.06763999999999999,
+            0.065474,
+            0.072619
+          ],
+          "time_ms.prepared_drop": [
+            0.0042239999999999995,
+            0.004143999999999999,
+            0.0045839999999999995
+          ],
+          "time_ms.source_delivery": [
+            1.614164,
+            1.611738,
+            1.6231069999999999
+          ],
+          "work.advance1_ticks": [
+            13766,
+            13766,
+            13766
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            8,
+            8,
+            8
+          ],
+          "work.cleanup_ticks": [
+            771,
+            771,
+            771
+          ],
+          "work.collections": [
+            1,
+            1,
+            1
+          ],
+          "work.facts": [
+            83,
+            83,
+            83
+          ],
+          "work.ports": [
+            237,
+            237,
+            237
+          ],
+          "work.scalars": [
+            544,
+            544,
+            544
+          ]
+        }
+      },
+      "partial-hit-64": {
+        "samples": [
+          "controls-candidate/partial-hit-64/0.json",
+          "controls-candidate/partial-hit-64/1.json",
+          "controls-candidate/partial-hit-64/2.json",
+          "controls-candidate/partial-hit-64/3.json",
+          "controls-candidate/partial-hit-64/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "partial-join-hit",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 8,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 64,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1750,
+            1750,
+            1750
+          ],
+          "allocation.peak_bytes": [
+            619420,
+            619420,
+            619420
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            2801356,
+            2801356,
+            2801356
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            242881,
+            242881,
+            242881
+          ],
+          "allocation.phase_bytes.setup": [
+            187595,
+            187595,
+            187595
+          ],
+          "allocation.phase_bytes.validator": [
+            71002,
+            71002,
+            71002
+          ],
+          "allocation.total_bytes": [
+            3307506,
+            3307506,
+            3307506
+          ],
+          "allocation.total_calls": [
+            17099,
+            17099,
+            17099
+          ],
+          "collection.arena": [
+            10,
+            10,
+            10
+          ],
+          "collection.graph": [
+            2455,
+            2455,
+            2455
+          ],
+          "collection.prune_graph": [
+            7449,
+            7449,
+            7449
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            1152,
+            1152,
+            1152
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            2302,
+            2302,
+            2302
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            147,
+            147,
+            147
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            2303,
+            2303,
+            2303
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            147,
+            147,
+            147
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            247,
+            247,
+            247
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            4900,
+            4836,
+            4968
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            2290,
+            1625,
+            2863
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1678,
+            90,
+            2790
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12996,
+            11216,
+            14684
+          ],
+          "process.wall_seconds": [
+            0.00603309297002852,
+            0.005397407105192542,
+            0.007055854192003608
+          ],
+          "source.match_candidates": [
+            145,
+            145,
+            145
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            147,
+            147,
+            147
+          ],
+          "source.producer_candidates": [
+            64,
+            64,
+            64
+          ],
+          "time_ms.cleanup": [
+            0.1832,
+            0.178486,
+            0.19045299999999998
+          ],
+          "time_ms.engine_drop": [
+            0.0064080000000000005,
+            0.005641,
+            0.006872
+          ],
+          "time_ms.engine_init": [
+            0.009382999999999999,
+            0.00881,
+            0.013967
+          ],
+          "time_ms.parse_program": [
+            0.009425999999999999,
+            0.007170999999999999,
+            0.011112
+          ],
+          "time_ms.parse_query": [
+            0.08545,
+            0.067637,
+            0.100503
+          ],
+          "time_ms.prepare": [
+            0.11955500000000001,
+            0.11257,
+            0.166399
+          ],
+          "time_ms.prepared_drop": [
+            0.007503999999999999,
+            0.007391999999999999,
+            0.007748
+          ],
+          "time_ms.source_delivery": [
+            3.2907740000000003,
+            2.9742599999999997,
+            4.0610669999999995
+          ],
+          "work.advance1_ticks": [
+            25268,
+            25268,
+            25268
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            8,
+            8,
+            8
+          ],
+          "work.cleanup_ticks": [
+            1347,
+            1347,
+            1347
+          ],
+          "work.collections": [
+            1,
+            1,
+            1
+          ],
+          "work.facts": [
+            147,
+            147,
+            147
+          ],
+          "work.ports": [
+            429,
+            429,
+            429
+          ],
+          "work.scalars": [
+            992,
+            992,
+            992
+          ]
+        }
+      },
+      "prepare-shape-1": {
+        "samples": [
+          "controls-candidate/prepare-shape-1/0.json",
+          "controls-candidate/prepare-shape-1/1.json",
+          "controls-candidate/prepare-shape-1/2.json",
+          "controls-candidate/prepare-shape-1/3.json",
+          "controls-candidate/prepare-shape-1/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "prepare-reuse",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": {
+            "arity": 4,
+            "depth": 0,
+            "empty": false,
+            "heads": 1,
+            "repeats": 0,
+            "uses": 4,
+            "width": 8
+          },
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 32,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1915,
+            1915,
+            1915
+          ],
+          "allocation.peak_bytes": [
+            84064,
+            84064,
+            84064
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            256,
+            256,
+            256
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            117788,
+            117788,
+            117788
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            27329,
+            27329,
+            27329
+          ],
+          "allocation.phase_bytes.setup": [
+            222496,
+            222496,
+            222496
+          ],
+          "allocation.phase_bytes.validator": [
+            7564,
+            7564,
+            7564
+          ],
+          "allocation.total_bytes": [
+            375433,
+            375433,
+            375433
+          ],
+          "allocation.total_calls": [
+            5657,
+            5657,
+            5657
+          ],
+          "elapsed_ms": [
+            0.462549,
+            0.42569999999999997,
+            0.655262
+          ],
+          "native_peak_rss_estimate_kib": [
+            4284,
+            4284,
+            4352
+          ],
+          "parse_program_ms": [
+            0.110207,
+            0.10479000000000001,
+            0.154127
+          ],
+          "parse_query_ms": [
+            0.00083,
+            0.0007589999999999999,
+            0.001022
+          ],
+          "process.peak_rss_kib": [
+            13064,
+            11304,
+            14764
+          ],
+          "process.wall_seconds": [
+            0.0025216450449079275,
+            0.0018851300701498985,
+            0.0027492360677570105
+          ]
+        }
+      },
+      "prepare-shape-2": {
+        "samples": [
+          "controls-candidate/prepare-shape-2/0.json",
+          "controls-candidate/prepare-shape-2/1.json",
+          "controls-candidate/prepare-shape-2/2.json",
+          "controls-candidate/prepare-shape-2/3.json",
+          "controls-candidate/prepare-shape-2/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "prepare-reuse",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": {
+            "arity": 4,
+            "depth": 0,
+            "empty": false,
+            "heads": 2,
+            "repeats": 0,
+            "uses": 4,
+            "width": 8
+          },
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 32,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1915,
+            1915,
+            1915
+          ],
+          "allocation.peak_bytes": [
+            98294,
+            98294,
+            98294
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            256,
+            256,
+            256
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            117788,
+            117788,
+            117788
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            27329,
+            27329,
+            27329
+          ],
+          "allocation.phase_bytes.setup": [
+            272070,
+            272070,
+            272070
+          ],
+          "allocation.phase_bytes.validator": [
+            7564,
+            7564,
+            7564
+          ],
+          "allocation.total_bytes": [
+            425007,
+            425007,
+            425007
+          ],
+          "allocation.total_calls": [
+            6607,
+            6607,
+            6607
+          ],
+          "elapsed_ms": [
+            0.537934,
+            0.49708399999999997,
+            0.755538
+          ],
+          "native_peak_rss_estimate_kib": [
+            4308,
+            4304,
+            4436
+          ],
+          "parse_program_ms": [
+            0.125106,
+            0.116755,
+            0.18575699999999998
+          ],
+          "parse_query_ms": [
+            0.000797,
+            0.000757,
+            0.001312
+          ],
+          "process.peak_rss_kib": [
+            12724,
+            10836,
+            14408
+          ],
+          "process.wall_seconds": [
+            0.0028629149310290813,
+            0.00235379789955914,
+            0.003250750945881009
+          ]
+        }
+      },
+      "prepare-shape-4": {
+        "samples": [
+          "controls-candidate/prepare-shape-4/0.json",
+          "controls-candidate/prepare-shape-4/1.json",
+          "controls-candidate/prepare-shape-4/2.json",
+          "controls-candidate/prepare-shape-4/3.json",
+          "controls-candidate/prepare-shape-4/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "prepare-reuse",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": {
+            "arity": 4,
+            "depth": 0,
+            "empty": false,
+            "heads": 4,
+            "repeats": 0,
+            "uses": 4,
+            "width": 8
+          },
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 32,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1915,
+            1915,
+            1915
+          ],
+          "allocation.peak_bytes": [
+            118114,
+            118114,
+            118114
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            256,
+            256,
+            256
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            117788,
+            117788,
+            117788
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            27329,
+            27329,
+            27329
+          ],
+          "allocation.phase_bytes.setup": [
+            354212,
+            354212,
+            354212
+          ],
+          "allocation.phase_bytes.validator": [
+            7564,
+            7564,
+            7564
+          ],
+          "allocation.total_bytes": [
+            507149,
+            507149,
+            507149
+          ],
+          "allocation.total_calls": [
+            8559,
+            8559,
+            8559
+          ],
+          "elapsed_ms": [
+            0.632105,
+            0.615723,
+            0.941415
+          ],
+          "native_peak_rss_estimate_kib": [
+            4404,
+            4340,
+            4408
+          ],
+          "parse_program_ms": [
+            0.138408,
+            0.137325,
+            0.211766
+          ],
+          "parse_query_ms": [
+            0.001069,
+            0.0008460000000000001,
+            0.001256
+          ],
+          "process.peak_rss_kib": [
+            12288,
+            10232,
+            14000
+          ],
+          "process.wall_seconds": [
+            0.002597165061160922,
+            0.0022028458770364523,
+            0.0031902529299259186
+          ]
+        }
+      },
+      "prepare-shape-8": {
+        "samples": [
+          "controls-candidate/prepare-shape-8/0.json",
+          "controls-candidate/prepare-shape-8/1.json",
+          "controls-candidate/prepare-shape-8/2.json",
+          "controls-candidate/prepare-shape-8/3.json",
+          "controls-candidate/prepare-shape-8/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "prepare-reuse",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": {
+            "arity": 4,
+            "depth": 0,
+            "empty": false,
+            "heads": 8,
+            "repeats": 0,
+            "uses": 4,
+            "width": 8
+          },
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 32,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1915,
+            1915,
+            1915
+          ],
+          "allocation.peak_bytes": [
+            166330,
+            166330,
+            166330
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            256,
+            256,
+            256
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            117788,
+            117788,
+            117788
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            27329,
+            27329,
+            27329
+          ],
+          "allocation.phase_bytes.setup": [
+            547516,
+            547516,
+            547516
+          ],
+          "allocation.phase_bytes.validator": [
+            7564,
+            7564,
+            7564
+          ],
+          "allocation.total_bytes": [
+            700453,
+            700453,
+            700453
+          ],
+          "allocation.total_calls": [
+            12655,
+            12655,
+            12655
+          ],
+          "elapsed_ms": [
+            1.1006049999999998,
+            0.866219,
+            1.3016510000000001
+          ],
+          "native_peak_rss_estimate_kib": [
+            4496,
+            4432,
+            4560
+          ],
+          "parse_program_ms": [
+            0.264808,
+            0.18743500000000002,
+            0.267028
+          ],
+          "parse_query_ms": [
+            0.001126,
+            0.000777,
+            0.001174
+          ],
+          "process.peak_rss_kib": [
+            13056,
+            11304,
+            14756
+          ],
+          "process.wall_seconds": [
+            0.003227979177609086,
+            0.002724977908656001,
+            0.0036197330337017775
+          ]
+        }
+      },
+      "rewrite-128": {
+        "samples": [
+          "controls-candidate/rewrite-128/0.json",
+          "controls-candidate/rewrite-128/1.json",
+          "controls-candidate/rewrite-128/2.json",
+          "controls-candidate/rewrite-128/3.json",
+          "controls-candidate/rewrite-128/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "rewrite",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 128,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1687,
+            1687,
+            1687
+          ],
+          "allocation.peak_bytes": [
+            714760,
+            714760,
+            714760
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            4350264,
+            4350264,
+            4350264
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            230461,
+            230461,
+            230461
+          ],
+          "allocation.phase_bytes.setup": [
+            115789,
+            115789,
+            115789
+          ],
+          "allocation.phase_bytes.validator": [
+            45470,
+            45470,
+            45470
+          ],
+          "allocation.total_bytes": [
+            4746656,
+            4746656,
+            4746656
+          ],
+          "allocation.total_calls": [
+            24819,
+            24819,
+            24819
+          ],
+          "collection.arena": [
+            10,
+            10,
+            10
+          ],
+          "collection.graph": [
+            1412,
+            1412,
+            1412
+          ],
+          "collection.prune_graph": [
+            3331,
+            3331,
+            3331
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            2560,
+            2560,
+            2560
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            1022,
+            1022,
+            1022
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            128,
+            128,
+            128
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            1023,
+            1023,
+            1023
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            384,
+            384,
+            384
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            257,
+            257,
+            257
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            5108,
+            5040,
+            5172
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            2201,
+            1783,
+            3398
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1818,
+            273,
+            3038
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12588,
+            10672,
+            14284
+          ],
+          "process.wall_seconds": [
+            0.008263145806267858,
+            0.007361119845882058,
+            0.009362269192934036
+          ],
+          "source.match_candidates": [
+            0,
+            0,
+            0
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            384,
+            384,
+            384
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ],
+          "time_ms.cleanup": [
+            0.097463,
+            0.091888,
+            0.10251400000000001
+          ],
+          "time_ms.engine_drop": [
+            0.005561,
+            0.005181,
+            0.009471
+          ],
+          "time_ms.engine_init": [
+            0.012796,
+            0.00882,
+            0.015592
+          ],
+          "time_ms.parse_program": [
+            0.008745,
+            0.007289,
+            0.013159
+          ],
+          "time_ms.parse_query": [
+            0.070688,
+            0.049871,
+            0.07734100000000001
+          ],
+          "time_ms.prepare": [
+            0.113109,
+            0.079132,
+            0.13459100000000002
+          ],
+          "time_ms.prepared_drop": [
+            0.004921,
+            0.004901,
+            0.004999
+          ],
+          "time_ms.source_delivery": [
+            5.426908999999999,
+            4.923452,
+            6.196426
+          ],
+          "work.advance1_ticks": [
+            27247,
+            27247,
+            27247
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            256,
+            256,
+            256
+          ],
+          "work.cleanup_ticks": [
+            688,
+            688,
+            688
+          ],
+          "work.collections": [
+            1,
+            1,
+            1
+          ],
+          "work.facts": [
+            128,
+            128,
+            128
+          ],
+          "work.ports": [
+            128,
+            128,
+            128
+          ],
+          "work.scalars": [
+            514,
+            514,
+            514
+          ]
+        }
+      },
+      "rewrite-16": {
+        "samples": [
+          "controls-candidate/rewrite-16/0.json",
+          "controls-candidate/rewrite-16/1.json",
+          "controls-candidate/rewrite-16/2.json",
+          "controls-candidate/rewrite-16/3.json",
+          "controls-candidate/rewrite-16/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "rewrite",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 16,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1686,
+            1686,
+            1686
+          ],
+          "allocation.peak_bytes": [
+            102051,
+            102051,
+            102051
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            457768,
+            457768,
+            457768
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            230460,
+            230460,
+            230460
+          ],
+          "allocation.phase_bytes.setup": [
+            19477,
+            19477,
+            19477
+          ],
+          "allocation.phase_bytes.validator": [
+            7378,
+            7378,
+            7378
+          ],
+          "allocation.total_bytes": [
+            719755,
+            719755,
+            719755
+          ],
+          "allocation.total_calls": [
+            4316,
+            4316,
+            4316
+          ],
+          "collection.arena": [
+            10,
+            10,
+            10
+          ],
+          "collection.graph": [
+            180,
+            180,
+            180
+          ],
+          "collection.prune_graph": [
+            419,
+            419,
+            419
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            320,
+            320,
+            320
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            126,
+            126,
+            126
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            16,
+            16,
+            16
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            127,
+            127,
+            127
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            48,
+            48,
+            48
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            1,
+            1,
+            1
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            4372,
+            4368,
+            4436
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            2100,
+            1864,
+            3417
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1810,
+            1562,
+            2585
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12912,
+            11136,
+            14616
+          ],
+          "process.wall_seconds": [
+            0.003287659026682377,
+            0.002521825022995472,
+            0.0035200847778469324
+          ],
+          "source.match_candidates": [
+            0,
+            0,
+            0
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            48,
+            48,
+            48
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ],
+          "time_ms.cleanup": [
+            0.025379,
+            0.01692,
+            0.028787
+          ],
+          "time_ms.engine_drop": [
+            0.007379,
+            0.0044340000000000004,
+            0.010353999999999999
+          ],
+          "time_ms.engine_init": [
+            0.011372,
+            0.008534,
+            0.018204
+          ],
+          "time_ms.parse_program": [
+            0.010962,
+            0.007645000000000001,
+            0.012887999999999998
+          ],
+          "time_ms.parse_query": [
+            0.012608,
+            0.008358,
+            0.013468
+          ],
+          "time_ms.prepare": [
+            0.030905000000000002,
+            0.02444,
+            0.036588999999999997
+          ],
+          "time_ms.prepared_drop": [
+            0.001758,
+            0.0013310000000000002,
+            0.001917
+          ],
+          "time_ms.source_delivery": [
+            0.7379039999999999,
+            0.496843,
+            0.7536
+          ],
+          "work.advance1_ticks": [
+            2855,
+            2855,
+            2855
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            32,
+            32,
+            32
+          ],
+          "work.cleanup_ticks": [
+            128,
+            128,
+            128
+          ],
+          "work.collections": [
+            1,
+            1,
+            1
+          ],
+          "work.facts": [
+            16,
+            16,
+            16
+          ],
+          "work.ports": [
+            16,
+            16,
+            16
+          ],
+          "work.scalars": [
+            66,
+            66,
+            66
+          ]
+        }
+      },
+      "rewrite-32": {
+        "samples": [
+          "controls-candidate/rewrite-32/0.json",
+          "controls-candidate/rewrite-32/1.json",
+          "controls-candidate/rewrite-32/2.json",
+          "controls-candidate/rewrite-32/3.json",
+          "controls-candidate/rewrite-32/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "rewrite",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 32,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1686,
+            1686,
+            1686
+          ],
+          "allocation.peak_bytes": [
+            187467,
+            187467,
+            187467
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            984408,
+            984408,
+            984408
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            230460,
+            230460,
+            230460
+          ],
+          "allocation.phase_bytes.setup": [
+            33205,
+            33205,
+            33205
+          ],
+          "allocation.phase_bytes.validator": [
+            12658,
+            12658,
+            12658
+          ],
+          "allocation.total_bytes": [
+            1265403,
+            1265403,
+            1265403
+          ],
+          "allocation.total_calls": [
+            6934,
+            6934,
+            6934
+          ],
+          "collection.arena": [
+            10,
+            10,
+            10
+          ],
+          "collection.graph": [
+            356,
+            356,
+            356
+          ],
+          "collection.prune_graph": [
+            835,
+            835,
+            835
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            640,
+            640,
+            640
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            254,
+            254,
+            254
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            32,
+            32,
+            32
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            254,
+            254,
+            254
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            94,
+            94,
+            94
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            63,
+            63,
+            63
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            4420,
+            4416,
+            4484
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            1932,
+            1830,
+            2828
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1390,
+            227,
+            1890
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12372,
+            10380,
+            14084
+          ],
+          "process.wall_seconds": [
+            0.003364369971677661,
+            0.0032915049232542515,
+            0.004354116972535849
+          ],
+          "source.match_candidates": [
+            0,
+            0,
+            0
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            96,
+            96,
+            96
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ],
+          "time_ms.cleanup": [
+            0.029302,
+            0.029115000000000002,
+            0.046931999999999995
+          ],
+          "time_ms.engine_drop": [
+            0.0053739999999999994,
+            0.004877,
+            0.011319
+          ],
+          "time_ms.engine_init": [
+            0.01046,
+            0.010190000000000001,
+            0.015089
+          ],
+          "time_ms.parse_program": [
+            0.008114000000000001,
+            0.00643,
+            0.013019000000000001
+          ],
+          "time_ms.parse_query": [
+            0.014605,
+            0.014038,
+            0.021887
+          ],
+          "time_ms.prepare": [
+            0.034043,
+            0.033707,
+            0.049987000000000004
+          ],
+          "time_ms.prepared_drop": [
+            0.0019250000000000003,
+            0.0018369999999999999,
+            0.002494
+          ],
+          "time_ms.source_delivery": [
+            1.055065,
+            1.043231,
+            1.530038
+          ],
+          "work.advance1_ticks": [
+            6004,
+            6004,
+            6004
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            64,
+            64,
+            64
+          ],
+          "work.cleanup_ticks": [
+            208,
+            208,
+            208
+          ],
+          "work.collections": [
+            1,
+            1,
+            1
+          ],
+          "work.facts": [
+            32,
+            32,
+            32
+          ],
+          "work.ports": [
+            32,
+            32,
+            32
+          ],
+          "work.scalars": [
+            130,
+            130,
+            130
+          ]
+        }
+      },
+      "rewrite-64": {
+        "samples": [
+          "controls-candidate/rewrite-64/0.json",
+          "controls-candidate/rewrite-64/1.json",
+          "controls-candidate/rewrite-64/2.json",
+          "controls-candidate/rewrite-64/3.json",
+          "controls-candidate/rewrite-64/4.json"
+        ],
+        "statuses": {
+          "completed": 5
+        },
+        "configuration": {
+          "case": "rewrite",
+          "continued_work": null,
+          "detailed": false,
+          "diagnostics_feature": true,
+          "fresh_depth": null,
+          "fresh_order": null,
+          "max_ticks": 50000000,
+          "prefix": null,
+          "preparation": null,
+          "rotation_cadence": null,
+          "rows": 1,
+          "seed": 0,
+          "sessions": null,
+          "shape": "chain",
+          "size": 64,
+          "timeout_seconds": 3
+        },
+        "witnesses": [],
+        "recorded_release_checks": 5,
+        "all_recorded_release_checks_pass": true,
+        "metrics": {
+          "allocation.final_live_bytes": [
+            1686,
+            1686,
+            1686
+          ],
+          "allocation.peak_bytes": [
+            366267,
+            366267,
+            366267
+          ],
+          "allocation.phase_bytes.calibration": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.cleanup": [
+            4672,
+            4672,
+            4672
+          ],
+          "allocation.phase_bytes.delivery": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.engine": [
+            2074328,
+            2074328,
+            2074328
+          ],
+          "allocation.phase_bytes.inspection": [
+            0,
+            0,
+            0
+          ],
+          "allocation.phase_bytes.other": [
+            230460,
+            230460,
+            230460
+          ],
+          "allocation.phase_bytes.setup": [
+            60645,
+            60645,
+            60645
+          ],
+          "allocation.phase_bytes.validator": [
+            23170,
+            23170,
+            23170
+          ],
+          "allocation.total_bytes": [
+            2393275,
+            2393275,
+            2393275
+          ],
+          "allocation.total_calls": [
+            12667,
+            12667,
+            12667
+          ],
+          "collection.arena": [
+            10,
+            10,
+            10
+          ],
+          "collection.graph": [
+            708,
+            708,
+            708
+          ],
+          "collection.prune_graph": [
+            1667,
+            1667,
+            1667
+          ],
+          "compaction.graph_index_steps": [
+            0,
+            0,
+            0
+          ],
+          "condition.compaction_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.completion_work": [
+            0,
+            0,
+            0
+          ],
+          "condition.transform_work": [
+            0,
+            0,
+            0
+          ],
+          "fields.avoided_port_writes": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_candidates": [
+            0,
+            0,
+            0
+          ],
+          "fields.fallback_lookups": [
+            0,
+            0,
+            0
+          ],
+          "fields.graph_writes": [
+            1280,
+            1280,
+            1280
+          ],
+          "fields.specialized_writes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.graph_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.occurrences": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.after_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.graph_nodes": [
+            510,
+            510,
+            510
+          ],
+          "memory.before_cleanup.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.occurrences": [
+            64,
+            64,
+            64
+          ],
+          "memory.before_cleanup.pending_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.before_cleanup.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.conditions": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.graph_nodes": [
+            511,
+            511,
+            511
+          ],
+          "memory.sampled_peak.history_nodes": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.inspections": [
+            0,
+            0,
+            0
+          ],
+          "memory.sampled_peak.occurrences": [
+            192,
+            192,
+            192
+          ],
+          "memory.sampled_peak.pending_nodes": [
+            129,
+            129,
+            129
+          ],
+          "memory.sampled_peak.snapshots": [
+            0,
+            0,
+            0
+          ],
+          "native_peak_rss_estimate_kib": [
+            4712,
+            4648,
+            4716
+          ],
+          "normalization.applications": [
+            0,
+            0,
+            0
+          ],
+          "normalization.attachment_overlaps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.clashes": [
+            0,
+            0,
+            0
+          ],
+          "normalization.coalescences": [
+            0,
+            0,
+            0
+          ],
+          "normalization.conditional_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.field_equalities": [
+            0,
+            0,
+            0
+          ],
+          "normalization.generative_dispatches": [
+            0,
+            0,
+            0
+          ],
+          "normalization.known_arm_admissions": [
+            0,
+            0,
+            0
+          ],
+          "normalization.steps": [
+            0,
+            0,
+            0
+          ],
+          "normalization.transactions": [
+            0,
+            0,
+            0
+          ],
+          "preparation.constructor_recognition_ns": [
+            2207,
+            2120,
+            2413
+          ],
+          "preparation.field_certificate_and_codegen_ns": [
+            1712,
+            100,
+            2228
+          ],
+          "preparation.omitted_fields": [
+            0,
+            0,
+            0
+          ],
+          "preparation.plan_payload_bytes": [
+            0,
+            0,
+            0
+          ],
+          "preparation.specialized_relations": [
+            0,
+            0,
+            0
+          ],
+          "preparation.update_opcodes": [
+            0,
+            0,
+            0
+          ],
+          "process.peak_rss_kib": [
+            12520,
+            10564,
+            14204
+          ],
+          "process.wall_seconds": [
+            0.005057160975411534,
+            0.004418883938342333,
+            0.005740057909861207
+          ],
+          "source.match_candidates": [
+            0,
+            0,
+            0
+          ],
+          "source.merges": [
+            0,
+            0,
+            0
+          ],
+          "source.posts": [
+            192,
+            192,
+            192
+          ],
+          "source.producer_candidates": [
+            0,
+            0,
+            0
+          ],
+          "time_ms.cleanup": [
+            0.050483,
+            0.050218,
+            0.050742999999999996
+          ],
+          "time_ms.engine_drop": [
+            0.006928,
+            0.004788,
+            0.008213000000000002
+          ],
+          "time_ms.engine_init": [
+            0.011458,
+            0.009281,
+            0.013819
+          ],
+          "time_ms.parse_program": [
+            0.010382,
+            0.0084,
+            0.01062
+          ],
+          "time_ms.parse_query": [
+            0.040395,
+            0.028283,
+            0.04164
+          ],
+          "time_ms.prepare": [
+            0.066032,
+            0.051629999999999995,
+            0.070993
+          ],
+          "time_ms.prepared_drop": [
+            0.002939,
+            0.002879,
+            0.00301
+          ],
+          "time_ms.source_delivery": [
+            2.543509,
+            2.229397,
+            3.144138
+          ],
+          "work.advance1_ticks": [
+            12854,
+            12854,
+            12854
+          ],
+          "work.answers": [
+            1,
+            1,
+            1
+          ],
+          "work.applications": [
+            128,
+            128,
+            128
+          ],
+          "work.cleanup_ticks": [
+            368,
+            368,
+            368
+          ],
+          "work.collections": [
+            1,
+            1,
+            1
+          ],
+          "work.facts": [
+            64,
+            64,
+            64
+          ],
+          "work.ports": [
+            64,
+            64,
+            64
+          ],
+          "work.scalars": [
+            258,
+            258,
+            258
+          ]
+        }
+      }
+    }
+  }
+}

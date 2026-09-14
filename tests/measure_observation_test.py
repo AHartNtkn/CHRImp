@@ -20,6 +20,18 @@ def run(case, size, detail=False, ticks=5_000_000):
 
 
 class ObservationTests(unittest.TestCase):
+    def test_notebook_final_release_includes_last_prepared_owner(self):
+        result, _ = run('notebook-behavior-i', 1)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        records = [json.loads(line.split('=', 1)[1]) for line in result.stdout.splitlines()
+                   if line.startswith('measurement=')]
+        data = next(r['data'] for r in records if r['kind'] == 'result')
+        self.assertTrue(data['cleanup_done'])
+        self.assertEqual(data['work']['answers'], 1)
+        self.assertIn('prepared_released', data, 'final prepared ownership release is not checked')
+        self.assertTrue(data['prepared_released'])
+        self.assertGreaterEqual(data['times_ms']['engine_and_prepared_drop'], 0)
+
     def test_same_validated_results_and_work_in_both_modes(self):
         for case, size in [('rewrite', 8), ('partial-join', 8), ('graph-bits', 3),
                            ('notebook-arithmetic-decompose', 3), ('notebook-behavior-i', 1),

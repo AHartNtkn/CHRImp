@@ -626,6 +626,7 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
     let code = during(Phase::Setup, || prepare(&program, &query).map(Arc::new))
         .map_err(|e| format!("prepare: {e:?}"))?;
     let prepare_time = start.elapsed();
+    let prepared_owner = Arc::downgrade(&code);
     let start = Instant::now();
     let mut e = during(Phase::Setup, || Engine::new(code));
     let init_time = start.elapsed();
@@ -782,6 +783,14 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
     {
         error = Some(format!("cleanup retained unowned state: {after:?}"));
     }
+    let drop_start = Instant::now();
+    during(Phase::Cleanup, || drop(e));
+    let prepared_released = prepared_owner.strong_count() == 0;
+    during(Phase::Cleanup, || drop(prepared_owner));
+    let engine_and_prepared_drop = drop_start.elapsed();
+    if !prepared_released {
+        error = Some("final engine destruction retained the prepared plan".into());
+    }
     let reclaimed: Vec<_> = before
         .iter()
         .zip(after)
@@ -864,11 +873,12 @@ pub fn run(case: &str, n: usize, max_ticks: u64, timeout: Duration) -> Result<bo
             "goal_count": expected, "source_goal_reached": answers == expected && (!finite || delivery_done),
             "timed_out": elapsed >= timeout,
             "censor_reason": if elapsed >= timeout { Some("source_timeout") } else if !cleanup_in_time { Some("cleanup_timeout") } else if !cleanup_done { Some("cleanup_ticks") } else if !achieved { Some(if ticks >= max_ticks { "source_ticks" } else { "search_ended_before_prefix" }) } else { None }, "cleanup_done": cleanup_done,
-            "cleanup_in_time": cleanup_in_time, "error": error, "search_exhausted": exhausted,
+            "cleanup_in_time": cleanup_in_time, "prepared_released": prepared_released, "error": error, "search_exhausted": exhausted,
             "delivery_done": delivery_done, "max_ticks": max_ticks, "timeout_ms": ms(timeout),
             "times_ms": {"parse": ms(parse_time), "prepare": ms(prepare_time), "engine_init": ms(init_time),
                 "source_delivery": ms(elapsed), "validator": detailed.then(|| ms(validator)),
-                "source_delivery_without_validator": detailed.then(|| ms(elapsed.saturating_sub(validator))), "cleanup": ms(cleanup_time)},
+                "source_delivery_without_validator": detailed.then(|| ms(elapsed.saturating_sub(validator))), "cleanup": ms(cleanup_time),
+                "engine_and_prepared_drop": ms(engine_and_prepared_drop)},
             "first_event": first_event.map(|(tick,t)| serde_json::json!({"tick":tick,"ms":ms(t)})),
             "first_answer": first_answer.map(|(tick,t)| serde_json::json!({"tick":tick,"ms":ms(t)})),
             "first_complete_answer": first_answer_value,

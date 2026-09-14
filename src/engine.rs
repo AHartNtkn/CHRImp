@@ -261,7 +261,11 @@ impl Engine {
                 plan,
                 source: code.clone(),
             });
-        let graph = Graph::with_tuple_indexes(&code.signatures, &code.tuple_indexes);
+        let graph = Graph::with_update_plans(
+            &code.signatures,
+            &code.tuple_indexes,
+            code.graph_updates.clone(),
+        );
         let history = History::default();
         let state = StateRoot {
             graph: graph.empty(),

@@ -934,3 +934,37 @@ fn independent_family_normalization_preserves_finite_progress_and_release() {
         (0, 0, 0, 0, 0)
     );
 }
+
+#[test]
+fn structural_field_consumers_keep_join_and_repeated_identity_tests() {
+    for rule in [
+        "app(K,X,Y) \\ read(X) <=> seen(Y).",
+        "app(K,X,X) \\ read(K) <=> seen(X).",
+    ] {
+        let p = parse_program(&format!("app(K,A,B) \\ app(K,C,D) <=> A=C,B=D. {rule}")).unwrap();
+        let repeated = rule.contains("X,X");
+        let q = if repeated {
+            "app(K,A,B),read(K),(A=B;true)"
+        } else {
+            "app(K,A,B),read(C),(A=C;true)"
+        };
+        let mut e = start(&p, q);
+        let all = answers(&mut e);
+        assert_eq!(all.len(), 2);
+        let mut matched = vec![];
+        for a in &all {
+            let v = |name| variable(&e, a, name);
+            let hit = v("A") == v(if repeated { "B" } else { "C" });
+            matched.push(hit);
+            assert_eq!(a.rows.len(), 2);
+            assert_eq!(rows(&e, a, "app")[0].ports, [v("K"), v("A"), v("B")]);
+            assert_eq!(rows(&e, a, "seen").len(), usize::from(hit));
+            assert_eq!(rows(&e, a, "read").len(), usize::from(!hit));
+            if hit {
+                assert_eq!(rows(&e, a, "seen")[0].ports, [v("B")]);
+            }
+        }
+        matched.sort();
+        assert_eq!(matched, [false, true]);
+    }
+}

@@ -131,6 +131,38 @@ fn pair(rule: &RulePlan) -> bool {
         && a[1..].iter().all(|x| !b[1..].contains(x))
 }
 impl Constructors {
+    /// The attachment executor implements consistency/clashes directly. A field
+    /// used exactly once in every source head is a payload read, never an index
+    /// key: matching only looks up already bound variables. Keep the key port,
+    /// and conservatively retain every field compared anywhere in the program,
+    /// including source rules removed from ordinary activation. Unknown and
+    /// interfering programs never receive this representation certificate.
+    pub(crate) fn field_indexes(&self, code: &Prepared) -> Vec<Vec<bool>> {
+        let mut ports: Vec<Vec<bool>> = code
+            .signatures
+            .iter()
+            .enumerate()
+            .map(|(r, s)| {
+                (0..s.arity)
+                    .map(|p| p == 0 || !self.relations.contains(&r))
+                    .collect()
+            })
+            .collect();
+        for rule in &code.rules {
+            let mut uses = vec![0; rule.head_variables];
+            for h in &rule.heads {
+                for &slot in &h.args {
+                    uses[slot] += 1;
+                }
+            }
+            for h in &rule.heads {
+                for (port, &slot) in h.args.iter().enumerate() {
+                    ports[h.relation][port] |= uses[slot] > 1;
+                }
+            }
+        }
+        ports
+    }
     /// Derive an exact finite normalization subsystem from rule structure.
     /// A direct coalescence is one legal simpagation followed by its field
     /// equalities; an incompatible overlap is one source failure. Giving these

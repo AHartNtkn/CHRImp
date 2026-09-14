@@ -187,7 +187,10 @@ impl Graph {
         port: usize,
         bound: [Option<u64>; MAX_PORTS],
     ) -> Option<Subscriber> {
-        if self.arities[relation] > MAX_PORTS || bound.iter().flatten().count() < 2 {
+        if self.arities[relation] > MAX_PORTS
+            || bound.iter().flatten().count() < 2
+            || !self.has_port_index(relation, port)
+        {
             return None;
         }
         // Recheck on every subscription, including hits. A late conditional merge
@@ -251,6 +254,7 @@ impl Graph {
                         [prefix[0], prefix[1], prefix[2], u64::MAX],
                     ),
                     id_word: 3,
+                    filter: None,
                 }),
                 rows: Vec::new(),
                 partitions: HashMap::new(),
