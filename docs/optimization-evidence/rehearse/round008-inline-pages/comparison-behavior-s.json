@@ -1,0 +1,207 @@
+{
+  "status": "compared",
+  "observer_overhead": false,
+  "observation_changes": {},
+  "environment_differences": {},
+  "before": "/tmp/chrimp-round008-boxed/baseline-behavior-s",
+  "after": "/tmp/chrimp-round008-boxed/candidate-behavior-s",
+  "configuration": {
+    "case": "notebook-behavior-s",
+    "detailed": true,
+    "diagnostics_feature": true,
+    "max_ticks": 500000000,
+    "rows": 1,
+    "seed": 0,
+    "shape": "chain",
+    "size": 1,
+    "timeout_seconds": 45
+  },
+  "measurement_scope": "Completed measurement intervals only. Censored resource observations describe the measured prefix, not whole-search cost or adverse amplification; inspect raw work and elapsed observations.",
+  "metrics": {
+    "workload.times_ms.source_delivery": {
+      "status": "resolution_limited",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 48.782544,
+      "after_mean": 21.225147,
+      "before_median": 45.760834,
+      "after_median": 21.343541000000002,
+      "absolute_change": -27.557397,
+      "ratio": 0.4350971732839517,
+      "before_range": [
+        36.565977,
+        64.95743399999999
+      ],
+      "after_range": [
+        19.465557,
+        23.394317
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "permutation_resolution_lower_bound": 0.007936507936507936
+    },
+    "workload.first_answer.ms": {
+      "status": "resolution_limited",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 48.7711178,
+      "after_mean": 21.2158206,
+      "before_median": 45.749356999999996,
+      "after_median": 21.336383,
+      "absolute_change": -27.5552972,
+      "ratio": 0.43500788083229047,
+      "before_range": [
+        36.554968,
+        64.94498999999999
+      ],
+      "after_range": [
+        19.458049000000003,
+        23.385206
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "permutation_resolution_lower_bound": 0.007936507936507936
+    },
+    "workload.times_ms.cleanup": {
+      "status": "resolution_limited",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 0.5699310000000001,
+      "after_mean": 0.3306028,
+      "before_median": 0.564926,
+      "after_median": 0.332017,
+      "absolute_change": -0.2393282000000001,
+      "ratio": 0.5800751319019318,
+      "before_range": [
+        0.529381,
+        0.625614
+      ],
+      "after_range": [
+        0.316868,
+        0.346207
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "permutation_resolution_lower_bound": 0.007936507936507936
+    },
+    "process.user_cpu_seconds": {
+      "status": "resolution_limited",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 0.0366392,
+      "after_mean": 0.0228658,
+      "before_median": 0.036123999999999996,
+      "after_median": 0.023129,
+      "absolute_change": -0.013773399999999998,
+      "ratio": 0.6240802200921418,
+      "before_range": [
+        0.034117,
+        0.039578999999999996
+      ],
+      "after_range": [
+        0.019067,
+        0.026003
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "permutation_resolution_lower_bound": 0.007936507936507936
+    },
+    "process.system_cpu_seconds": {
+      "status": "resolution_limited",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 0.003096,
+      "after_mean": 0.0030084,
+      "before_median": 0.003084,
+      "after_median": 0.002985,
+      "absolute_change": -8.759999999999974e-05,
+      "ratio": 0.9717054263565892,
+      "before_range": [
+        0.001869,
+        0.004738
+      ],
+      "after_range": [
+        0.001005,
+        0.0060209999999999994
+      ],
+      "p_value": 0.9841269841269841,
+      "method": "exact",
+      "assignments": 252,
+      "permutation_resolution_lower_bound": 0.007936507936507936
+    },
+    "workload.native_peak_rss_estimate_kib": {
+      "status": "resolution_limited",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 6517.6,
+      "after_mean": 6539.2,
+      "before_median": 6544,
+      "after_median": 6556,
+      "absolute_change": 21.599999999999454,
+      "ratio": 1.0033141033509267,
+      "before_range": [
+        6472,
+        6552
+      ],
+      "after_range": [
+        6472,
+        6620
+      ],
+      "p_value": 0.42063492063492064,
+      "method": "exact",
+      "assignments": 252,
+      "permutation_resolution_lower_bound": 0.007936507936507936
+    },
+    "diagnostics.source.0.allocation.process_peak_requested_bytes": {
+      "status": "resolution_limited",
+      "before_n": 5,
+      "after_n": 5,
+      "before_mean": 1718208.6,
+      "after_mean": 1723871.0,
+      "before_median": 1718623,
+      "after_median": 1723871,
+      "absolute_change": 5662.399999999907,
+      "ratio": 1.0032955253512292,
+      "before_range": [
+        1717415,
+        1718727
+      ],
+      "after_range": [
+        1723871,
+        1723871
+      ],
+      "p_value": 0.007936507936507936,
+      "method": "exact",
+      "assignments": 252,
+      "holm_threshold": 0.0071428571428571435,
+      "permutation_resolution_lower_bound": 0.007936507936507936
+    }
+  },
+  "sample_paths": {
+    "before": [
+      "/tmp/chrimp-round008-boxed/baseline-behavior-s/0.json",
+      "/tmp/chrimp-round008-boxed/baseline-behavior-s/1.json",
+      "/tmp/chrimp-round008-boxed/baseline-behavior-s/2.json",
+      "/tmp/chrimp-round008-boxed/baseline-behavior-s/3.json",
+      "/tmp/chrimp-round008-boxed/baseline-behavior-s/4.json"
+    ],
+    "after": [
+      "/tmp/chrimp-round008-boxed/candidate-behavior-s/0.json",
+      "/tmp/chrimp-round008-boxed/candidate-behavior-s/1.json",
+      "/tmp/chrimp-round008-boxed/candidate-behavior-s/2.json",
+      "/tmp/chrimp-round008-boxed/candidate-behavior-s/3.json",
+      "/tmp/chrimp-round008-boxed/candidate-behavior-s/4.json"
+    ]
+  },
+  "before_outcomes": {
+    "completed": 5
+  },
+  "after_outcomes": {
+    "completed": 5
+  },
+  "interpretation": "At most 9,999 resampling draws per hypothesis; processing deadline bounds the comparison. Two-sided mean-difference permutation evidence with Holm family correction; increases need materiality/scaling assessment. Sparse, censored or missing observations cannot establish absence of regression. Machine drift and serial group order can confound differences. Native RSS is the whole harness address-space peak; wait4 RSS includes launcher overhead."
+}
