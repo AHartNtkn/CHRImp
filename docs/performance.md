@@ -1,5 +1,33 @@
 # Performance tools
 
+## Store prefix-root memo (Round 016)
+
+Store keeps at most 32 weak prefix lookup entries, keyed by its root allocation
+identity and normalized prefix/word count. Store ownership is implicit in the
+table and rechecked in each weak witness. Hits validate both the supplied root
+and upgraded result; misses follow the original path. Capacity pressure clears
+the bounded table, and collection releases its backing and weak allocations.
+No entry owns scalar payloads or descendants. Weak input witnesses can force
+copy-on-write on a subsequent mutation; these costs belong in comparisons.
+
+Detailed measure checkpoints expose `prefix_lookup` (requests, inspected path
+nodes) and `prefix_memo` (hits, misses, evicted entries, current entries, table
+capacity). Requests include empty roots, which bypass memo lookup. A miss adds
+a hash-table lookup and insertion; these counters do not count internal hash
+bucket probes or represent total CPU work. Store's existing mutation and
+allocation counters plus the maintained requested-allocation checkpoints expose
+the associated storage costs.
+
+The `shared_restrictions` growth test compares nine exact version matches and
+nine retained-snapshot readbacks at 128/512/2048 initial rows. The additional
+`growing_prefix_cache_churn_preserves_answers_and_release` test uses 33/65/129
+versions at 128 rows, exceeding memo capacity, and validates every occurrence
+in both passes before final collection/release. Run each prebuilt diagnostic
+test alone under `timeout --kill-after=5s 60s`, with `--nocapture --test-threads=1`
+for comparable allocation checkpoints. The Round 016 report records cold-miss
+controls as well as the retained-version hits; this memo does not reuse a result
+across different Store root identities merely because its subtree is unchanged.
+
 ## Shared restriction prefix witnesses (Round 015)
 
 Buckets with more than 128 and at most 4096 rows are traversed as ordered

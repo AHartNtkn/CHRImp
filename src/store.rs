@@ -1,6 +1,7 @@
 //! Arc-owned persistent indexes. Explicit leaf tracing protects scalar payloads;
 //! completed collection epochs invalidate untraced roots. Child release is deferred.
 use crate::{condition::Condition, gc::GcLease};
+use std::collections::HashMap;
 use std::sync::{
     Arc, Mutex, Weak,
     atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering::Relaxed},
@@ -29,6 +30,9 @@ struct Stats {
     page_fallback_visits: AtomicUsize,
     prefix_calls: AtomicUsize,
     prefix_steps: AtomicUsize,
+    prefix_hits: AtomicUsize,
+    prefix_misses: AtomicUsize,
+    prefix_evictions: AtomicUsize,
 }
 // Pages never cross a whole-word prefix or an aligned eight-key interval.
 // Thus classification, copying, shifts, destruction and each update are bounded;
@@ -312,6 +316,18 @@ pub struct Store<V: Value> {
     frozen: Arc<AtomicBool>,
     queue: Arc<Queue<V>>,
     stats: Arc<Stats>,
+    prefix_memo: Mutex<HashMap<PrefixKey, PrefixEntry<V>>>,
+}
+const PREFIX_MEMO_LIMIT: usize = 32;
+#[derive(Hash, PartialEq, Eq)]
+struct PrefixKey {
+    allocation: usize,
+    prefix: Key,
+    words: usize,
+}
+struct PrefixEntry<V: Value> {
+    input: WeakRoot<V>,
+    result: WeakRoot<V>,
 }
 impl<V: Value> Default for Store<V> {
     fn default() -> Self {
@@ -326,6 +342,7 @@ impl<V: Value> Default for Store<V> {
             frozen: Arc::new(AtomicBool::new(false)),
             queue: Arc::new(Queue::new()),
             stats: Arc::new(Stats::default()),
+            prefix_memo: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -518,6 +535,17 @@ impl<V: Value> Store<V> {
         [
             self.stats.prefix_calls.load(Relaxed),
             self.stats.prefix_steps.load(Relaxed),
+        ]
+    }
+    /// Hits, misses, evicted entries, current entries and table capacity.
+    pub fn prefix_memo_counts(&self) -> [usize; 5] {
+        let memo = self.prefix_memo.lock().unwrap();
+        [
+            self.stats.prefix_hits.load(Relaxed),
+            self.stats.prefix_misses.load(Relaxed),
+            self.stats.prefix_evictions.load(Relaxed),
+            memo.len(),
+            memo.capacity(),
         ]
     }
     fn record<'a>(&self, root: &'a Root<V>) -> &'a Record<V> {
@@ -876,6 +904,50 @@ impl<V: Value> Store<V> {
     pub(crate) fn prefix_root(&self, root: &Root<V>, prefix: Key, words: usize) -> Root<V> {
         assert!(words <= 3 && self.contains(root));
         self.stats.prefix_calls.fetch_add(1, Relaxed);
+        if root.is_empty() {
+            return self.empty();
+        }
+        let mut normalized = prefix;
+        normalized[words..].fill(0);
+        let key = PrefixKey {
+            allocation: Arc::as_ptr(root.node.as_ref().unwrap()) as usize,
+            prefix: normalized,
+            words,
+        };
+        let mut memo = self.prefix_memo.lock().unwrap();
+        if let Some(entry) = memo.get(&key)
+            && entry.input.matches(root)
+        {
+            let result = match &entry.result.node {
+                None => Some(self.empty()),
+                Some(node) => node.upgrade().map(|node| Root {
+                    owner: entry.result.owner,
+                    node: Some(node),
+                }),
+            };
+            if let Some(result) = result.filter(|result| self.contains(result)) {
+                self.stats.prefix_hits.fetch_add(1, Relaxed);
+                return result;
+            }
+        }
+        self.stats.prefix_misses.fetch_add(1, Relaxed);
+        let result = self.prefix_root_uncached(root, prefix, words);
+        if memo.len() == PREFIX_MEMO_LIMIT {
+            self.stats.prefix_evictions.fetch_add(memo.len(), Relaxed);
+            memo.clear();
+        }
+        // The weak input prevents in-place mutation and allocation address reuse.
+        // Neither witness keeps payloads alive. Empty results are exact too.
+        memo.insert(
+            key,
+            PrefixEntry {
+                input: root.downgrade(),
+                result: result.downgrade(),
+            },
+        );
+        result
+    }
+    fn prefix_root_uncached(&self, root: &Root<V>, prefix: Key, words: usize) -> Root<V> {
         let mut node = root;
         while !node.is_empty() {
             self.stats.prefix_steps.fetch_add(1, Relaxed);
@@ -954,6 +1026,10 @@ impl<V: Value> Store<V> {
         reset: bool,
     ) -> Collector<I, V> {
         let lease = GcLease::acquire(&self.frozen);
+        let memo = self.prefix_memo.get_mut().unwrap();
+        self.stats.prefix_evictions.fetch_add(memo.len(), Relaxed);
+        // Release weak allocation headers and table backing at the lifecycle barrier.
+        *memo = HashMap::new();
         if reset {
             self.archive_epoch = self
                 .archive_epoch
@@ -1465,6 +1541,58 @@ mod release_block_tests {
 #[cfg(test)]
 mod prefix_identity_tests {
     use super::*;
+    #[test]
+    fn memo_normalization_churn_generation_and_release() {
+        let mut store = Store::<u64>::default();
+        let mut root = store.empty();
+        for i in 0..96 {
+            root = store.insert(root, [2, i, 4, 0], i);
+        }
+        for i in 0..96 {
+            let a = store.prefix_root(&root, [2, i, 99, 777], 2);
+            let b = store.prefix_root(&root, [2, i, 0, 0], 2);
+            assert_eq!(a, b);
+            assert_eq!(store.get(&a, &[2, i, 4, 0]), Some(i));
+            assert!(store.prefix_memo_counts()[3] <= PREFIX_MEMO_LIMIT);
+        }
+        assert_eq!(store.prefix_memo_counts()[0], 96);
+        assert_eq!(store.prefix_memo_counts()[2], 64);
+        let old = root.clone();
+        drop(store.prefix_root(&root, [2, 95, 4, 0], 3));
+        root = store.insert(root, [2, 95, 4, 0], 999);
+        for (view, expected) in [(&old, 95), (&root, 999)] {
+            let dependency = store.prefix_root(view, [2, 95, 4, 0], 3);
+            assert_eq!(store.get(&dependency, &[2, 95, 4, 0]), Some(expected));
+        }
+        for _ in 0..2 {
+            assert!(store.prefix_root(&root, [9, 0, 0, 0], 1).is_empty());
+        }
+        let foreign = Store::<u64>::default();
+        assert!(std::panic::catch_unwind(|| foreign.prefix_root(&root, [2, 95, 4, 0], 3)).is_err());
+        let weak = root.downgrade();
+        drop((old, root));
+        while !store.release_tick() {}
+        assert_eq!(store.node_count(), 0);
+        assert!(weak.node.as_ref().unwrap().upgrade().is_none());
+        let mut root = store.insert(store.empty(), [2, 95, 4, 0], 1000);
+        assert_eq!(store.prefix_root(&root, [2, 95, 4, 0], 3), root);
+        // Only weak owners remain beyond the caller: mutation must detach.
+        root = store.insert(root, [2, 95, 4, 0], 1001);
+        assert_eq!(
+            store.get(&store.prefix_root(&root, [2, 95, 4, 0], 3), &[2, 95, 4, 0]),
+            Some(1001)
+        );
+        let mut gc = store.collect(std::iter::empty());
+        while !gc.done() {
+            gc.tick(&mut store);
+        }
+        drop(gc);
+        assert_eq!(&store.prefix_memo_counts()[3..], &[0, 0]);
+        assert!(std::panic::catch_unwind(|| store.prefix_root(&root, [2, 95, 4, 0], 3)).is_err());
+        drop(root);
+        while !store.release_tick() {}
+        assert_eq!(store.node_count(), 0);
+    }
     #[test]
     fn split_prefix_witnesses_preserve_order_generation_and_stale_rejection() {
         let mut store = Store::<u64>::default();

@@ -96,82 +96,98 @@ fn unrelated_posts_share_the_correlated_scan_across_graph_versions() {
 #[test]
 fn growing_prefix_versions_preserve_order_cutoffs_and_release() {
     for n in [128, 512, 2048] {
-        allocation_checkpoint(n, "start");
-        let (c, mut g, root) = fixture(n);
-        let (mut root, p) = post(&mut g, root, 0, vec![1, 2, 9000]);
-        let mut a = Arena::default();
-        let mut hits = Vec::new();
-        let mut snapshots = Vec::new();
-        allocation_checkpoint(n, "prepared");
-        for version in 0..9 {
-            if version != 0 {
-                let (next, hit) = post(&mut g, root, 1, vec![1, 2, 9001]);
-                root = next;
-                hits.push(hit);
-            }
-            let mut m = Matches::new(
-                &g,
-                root.clone(),
-                c.clone(),
-                0,
-                Condition::TRUE,
-                Some((0, p)),
-            )
-            .unwrap();
-            let result = drain(&mut m, &g, &mut a);
-            assert_eq!(
-                result.iter().map(|m| m.occurrences[1]).collect::<Vec<_>>(),
-                hits
-            );
-            assert!(result.iter().all(|m| m.support == Condition::TRUE));
-            snapshots.push((root.clone(), hits.clone()));
-        }
-        allocation_checkpoint(n, "updated");
-        println!(
-            "prefix_growth n={n} phase=updated diagnostics={} graph_nodes={} graph_allocations={}",
-            serde_json::to_string(&g.restriction_diagnostics()).unwrap(),
-            g.index_node_count(),
-            g.index_allocations()
-        );
-        for (snapshot, expected) in snapshots {
-            let mut m =
-                Matches::new(&g, snapshot, c.clone(), 0, Condition::TRUE, Some((0, p))).unwrap();
-            assert_eq!(
-                drain(&mut m, &g, &mut a)
-                    .iter()
-                    .map(|m| m.occurrences[1])
-                    .collect::<Vec<_>>(),
-                expected
-            );
-        }
-        println!(
-            "prefix_growth n={n} phase=readback diagnostics={}",
-            serde_json::to_string(&g.restriction_diagnostics()).unwrap()
-        );
-        allocation_checkpoint(n, "readback");
-        println!("prefix_lookup n={n} counts={:?}", g.index_prefix_counts());
-        drop(root);
-        let mut collector = g.collect(std::iter::empty());
-        let mut cleanup_ticks = 0;
-        while !collector.done() {
-            collector.tick(&mut g);
-            cleanup_ticks += 1;
-            assert!(cleanup_ticks < 1_000_000);
-        }
-        drop(collector);
-        while !g.release_tick() {
-            cleanup_ticks += 1;
-            assert!(cleanup_ticks < 1_000_000);
-        }
-        assert_eq!(g.restriction_diagnostics().retained_rows, 0);
-        assert_eq!(g.restriction_diagnostics().entries, 0);
-        assert_eq!(g.occurrence_count(), 0);
-        assert_eq!(g.index_node_count(), 0);
-        println!("prefix_growth n={n} phase=released cleanup_ticks={cleanup_ticks}");
-        allocation_checkpoint(n, "released");
-        drop((g, a, c));
-        allocation_checkpoint(n, "dropped");
+        prefix_versions(n, 9);
     }
+}
+
+#[test]
+fn growing_prefix_cache_churn_preserves_answers_and_release() {
+    for versions in [33, 65, 129] {
+        println!("prefix_churn versions={versions}");
+        prefix_versions(128, versions);
+    }
+}
+
+fn prefix_versions(n: u64, versions: usize) {
+    allocation_checkpoint(n, "start");
+    let (c, mut g, root) = fixture(n);
+    let (mut root, p) = post(&mut g, root, 0, vec![1, 2, 9000]);
+    let mut a = Arena::default();
+    let mut hits = Vec::new();
+    let mut snapshots = Vec::new();
+    allocation_checkpoint(n, "prepared");
+    for version in 0..versions {
+        if version != 0 {
+            let (next, hit) = post(&mut g, root, 1, vec![1, 2, 9001]);
+            root = next;
+            hits.push(hit);
+        }
+        let mut m = Matches::new(
+            &g,
+            root.clone(),
+            c.clone(),
+            0,
+            Condition::TRUE,
+            Some((0, p)),
+        )
+        .unwrap();
+        let result = drain(&mut m, &g, &mut a);
+        assert_eq!(
+            result.iter().map(|m| m.occurrences[1]).collect::<Vec<_>>(),
+            hits
+        );
+        assert!(result.iter().all(|m| m.support == Condition::TRUE));
+        snapshots.push((root.clone(), hits.clone()));
+    }
+    allocation_checkpoint(n, "updated");
+    println!(
+        "prefix_growth n={n} phase=updated diagnostics={} graph_nodes={} graph_allocations={}",
+        serde_json::to_string(&g.restriction_diagnostics()).unwrap(),
+        g.index_node_count(),
+        g.index_allocations()
+    );
+    for (snapshot, expected) in snapshots {
+        let mut m =
+            Matches::new(&g, snapshot, c.clone(), 0, Condition::TRUE, Some((0, p))).unwrap();
+        assert_eq!(
+            drain(&mut m, &g, &mut a)
+                .iter()
+                .map(|m| m.occurrences[1])
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+    println!(
+        "prefix_growth n={n} phase=readback diagnostics={}",
+        serde_json::to_string(&g.restriction_diagnostics()).unwrap()
+    );
+    allocation_checkpoint(n, "readback");
+    println!("prefix_lookup n={n} counts={:?}", g.index_prefix_counts());
+    println!(
+        "prefix_memo n={n} counts={:?}",
+        g.index_prefix_memo_counts()
+    );
+    drop(root);
+    let mut collector = g.collect(std::iter::empty());
+    let mut cleanup_ticks = 0;
+    while !collector.done() {
+        collector.tick(&mut g);
+        cleanup_ticks += 1;
+        assert!(cleanup_ticks < 1_000_000);
+    }
+    drop(collector);
+    while !g.release_tick() {
+        cleanup_ticks += 1;
+        assert!(cleanup_ticks < 1_000_000);
+    }
+    assert_eq!(g.restriction_diagnostics().retained_rows, 0);
+    assert_eq!(g.restriction_diagnostics().entries, 0);
+    assert_eq!(g.occurrence_count(), 0);
+    assert_eq!(g.index_node_count(), 0);
+    println!("prefix_growth n={n} phase=released cleanup_ticks={cleanup_ticks}");
+    allocation_checkpoint(n, "released");
+    drop((g, a, c));
+    allocation_checkpoint(n, "dropped");
 }
 
 #[test]

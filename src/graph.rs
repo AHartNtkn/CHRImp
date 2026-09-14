@@ -228,6 +228,9 @@ impl Graph {
     pub fn index_prefix_counts(&self) -> [usize; 2] {
         self.index.prefix_counts()
     }
+    pub fn index_prefix_memo_counts(&self) -> [usize; 5] {
+        self.index.prefix_memo_counts()
+    }
     #[cfg(feature = "diagnostics")]
     pub fn field_update_diagnostics(&self) -> FieldUpdateDiagnostics {
         self.field_work.get()
