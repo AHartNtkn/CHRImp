@@ -25,9 +25,11 @@ Repeat:
    hypothesis should explain what work or complexity disappears, what replaces
    it, and which semantic comparison would establish the gain. Use concise shared
    context describing the accepted baseline, relevant workloads and their current
-   costly operations or retained data, priorities among those costs, and semantic
-   constraints. Use the same priorities for judging and acceptance. State the
-   named workload, completed answer or work interval, and work/storage measurements
+   costly operations or retained data, and semantic constraints. This context
+   supplies evidence, not a new objective or acceptance policy. Use AGENTS.md's
+   “Evaluating optimization” rule unchanged for judges, the implementor, and the
+   final decision. State the named workload, completed answer or work interval,
+   and work/storage measurements
    that would test each hypothesis; place this in the existing hypothesis and
    implementation fields. Do not fill judge context with the campaign transcript.
 2. Run the helper's prepare command. It retrieves similar executed attempts and
@@ -38,9 +40,10 @@ Repeat:
    agents or let a judge see the reversed comparison. Run select to choose the
    candidate once every judgment is present. Obtain a fresh independent judgment
    when a completed judge returns a malformed verdict.
-3. Give the selected candidate, shared context, relevant code/evidence paths, and
-   AGENTS.md to one fresh Astra implementor in an isolated worktree from the
-   accepted code. Have Astra implement and debug the mechanism through a meaningful
+3. Give the selected candidate, shared context, relevant code/evidence paths,
+   AGENTS.md, and the round's acceptance.md verbatim to one fresh Astra implementor
+   in an isolated worktree from the accepted code. Have Astra implement and debug
+   the mechanism through a meaningful
    semantic evaluation. Only one candidate is implemented at a time. Polling
    timeouts mean keep waiting; they do not end an implementation. If interrupted,
    resume its work rather than recording an untested outcome.
@@ -50,11 +53,11 @@ Repeat:
    Repair coding and measurement defects so the comparison actually tests the
    mechanism. A correctness evaluation showing that the chosen mechanism violates
    required semantics is a negative result, not unfinished implementation.
-   KEEP a demonstrated substantial overall gain under the priorities used for
-   selection, weighing displaced costs, affected workloads, and added complexity.
-   Explain consequential tradeoffs; a small residual win does not justify a
-   complicated mechanism whose intended gain failed. Useful simplification with
-   no material regression also qualifies. Otherwise DISCARD the evaluated patch.
+   Apply the acceptance rule in AGENTS.md to the actual measured change. Review
+   the relevant gains and regressions across the report before deciding; the
+   implementor's recommendation is advice, not the decision. KEEP a qualifying
+   improvement even if it achieved only part of the original proposal. Otherwise
+   DISCARD the evaluated patch for a reason supported by the measurements.
    Preserve the evaluated implementation as a Git commit and include its revision
    with the evidence. For KEEP, integrate and commit the validated change on the
    landing branch and update the accepted revision in current.md. For DISCARD,

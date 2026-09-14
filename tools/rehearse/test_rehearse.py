@@ -14,6 +14,14 @@ def judgments():
 
 
 class RehearseTest(unittest.TestCase):
+    def test_project_policy_is_required(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "AGENTS.md"
+            for text in ("# Project\n", "## Evaluating optimization\n\n## Other\n"):
+                path.write_text(text)
+                with self.assertRaises(ValueError):
+                    r.acceptance_policy(path)
+
     def test_reverse_order_consensus(self):
         result = r.tally(judgments())
         self.assertEqual(result["selected"], 0)
@@ -77,6 +85,10 @@ class RehearseTest(unittest.TestCase):
             r.prepare(base / "proposals.json", base / "context.md", hist, trial)
             self.assertEqual(len(list(trial.glob("judge-*.md"))), 20)
             prompt = (trial / "judge-1-0.md").read_text()
+            policy = r.acceptance_policy()
+            self.assertEqual((trial / "acceptance.md").read_text(), policy + "\n")
+            for file in trial.glob("judge-*.md"):
+                self.assertIn(policy, file.read_text())
             self.assertLess(prompt.index("description-1"), prompt.index("description-0"))
             with self.assertRaises(FileExistsError):
                 r.prepare(base / "proposals.json", base / "context.md", hist, trial)

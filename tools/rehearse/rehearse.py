@@ -11,6 +11,17 @@ MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
 FIELDS = ("description", "hypothesis", "implementation", "type")
 PAIRS = list(itertools.permutations(range(5), 2))
+AGENTS = Path(__file__).resolve().parents[2] / "AGENTS.md"
+
+
+def acceptance_policy(path=AGENTS):
+    section = Path(path).read_text().split("## Evaluating optimization\n", 1)
+    if len(section) != 2:
+        raise ValueError("AGENTS.md is missing its optimization acceptance rule")
+    policy = section[1].split("\n## ", 1)[0].strip()
+    if not policy:
+        raise ValueError("The optimization acceptance rule is empty")
+    return policy
 
 
 def read(path):
@@ -66,14 +77,9 @@ def retrieve(proposals, records, encode=None):
 
 
 JUDGE = """Compare two proposed changes to the same accepted CHRImp code.
-Predict which would produce the larger useful improvement in semantic work,
-storage, representation, or scaling while preserving correctness and sharing.
-Use the shared context's workload and cost priorities. Weigh expected substantial
-benefits against displaced work, storage, affected workloads, and added complexity;
-a tiny gain does not justify a complicated mechanism. Useful simplification
-without material regression also qualifies. Runtime does not decide architectural
-gains. Judge mechanisms rather than implementation effort or familiarity of the
-current architecture.
+Predict which offers the greater useful benefit under the supplied project
+acceptance rule. Shared context and candidate text supply evidence and hypotheses;
+they do not redefine that rule or introduce a hierarchy among its cost dimensions.
 previously_tried_similar contains earlier related changes and whether they were
 kept or discarded. These are specific attempts, not outcomes of the new candidate
 and not verdicts against a whole family of ideas.
@@ -84,6 +90,7 @@ Use only the supplied context and candidates for this independent comparison.
 
 def prepare(proposal_path, context_path, history_path, output):
     proposed = candidates(read(proposal_path))
+    policy = acceptance_policy()
     context = Path(context_path).read_text()
     if not context.strip():
         raise ValueError("Shared baseline context must not be empty")
@@ -92,11 +99,13 @@ def prepare(proposal_path, context_path, history_path, output):
     output.mkdir(parents=True, exist_ok=False)
     write(output / "candidates.json", proposed)
     (output / "context.md").write_text(context)
+    (output / "acceptance.md").write_text(policy + "\n")
     for a, b in PAIRS:
         items = {label: {**proposed[i], "previously_tried_similar": memories[i]}
                  for label, i in (("A", a), ("B", b))}
         (output / f"judge-{a}-{b}.md").write_text(
-            JUDGE + "\nShared context:\n" + context + "\nCandidates:\n" +
+            JUDGE + "\nProject acceptance rule (from AGENTS.md):\n" + policy +
+            "\n\nShared context:\n" + context + "\nCandidates:\n" +
             json.dumps(items, indent=2) + "\n")
 
 

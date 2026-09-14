@@ -31,14 +31,17 @@ nonempty string fields (repeat the shape for five distinct proposals):
 ```
 
 Write `.rehearse/context.md` with the shared accepted baseline, relevant evidence,
-objective, and constraints described in the goal. Each round uses a new directory:
+and semantic constraints. The helper reads the acceptance rule directly from
+AGENTS.md; generated context does not supply a replacement rule or metric hierarchy.
+Each round uses a new directory:
 
 ```sh
 .rehearse/venv/bin/python tools/rehearse/rehearse.py prepare \
   .rehearse/candidates.json .rehearse/context.md .rehearse/round-001
 ```
 
-This snapshots the proposals/context and writes `judge-0-1.md` through all twenty
+This snapshots the proposals/context and the project's rule in `acceptance.md`,
+inserts that rule verbatim into every judge prompt, and writes `judge-0-1.md` through all twenty
 ordered pairs. Indices are zero-based. For each file, use a fresh native Codex
 subagent with `model="gpt-5.6-luna"`, `fork_turns="none"`, and that file's complete
 text as its message. Each agent returns one JSON verdict; save it unchanged as
@@ -51,8 +54,9 @@ These are the campaign's real selection calls, not helper tests.
 ```
 
 `selected` is the winning zero-based index; `candidate` is the full proposal.
-Implement that candidate with one fresh Astra agent (`gpt-6-astra`), as described
-in the goal. After evaluating and integrating or discarding the patch:
+Implement that candidate with one fresh Astra agent (`gpt-6-astra`), passing
+`acceptance.md` verbatim as described in the goal. After evaluating and integrating
+or discarding the patch:
 
 ```sh
 .rehearse/venv/bin/python tools/rehearse/rehearse.py record \
