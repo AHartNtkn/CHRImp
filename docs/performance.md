@@ -1,6 +1,6 @@
 # Performance tools
 
-Run measurements from `/home/ahart/Documents/CHRImp`. Current capabilities, evidence and remaining diagnostic questions are in `goals/performance-suite/state.yaml`.
+Run measurements from the selected repository or experiment worktree root. Current capabilities, evidence and remaining diagnostic questions are in `docs/goals/performance-suite/state.yaml`.
 
 ## CPU flame graphs
 

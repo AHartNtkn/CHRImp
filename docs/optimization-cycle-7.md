@@ -1,8 +1,14 @@
-# Cycle 7: first optimize-skill campaign
+# Cycle 7: historical implementation attempts
+
+Correction: these attempts ended before meaningful architectural evaluation.
+The earlier BLOCKED labels did not establish external blockers or infeasibility.
+An unresolved correctness failure is described below, but no candidate performance
+comparison was completed. The records do not justify excluding these architectural
+ideas or imposing smaller implementation bounds on a subsequent campaign.
 
 ## Round 1, candidate 1: transient control lowering
 
-**Status:** BLOCKED. No engine implementation or executable lowering prototype was completed; nothing was eligible for integration.
+No engine implementation or executable lowering prototype was completed; nothing was eligible for integration.
 
 The candidate targeted the diagnosed cost in `fresh-contract`: transient control rows are posted into the graph and later collected/released. The worker established a semantic boundary instead of weakening the API. Committed controls are observable through `Engine::facts`, late snapshots, and late stepping even with history disabled. A pending-syntax substitute would therefore change observable state, snapshot retention, or fresh occurrence multiplicity.
 
@@ -14,7 +20,7 @@ The next candidate is the independent `central_occurrence_support` simplificatio
 
 ## Round 1, candidate 2: central occurrence support
 
-**Status:** BLOCKED. The worker completed a diagnostics/pinned-root slice but no central-support implementation or workload comparison; diagnostics-only code is not an optimization result.
+The worker completed a diagnostics/pinned-root slice but no central-support implementation or workload comparison; diagnostics-only code is not an optimization result.
 
 The slice added counters for fact-support accesses, secondary support writes, and secondary-row reads, plus a pinned-cursor fixture covering conditional support, equal-tuple multiplicity, old roots, and eventual reclamation. Fifty-one focused release/diagnostics tests passed. The counters establish the event boundary needed for a later implementation, but do not establish avoided work, allocation, retention, or non-inferiority. The full diagnostics run hit the same notebook CLI startup assertion recorded in candidate 1; no broad-suite pass is claimed.
 
@@ -24,13 +30,13 @@ The final round-1 candidate was the materially different `segmented_graph_owners
 
 ## Round 1, candidate 3: segmented graph ownership
 
-**Status:** BLOCKED. The worker reached a committed instrumentation and experiment declaration, but no executable segmented-ownership mechanism or candidate comparison was completed.
+The worker reached a committed instrumentation and experiment declaration, but no executable segmented-ownership mechanism or candidate comparison was completed.
 
 The baseline instrumentation covered ownership operations, allocation, retention, collection and reclamation, and the preserved baseline passed 72 focused release/diagnostics tests across store, graph, pruning, ownership, inspection, history, cancellation, matching and collection. The partial `Region`/`NodeRef` conversion in `src/store.rs` remained uncommitted and was never built or measured. Therefore there is no evidence yet for either avoided per-node release work or introduced survivor-copy, cross-region, or retained-reader cost; no timing or timeout was used as a verdict.
 
-Evidence is preserved under [candidate 3 evidence](optimization-evidence/cycle7/r1_c3_segmented_graph_ownership/). The worker branch/commit was `codex/opt/segmented-graph-ownership` / `5f91f1e`; the uncommitted partial implementation was discarded with the isolated worktree. The ownership hypothesis remains unresolved, but this round does not justify another ownership variant without a materially different mechanism or a better-bounded implementation plan.
+Evidence is preserved under [candidate 3 evidence](optimization-evidence/cycle7/r1_c3_segmented_graph_ownership/). The worker branch/commit was `codex/opt/segmented-graph-ownership` / `5f91f1e`; the uncommitted partial implementation was discarded with the isolated worktree. The ownership hypothesis remains unresolved; the unfinished implementation does not establish a limitation of the architecture.
 
-Round 1 is complete with three blocked candidates and no integration winner. Candidates addressed the diagnosed fresh-contract graph/store insertion, collection and release costs, but the first two stopped at semantic/diagnostic boundaries and the third at implementation integration. The next round must prioritize a fresh architectural direction—such as compiler-derived query specialization, factored expression execution, or shared producer/control work—with explicit evidence of avoided work and all preparation, execution, observation and cleanup costs before implementation begins.
+Round 1 ended with no integration winner. The candidates targeted fresh-contract graph/store insertion, collection, and release costs, but none reached a completed candidate comparison. Their unfinished implementations do not establish which architectural direction should be chosen next.
 
 ## Round 2 selection
 
@@ -40,15 +46,15 @@ Each candidate must preserve committed observation, snapshots, cancellation, mul
 
 ## Round 2, candidate 1: unused port-index omission
 
-**Status:** BLOCKED. A narrow source certificate and filtered lookup mechanism was implemented, but correctness is unresolved and no workload comparison was collected.
+A narrow source certificate and filtered lookup mechanism was implemented, but correctness is unresolved and no workload comparison was collected.
 
 The candidate preserved occurrences and incidence records while omitting PORT entries only for relations absent from source rule heads. The new certificate and filtered-lookup tests passed, and a calibration counted 260 omitted writes, 6 fallback lookups and 641 scanned rows with complete graph reclamation. Expanded validation passed 94 library checks but failed the collection-pressure obligation at `src/engine/collection.rs:991` (`deferred && deferred_ticks > 0`). The failure may be a contingent interaction with collection pressure or a semantic defect; it must be reproduced on baseline and candidate before the idea can be assessed. No candidate workload, allocation, pruning, release or retention comparison was run.
 
-Evidence is preserved under [round-2 candidate 1 evidence](optimization-evidence/cycle7/r2_c1_unused_port_index_omission/). The worker branch/commit was `codex/opt/unused-port-index` / `cc6ce6a` (instrumentation only); the candidate implementation remains unintegrated. Introduced preparation flags, filtered cursor branches, linear fallback scans and their retention costs remain unmeasured. The strongest follow-up is the bounded baseline/candidate reproduction of the collection-pressure failure; do not weaken that obligation.
+Evidence is preserved under [round-2 candidate 1 evidence](optimization-evidence/cycle7/r2_c1_unused_port_index_omission/). The worker branch/commit was `codex/opt/unused-port-index` / `cc6ce6a` (instrumentation only); the candidate implementation remains unintegrated. Introduced preparation flags, filtered cursor branches, linear fallback scans and their retention costs remain unmeasured. A comparison still requires baseline/candidate reproduction of the collection-pressure failure; do not weaken that obligation.
 
 ## Round 2, candidate 2: factored isolated components
 
-**Status:** BLOCKED. Boundary tests and baseline diagnostics were completed, but no executable factoring mechanism or isolation certificate was implemented; no candidate observations were collected.
+Boundary tests and baseline diagnostics were completed, but no executable factoring mechanism or isolation certificate was implemented; no candidate observations were collected.
 
 Five boundary tests passed in both ordinary and diagnostics release modes, and nine baseline observations covered fresh-contract in grouped/interleaved order, fresh-unmerged, one-copy, rewrite128, held output and snapshots. Fresh-contract grouped cases recorded 2,048 logical applications, 3,648 body posts and 23,040 sampled graph nodes at 64 groups; at 256 groups they recorded 8,192 applications, 14,592 posts and 92,160 nodes. These establish the comparison baseline only. The intended template preparation, identity/event mapping, frontier, expansion, retention and release costs were never exercised.
 
@@ -58,8 +64,8 @@ Round 2 candidate 3 is the larger source-certified single-world executor with fl
 
 ## Round 2, candidate 3: single-world flat occurrences
 
-**Status:** BLOCKED. A flat-executor prototype was started, but it was not compiled, validated, connected to the measurement runner or measured.
+A flat-executor prototype was started, but it was not compiled, validated, connected to the measurement runner or measured.
 
 The prototype contains a source-level flat record/identity/attachment direction and an experiment declaration, but all intended costs remain unmeasured: recognition and opcode preparation, flat-record/live-bit writes, union-find and attachment migration, pending bodies, dead-slot retention, snapshot copy-on-write, observation canonicalization/expansion, cancellation, queues and destruction. No semantic checks, workload observations or runtime-based verdict were claimed. The strongest next test is a small two-copy/two-level boundary fixture covering equal-tuple multiplicity, distinct fresh witnesses, a snapshot between application and posting, stepping, cancellation and complete reclamation before connecting maintained diagnostics.
 
-Evidence is preserved under [round-2 candidate 3 evidence](optimization-evidence/cycle7/r2_c3_single_world_flat_occurrences/), including the unintegrated prototype source. The worker branch had no candidate commit and remains unintegrated. Round 2 is complete with three blocked candidates and no integration winner: candidate 1 failed a correctness gate before comparison, candidate 2 stopped at isolation feasibility, and candidate 3 stopped at compile/validation feasibility. The next round must reassess whether a bounded direct-operation slice can test a fresh causal explanation, rather than repeatedly starting broad replacement foundations that cannot reach evidence.
+Evidence is preserved under [round-2 candidate 3 evidence](optimization-evidence/cycle7/r2_c3_single_world_flat_occurrences/), including the unintegrated prototype source. The worker branch had no candidate commit and remains unintegrated. Round 2 ended without an integration winner: candidate 1 had an unresolved correctness failure before comparison, candidate 2 had not implemented factoring, and candidate 3 had not compiled or validated its prototype. No architectural rejection follows from those incomplete results.

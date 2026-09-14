@@ -1,4 +1,8 @@
-# Ongoing CHR optimization
+# Historical CHR optimization procedure
+
+This procedure has been superseded by `docs/rehearse-goal.md`. The text below
+records the earlier campaign procedure, including its former budgets and scheduling;
+it does not govern the active Rehearse campaign.
 
 Continue profiling, independent architectural brainstorming, isolated spikes, and integration of demonstrated winners until the user pauses or stops the loop. The Codex heartbeat runs hourly in the existing thread. A wake resumes an unfinished cycle; only one cycle and one timing campaign run at a time.
 
