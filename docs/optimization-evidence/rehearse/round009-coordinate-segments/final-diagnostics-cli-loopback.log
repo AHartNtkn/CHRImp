@@ -6,4 +6,3 @@ test notebook_default_origin_is_stable_and_port_override_is_honored ... ok
 test full_source_cli_preserves_conditional_fields_and_terminal_consumers ... ok
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-

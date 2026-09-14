@@ -23,4 +23,3 @@ test releasing_a_recorded_execution_reclaims_its_run_without_losing_other_runs .
 test loopback_http_serves_the_notebook_and_enforces_request_boundaries ... ok
 
 test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s
-

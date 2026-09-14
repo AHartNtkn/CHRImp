@@ -112,4 +112,3 @@ test engine::obligations::tests::ordinary_alias_churn_keeps_descriptor_storage_b
 test engine::collection::retained_work_tests::retained_history_does_not_make_each_semantic_pass_walk_the_archive ... ok
 
 test result: ok. 110 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
-

@@ -12,4 +12,3 @@ failures:
     engine::coordinates::functional_image_tests::later_prefix_cannot_satisfy_an_older_frozen_target
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 109 filtered out; finished in 0.00s
-
