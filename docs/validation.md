@@ -19,6 +19,14 @@ The implemented language includes variable-only relation arguments, explicit equ
 
 Notebook tests check execution without browser requests, exact replay of retained output, explicit pause/resume/step/cancel, and control responsiveness during continuing execution. The synthesis checks use independent SK reduction and type inference; the lambda benchmark checks a permitted reduction history and its exact residual graph.
 
+Spool unit tests cover acknowledged-prefix reclamation, exact unread event order,
+appends after compaction, unchanged replay through background progress, rejected
+acknowledgements, no-consumed-prefix retention, copy accounting, and failed
+compaction rejecting subsequent reads/writes. The runtime-sessions oracle checks
+finite residuals and multiplicity, unchanged source applications during reads and
+replays, byte conservation, bounded copying, and zero spool files/descriptors
+after close and Runtime destruction.
+
 Fair service includes source work, completion, observation and reclamation. A frozen pending-work view excludes unfinished scopes; children are admitted before their parent obligation retires. The FIFO mutation lane revalidates against current state before publication. Immutable readers and explicit snapshots retain their dependencies. Tests exercise these obligations under divergence, conditional updates, collection and cancellation; they are not a formal proof over every program.
 
 `engine::parking_tail_tests` checks waiter uniqueness and FIFO reservations at

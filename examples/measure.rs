@@ -769,6 +769,10 @@ fn main() -> ExitCode {
                         _ => unreachable!(),
                     }
                 }
+                "--prefill" => {
+                    session_options = true;
+                    sessions.prefill = true;
+                }
                 "--closed" | "--retained" | "--batch" | "--replay-every" => {
                     session_options = true;
                     let flag = &args[i];

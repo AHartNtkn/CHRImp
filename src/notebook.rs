@@ -155,14 +155,29 @@ struct Runs {
     round: Option<u64>,
     active: bool,
 }
-// Output is retained until explicit close. Only one bounded delivery batch lives
-// in RAM; acknowledgements replay that batch and never control source execution.
+// Unread output and one replay batch are retained until explicit close. Only
+// that delivery batch lives in RAM; acknowledgements never drive the source.
+#[cfg(feature = "diagnostics")]
+#[derive(Default, serde::Serialize)]
+struct SpoolMetrics {
+    compactions: u64,
+    copied_bytes: u64,
+    reclaimed_bytes: u64,
+    appended_bytes: u64,
+    write_ns: u64,
+    flush_ns: u64,
+    read_ns: u64,
+    compaction_ns: u64,
+}
 struct Spool {
     writer: BufWriter<File>,
     reader: File,
     path: PathBuf,
     written: u64,
     read: u64,
+    damaged: bool,
+    #[cfg(feature = "diagnostics")]
+    metrics: SpoolMetrics,
 }
 impl Spool {
     fn new(boot: &str, run: u64) -> io::Result<Self> {
@@ -185,17 +200,42 @@ impl Spool {
             path,
             written: 0,
             read: 0,
+            damaged: false,
+            #[cfg(feature = "diagnostics")]
+            metrics: SpoolMetrics::default(),
         })
     }
     fn append(&mut self, event: Value) -> io::Result<()> {
+        if self.damaged {
+            return Err(io::Error::other("spool compaction failed"));
+        }
+        #[cfg(feature = "diagnostics")]
+        let start = std::time::Instant::now();
         let mut bytes = serde_json::to_vec(&event)?;
         bytes.push(b'\n');
         self.writer.write_all(&bytes)?;
         self.written += bytes.len() as u64;
+        #[cfg(feature = "diagnostics")]
+        {
+            self.metrics.appended_bytes += bytes.len() as u64;
+            self.metrics.write_ns += start.elapsed().as_nanos() as u64;
+        }
         Ok(())
     }
     fn read(&mut self, limit: usize) -> io::Result<Vec<Value>> {
+        if self.damaged {
+            return Err(io::Error::other("spool compaction failed"));
+        }
+        #[cfg(feature = "diagnostics")]
+        let start = std::time::Instant::now();
         self.writer.flush()?;
+        #[cfg(feature = "diagnostics")]
+        {
+            self.metrics.flush_ns += start.elapsed().as_nanos() as u64;
+        }
+        // Runtime has acknowledged the previous cached batch before entering
+        // here. Replays bypass this method, including during background writes.
+        self.compact()?;
         self.reader.seek(SeekFrom::Start(self.read))?;
         let mut reader = BufReader::new((&mut self.reader).take(self.written - self.read));
         let mut events = Vec::new();
@@ -211,7 +251,51 @@ impl Spool {
             consumed += n as u64;
         }
         self.read += consumed;
+        #[cfg(feature = "diagnostics")]
+        {
+            self.metrics.read_ns += start.elapsed().as_nanos() as u64;
+        }
         Ok(events)
+    }
+    fn compact(&mut self) -> io::Result<()> {
+        let unread = self.written - self.read;
+        // Each copied byte is charged against at least eight retired bytes;
+        // small streams avoid truncation/seek work. Division avoids overflow.
+        if self.read < 64 * 1024 || self.read / 8 < unread {
+            return Ok(());
+        }
+        #[cfg(feature = "diagnostics")]
+        let start = std::time::Instant::now();
+        self.reader.seek(SeekFrom::Start(self.read))?;
+        self.writer.seek(SeekFrom::Start(0))?;
+        // A partial overwrite cannot be retried against the old offsets.
+        self.damaged = true;
+        let mut buffer = [0; 16 * 1024];
+        let mut remaining = unread;
+        while remaining > 0 {
+            let count = remaining.min(buffer.len() as u64) as usize;
+            self.reader.read_exact(&mut buffer[..count])?;
+            self.writer.write_all(&buffer[..count])?;
+            remaining -= count as u64;
+        }
+        // Independent file offsets and forward copying are safe even when the
+        // ranges overlap. Flush before truncating and before subsequent reads.
+        self.writer.flush()?;
+        // Keep a one-byte physical floor. On ext4, truncate-to-zero followed
+        // by writes can request delayed-allocation forcing on final close.
+        // Logical offsets still reset to zero; the next append overwrites it.
+        self.writer.get_ref().set_len(unread.max(1))?;
+        #[cfg(feature = "diagnostics")]
+        {
+            self.metrics.compactions += 1;
+            self.metrics.copied_bytes += unread;
+            self.metrics.reclaimed_bytes += self.read;
+            self.metrics.compaction_ns += start.elapsed().as_nanos() as u64;
+        }
+        self.written = unread;
+        self.read = 0;
+        self.damaged = false;
+        Ok(())
     }
     fn drained(&self) -> bool {
         self.read == self.written
@@ -390,6 +474,29 @@ fn view_result<T>(value: Result<T, InspectionError>) -> Result<T, Response> {
     })
 }
 impl Runtime {
+    /// Snapshot spool work without changing output acknowledgements or driving
+    /// execution. Times overlap: compaction and flush are inside read time.
+    #[cfg(feature = "diagnostics")]
+    pub fn spool_diagnostics(&self) -> Value {
+        let entries: Vec<_> = self
+            .runs
+            .lock()
+            .unwrap()
+            .entries
+            .iter()
+            .map(|(id, entry)| (*id, entry.clone()))
+            .collect();
+        Value::Array(
+            entries
+                .iter()
+                .map(|(id, entry)| {
+                    let run = entry.lock().unwrap();
+                    json!({"run":id,"written":run.spool.written,"read":run.spool.read,
+                "buffered":run.spool.writer.buffer().len(),"metrics":run.spool.metrics})
+                })
+                .collect(),
+        )
+    }
     pub fn request(&self, path: &str, body: &str) -> Response {
         self.dispatch(path, body)
             .unwrap_or_else(|response| response)
@@ -1417,6 +1524,114 @@ mod owner_tests {
         assert!(run.error.is_some());
         assert!(run.engine.canceled());
         assert!(!run.running);
+    }
+    #[test]
+    fn spool_compaction_respects_acknowledgement_and_frozen_replay() {
+        let runtime = Runtime::default();
+        let owner = attach(&runtime);
+        let id = runtime
+            .request("/api/start", &start_body(&runtime, owner))
+            .body["run"]
+            .as_u64()
+            .unwrap();
+        let entry = runtime.runs.lock().unwrap().entries[&id].clone();
+        {
+            let mut run = entry.lock().unwrap();
+            for n in 0..1024 {
+                run.spool.append(json!([n, "x".repeat(1024)])).unwrap();
+            }
+        }
+        let mut request = json!({"boot":runtime.boot,"owner":owner,"run":id,"budget":1000});
+        let first = runtime.request("/api/output", &request.to_string());
+        assert_eq!(first.status, 200);
+        let length = entry.lock().unwrap().spool.written;
+        for _ in 0..100 {
+            runtime.tick();
+        }
+        assert_eq!(
+            runtime.request("/api/output", &request.to_string()).body,
+            first.body
+        );
+        request["ack"] = json!(100);
+        assert_eq!(
+            runtime.request("/api/output", &request.to_string()).status,
+            400
+        );
+        assert!(entry.lock().unwrap().spool.written >= length);
+        request["ack"] = first.body["sequence"].clone();
+        let next = runtime.request("/api/output", &request.to_string());
+        assert_eq!(next.status, 200);
+        assert_eq!(next.body["events"][0], json!([1000, "x".repeat(1024)]));
+        assert!(entry.lock().unwrap().spool.written < length / 4);
+        for _ in 0..100 {
+            runtime.tick();
+        }
+        assert_eq!(
+            runtime.request("/api/output", &request.to_string()).body,
+            next.body
+        );
+    }
+    #[test]
+    fn failed_compaction_cannot_read_or_append_using_obsolete_offsets() {
+        let runtime = Runtime::default();
+        let mut spool = Spool::new(&runtime.boot, 1).unwrap();
+        for n in 0..100 {
+            spool.append(json!([n, "x".repeat(1024)])).unwrap();
+        }
+        spool.read(99).unwrap();
+        spool.writer = BufWriter::new(spool.reader.try_clone().unwrap());
+        assert!(spool.read(1).is_err());
+        assert!(spool.damaged);
+        assert!(spool.read(1).is_err());
+        assert!(spool.append(json!("late")).is_err());
+    }
+    #[test]
+    fn spool_empty_suffix_compaction_then_append() {
+        let runtime = Runtime::default();
+        let mut spool = Spool::new(&runtime.boot, 1).unwrap();
+        spool.append(json!("x".repeat(100_000))).unwrap();
+        assert_eq!(spool.read(1).unwrap(), vec![json!("x".repeat(100_000))]);
+        assert!(spool.read(1).unwrap().is_empty());
+        assert_eq!(spool.written, 0);
+        assert!(spool.drained());
+        spool.append(json!("next")).unwrap();
+        assert_eq!(spool.read(1).unwrap(), vec![json!("next")]);
+        assert!(spool.read(1).unwrap().is_empty());
+    }
+    #[test]
+    fn spool_reclaims_consumed_history_preserving_unread_and_appends() {
+        let runtime = Runtime::default();
+        let mut spool = Spool::new(&runtime.boot, 1).unwrap();
+        let payload = "x".repeat(1024);
+        for n in 0..1024 {
+            spool.append(json!([n, payload])).unwrap();
+        }
+        let original = spool.written;
+        // No consumed prefix: publication must retain every byte.
+        assert!(spool.read(0).unwrap().is_empty());
+        assert_eq!(spool.writer.get_ref().metadata().unwrap().len(), original);
+        for n in 0..1000 {
+            assert_eq!(spool.read(1).unwrap(), vec![json!([n, payload])]);
+        }
+        assert!(spool.writer.get_ref().metadata().unwrap().len() < original / 4);
+        for n in 1024..1032 {
+            spool.append(json!([n, payload])).unwrap();
+        }
+        for n in 1000..1032 {
+            assert_eq!(spool.read(1).unwrap(), vec![json!([n, payload])]);
+        }
+        assert!(spool.drained());
+        assert!(spool.read(1).unwrap().is_empty());
+        assert!(spool.writer.get_ref().metadata().unwrap().len() < 65536);
+        #[cfg(feature = "diagnostics")]
+        {
+            assert!(spool.metrics.compactions > 0);
+            assert!(spool.metrics.copied_bytes <= spool.metrics.reclaimed_bytes / 8);
+            assert_eq!(
+                spool.written + spool.metrics.reclaimed_bytes,
+                spool.metrics.appended_bytes
+            );
+        }
     }
     #[test]
     fn spool_retains_more_than_ram_capacity_and_pages_exactly() {

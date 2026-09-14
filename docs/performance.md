@@ -473,6 +473,31 @@ Native calibration used six points across rewriting, partial-hit matching and pr
 
 ## Runtime session lifetime and replay
 
+Round 023 Spool compaction runs after acknowledgement, before the next read.
+A consumed prefix must be at least 64 KiB and eight times the unread suffix.
+Forward copying uses a 16 KiB stack buffer, flushes before truncation, and keeps
+both original descriptors. Total copied bytes are at most one eighth of reclaimed
+bytes. An empty suffix keeps a one-byte physical floor, avoiding ext4's
+truncate-to-zero replacement heuristic and its observed final-close stall;
+logical offsets reset to zero and the next append overwrites that byte.
+A failed overwrite poisons the spool so obsolete offsets cannot be reused.
+Replay requests return the existing frozen batch without touching the spool.
+
+`runtime-sessions --prefill` finishes the main producer before its first read,
+exercising an initially unconsumed file and a large unread suffix. Diagnostic
+builds report `before_read_spool_work` and `before_close_spool_work`: appended,
+copied and reclaimed bytes, compaction count, buffered bytes and offsets, plus
+write/read/flush/compaction nanoseconds. Write includes serialization; read
+includes its initial flush and compaction; compaction includes its own flush.
+These overlapping times must not be summed. Normal builds omit these counters
+and clocks. Linux spool snapshots also report allocated filesystem blocks in
+bytes (not RAM residency), counting each file once and requiring two descriptors
+per live spool. The event digest complements the independent residual oracle;
+it is a paired-run check, not a substitute for semantic validation.
+
+The [Round 023 evaluation](optimization-evidence/rehearse/round023-spool/README.md)
+records the short paired comparison and reproduction commands.
+
 ```sh
 target/release/examples/measure runtime-sessions 8 100000 5 --closed 8 --retained 4 --rows 8 --batch 1 --replay-every 2 --work 32
 python3 examples/perf_suite.py deep --only sessions-history --only sessions-retained --only sessions-batch --only sessions-replay --out /tmp/session-sweeps

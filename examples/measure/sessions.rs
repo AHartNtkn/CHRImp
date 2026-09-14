@@ -14,7 +14,7 @@
 //! never enter the answer reader twice. work is an application lower bound:
 //! Runtime scheduler quanta and replay progress may exceed it; actuals are kept.
 //!
-//! Spool files persist after delivery until close (notebook::Spool/Runtime::tick).
+//! Spool descriptors persist until close; acknowledged bytes may be compacted.
 //! Linux /proc/self/fd observations are scoped by this Runtime's boot prefix;
 //! bytes sum unique files, not both descriptors. These are logical file lengths,
 //! not resident memory. Public memory objects, run invalidation, owner retirement
@@ -50,6 +50,8 @@ pub struct Options {
     pub replay_every: usize,
     /// Background application target; zero omits the background execution.
     pub work: u64,
+    /// Complete main source delivery before its first read (unread-tail control).
+    pub prefill: bool,
 }
 impl Default for Options {
     fn default() -> Self {
@@ -60,6 +62,7 @@ impl Default for Options {
             batch: 1,
             replay_every: 0,
             work: 0,
+            prefill: false,
         }
     }
 }
@@ -84,6 +87,7 @@ struct Meter {
     read_ms: Duration,
     replay_ms: Duration,
     bytes: usize,
+    event_hash: u64,
 }
 impl Meter {
     fn new(limit: u64, timeout: Duration) -> Self {
@@ -96,6 +100,7 @@ impl Meter {
             read_ms: Duration::ZERO,
             replay_ms: Duration::ZERO,
             bytes: 0,
+            event_hash: 0xcbf29ce484222325,
         }
     }
     fn raw(&mut self, r: &Runtime, path: &str, body: &Value) -> Result<Response> {
@@ -136,6 +141,7 @@ impl Meter {
         json!({"work":self.b.ticks,"requests":self.calls,"scheduler_turns":self.turns,
             "elapsed_ms":ms(self.b.start.elapsed()),"reads":self.reads,"replays":self.replays,
             "delivered_event_json_bytes":self.bytes,
+            "event_hash":format!("{:016x}", self.event_hash),
             "read_ms":self.b.detailed.then(||ms(self.read_ms)),
             "replay_ms":self.b.detailed.then(||ms(self.replay_ms)),
             "validator_ms":self.b.detailed.then(||ms(self.b.validator)),
@@ -313,10 +319,13 @@ fn read(
     m.b.validator += observation::elapsed(t);
     valid?;
     // Event bytes are measured once, excluding transport envelope and replays.
-    m.bytes += events
-        .iter()
-        .map(|v| v.to_string().len() + 1)
-        .sum::<usize>();
+    for v in events {
+        let text = v.to_string();
+        m.bytes += text.len() + 1;
+        for byte in text.bytes().chain(std::iter::once(b'\n')) {
+            m.event_hash = (m.event_hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+        }
+    }
     s.req["ack"] = out["sequence"].clone();
     s.done = out["delivery_done"] == true;
     if s.done {
@@ -364,10 +373,12 @@ struct Spools {
     files: usize,
     descriptors: usize,
     logical_bytes: u64,
+    allocated_bytes: u64,
 }
 fn spools(boot: &Value) -> std::result::Result<Option<Spools>, String> {
     #[cfg(target_os = "linux")]
     {
+        use std::os::unix::fs::MetadataExt;
         let prefix = format!("chr-{}-", boot.as_str().ok_or("invalid boot")?);
         let mut files = BTreeMap::new();
         let mut descriptors = 0;
@@ -381,18 +392,15 @@ fn spools(boot: &Value) -> std::result::Result<Option<Spools>, String> {
                 .is_some_and(|name| name.to_string_lossy().starts_with(&prefix))
             {
                 descriptors += 1;
-                files.insert(
-                    target,
-                    std::fs::metadata(entry.path())
-                        .map_err(|e| e.to_string())?
-                        .len(),
-                );
+                let metadata = std::fs::metadata(entry.path()).map_err(|e| e.to_string())?;
+                files.insert(target, (metadata.len(), metadata.blocks() * 512));
             }
         }
         Ok(Some(Spools {
             files: files.len(),
             descriptors,
-            logical_bytes: files.values().sum(),
+            logical_bytes: files.values().map(|v| v.0).sum(),
+            allocated_bytes: files.values().map(|v| v.1).sum(),
         }))
     }
     #[cfg(not(target_os = "linux"))]
@@ -405,7 +413,7 @@ fn sample(boot: &Value, expected: usize) -> Result<Value> {
     let sample = spools(boot)?;
     if let Some(s) = &sample {
         check(
-            s.files == expected && (expected != 0 || s.descriptors == 0),
+            s.files == expected && s.descriptors == 2 * expected,
             "runtime spool ownership mismatch",
         )?;
     }
@@ -502,6 +510,16 @@ pub fn run(
             .transpose()?
             .unwrap_or(0);
         let mut heavy = finite(&r, &boot, n, o.rows, o.batch, &mut m, &mut owned)?;
+        if o.prefill {
+            while status(&r, &heavy.req, &mut m)?["execution_done"] != true {
+                m.tick(&r)?;
+            }
+            result["before_read_spools"] = sample(&boot, owned.len())?;
+            #[cfg(feature = "diagnostics")]
+            {
+                result["before_read_spool_work"] = r.spool_diagnostics();
+            }
+        }
         let tiny_start = Instant::now();
         let mut tiny = finite(&r, &boot, 1, 1, 1, &mut m, &mut owned)?;
         let mut tiny_latency = None;
@@ -568,6 +586,24 @@ pub fn run(
         }
         result["before_close_memory"] = json!(memories);
         result["before_close_spools"] = sample(&boot, owned.len())?;
+        #[cfg(feature = "diagnostics")]
+        {
+            let spools = r.spool_diagnostics();
+            for spool in spools.as_array().unwrap() {
+                let metrics = &spool["metrics"];
+                let reclaimed = metrics["reclaimed_bytes"].as_u64().unwrap();
+                check(
+                    metrics["copied_bytes"].as_u64().unwrap() <= reclaimed / 8,
+                    "spool copy amplification",
+                )?;
+                check(
+                    spool["written"].as_u64().unwrap() + reclaimed
+                        == metrics["appended_bytes"].as_u64().unwrap(),
+                    "spool byte conservation",
+                )?;
+            }
+            result["before_close_spool_work"] = spools;
+        }
         if !m.b.in_time() {
             return Err(Stop::Censored);
         }
@@ -648,6 +684,7 @@ mod tests {
                 batch: 1,
                 replay_every: 1,
                 work: 4,
+                prefill: false,
             },
             Options {
                 closed: 0,
@@ -656,6 +693,7 @@ mod tests {
                 batch: 3,
                 replay_every: 2,
                 work: 7,
+                prefill: true,
             },
             Options {
                 closed: 2,
@@ -664,6 +702,7 @@ mod tests {
                 batch: 4096,
                 replay_every: 1,
                 work: 0,
+                prefill: true,
             },
         ] {
             let m = run(3, o, 100_000, Duration::from_secs(15)).unwrap();
