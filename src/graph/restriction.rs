@@ -35,6 +35,82 @@ pub struct RestrictionDiagnostics {
     pub prefix_plans_reused: u64,
     pub cached_prefix_plans: usize,
     pub cached_prefix_links: usize,
+    /// Key comparisons in the sorted inline table (not individual word comparisons).
+    pub inline_comparisons: u64,
+    /// Core HashMap get/get_mut/insert calls; internal bucket probes are unmeasured.
+    pub partition_hash_requests: u64,
+    pub partition_promotions: u64,
+    pub promoted_entries: u64,
+    pub shifted_inline_entries: u64,
+    pub partition_table_bytes: usize,
+    pub peak_partition_table_bytes: usize,
+    pub inline_partition_limit: usize,
+}
+
+#[derive(Default)]
+struct TableWork {
+    #[cfg(feature = "diagnostics")]
+    comparisons: u64,
+    #[cfg(feature = "diagnostics")]
+    hashes: u64,
+    #[cfg(feature = "diagnostics")]
+    promotions: u64,
+    #[cfg(feature = "diagnostics")]
+    promoted: u64,
+    #[cfg(feature = "diagnostics")]
+    shifts: u64,
+}
+#[cfg(feature = "diagnostics")]
+impl RestrictionDiagnostics {
+    fn table_work(&mut self, work: TableWork) {
+        self.inline_comparisons += work.comparisons;
+        self.partition_hash_requests += work.hashes;
+        self.partition_promotions += work.promotions;
+        self.promoted_entries += work.promoted;
+        self.shifted_inline_entries += work.shifts;
+    }
+}
+
+// Baseline adapter: keep the accepted HashMap lookup/insertion protocol.
+#[derive(Default)]
+struct Partitions(HashMap<[u64; MAX_PORTS], Partition>);
+impl Partitions {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+    fn get(&self, key: &[u64; MAX_PORTS], _work: &mut TableWork) -> Option<&Partition> {
+        #[cfg(feature = "diagnostics")]
+        {
+            _work.hashes += 1;
+        }
+        self.0.get(key)
+    }
+    fn get_mut(&mut self, key: &[u64; MAX_PORTS], _work: &mut TableWork) -> Option<&mut Partition> {
+        #[cfg(feature = "diagnostics")]
+        {
+            _work.hashes += 1;
+        }
+        self.0.get_mut(key)
+    }
+    fn insert(&mut self, key: [u64; MAX_PORTS], value: Partition, _work: &mut TableWork) {
+        #[cfg(feature = "diagnostics")]
+        {
+            _work.hashes += 1;
+        }
+        self.0.insert(key, value);
+    }
+    #[cfg(feature = "diagnostics")]
+    fn bytes(&self) -> usize {
+        size_of::<Self>() + hash_bytes(self.0.capacity())
+    }
+}
+#[cfg(feature = "diagnostics")]
+fn hash_bytes(capacity: usize) -> usize {
+    if capacity == 0 {
+        return 0;
+    }
+    let buckets = (capacity * 8 / 7).next_power_of_two();
+    buckets * (size_of::<([u64; MAX_PORTS], Partition)>() + 1) + 16
 }
 #[derive(Default)]
 pub(crate) struct Cache {
@@ -60,7 +136,7 @@ struct Entry {
 struct Producer {
     cursor: Option<Occurrences>,
     rows: Vec<PartitionRow>,
-    partitions: HashMap<[u64; MAX_PORTS], Partition>,
+    partitions: Partitions,
     subscribers: usize,
     done: bool,
     abandoned: bool,
@@ -72,6 +148,7 @@ impl Drop for Entry {
         let mut stats = self.stats.lock().unwrap();
         stats.retained_rows -= p.rows.len();
         stats.retained_partitions -= p.partitions.len();
+        stats.partition_table_bytes -= p.partitions.bytes();
     }
 }
 // Both buffers have trivial elements: eviction frees buffers without walking
@@ -80,6 +157,7 @@ struct PartitionRow {
     occurrence: u64,
     next: Option<usize>,
 }
+#[derive(Clone, Copy, Default)]
 struct Partition {
     first: usize,
     last: usize,
@@ -147,13 +225,18 @@ impl RowSubscriber {
         let next = if let Some(last) = self.last {
             p.rows[last].next
         } else {
+            let mut work = TableWork::default();
+            let first = p
+                .partitions
+                .get(&self.values, &mut work)
+                .map(|partition| partition.first);
             #[cfg(feature = "diagnostics")]
             {
-                self.entry.stats.lock().unwrap().partition_lookups += 1;
+                let mut stats = self.entry.stats.lock().unwrap();
+                stats.partition_lookups += 1;
+                stats.table_work(work);
             }
-            p.partitions
-                .get(&self.values)
-                .map(|partition| partition.first)
+            first
         };
         if let Some(next) = next {
             self.last = Some(next);
@@ -175,28 +258,43 @@ impl RowSubscriber {
                 occurrence: id,
                 next: None,
             });
-            if let Some(partition) = p.partitions.get_mut(&values) {
+            let mut work = TableWork::default();
+            #[cfg(feature = "diagnostics")]
+            let before_bytes = p.partitions.bytes();
+            let new_partition;
+            if let Some(partition) = p.partitions.get_mut(&values, &mut work) {
+                new_partition = false;
                 let last = partition.last;
                 partition.last = next;
                 p.rows[last].next = Some(next);
             } else {
+                new_partition = true;
                 p.partitions.insert(
                     values,
                     Partition {
                         first: next,
                         last: next,
                     },
+                    &mut work,
                 );
             }
+            #[cfg(not(feature = "diagnostics"))]
+            let _ = new_partition;
             #[cfg(feature = "diagnostics")]
             {
                 let mut stats = self.entry.stats.lock().unwrap();
+                stats.table_work(work);
+                stats.partition_table_bytes =
+                    stats.partition_table_bytes - before_bytes + p.partitions.bytes();
+                stats.peak_partition_table_bytes = stats
+                    .peak_partition_table_bytes
+                    .max(stats.partition_table_bytes);
                 stats.producer_candidates += 1;
                 stats.projected_ports += self.entry.key.mask.count_ones() as u64;
                 stats.retained_rows += 1;
                 stats.peak_retained_rows = stats.peak_retained_rows.max(stats.retained_rows);
                 // A first link denotes a newly created partition.
-                if p.partitions[&values].first == next {
+                if new_partition {
                     stats.retained_partitions += 1;
                     stats.peak_retained_partitions = stats
                         .peak_retained_partitions
@@ -423,7 +521,7 @@ impl Graph {
                     filter: None,
                 }),
                 rows: Vec::new(),
-                partitions: HashMap::new(),
+                partitions: Partitions::default(),
                 subscribers: 1,
                 done: false,
                 abandoned: false,
@@ -439,6 +537,10 @@ impl Graph {
         {
             let mut stats = cache.stats.lock().unwrap();
             stats.created += 1;
+            stats.partition_table_bytes += size_of::<Partitions>();
+            stats.peak_partition_table_bytes = stats
+                .peak_partition_table_bytes
+                .max(stats.partition_table_bytes);
             stats.rebuilt_prefixes += u64::from(fragmented);
         }
         RowSubscriber {

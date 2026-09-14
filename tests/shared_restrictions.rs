@@ -62,6 +62,173 @@ fn fixture(n: u64) -> (Arc<Prepared>, Graph, Root) {
     }
     (c, g, root)
 }
+
+// Exact IDs are recorded at publication, independently of partition storage.
+fn table_fixture(n: u64, keys: u64) -> (Arc<Prepared>, Graph, Root, u64, Vec<u64>) {
+    let c = code();
+    let mut g = Graph::new(c.signatures());
+    let mut root = g.empty();
+    let mut expected = Vec::new();
+    for i in 0..n {
+        let key = 2 + (n - 1 - i) % keys;
+        let (next, id) = post(&mut g, root, 1, vec![1, key, 9000]);
+        root = next;
+        if key == 2 {
+            expected.push(id);
+        }
+        // Keep the selected X bucket no larger than the Y=2 bucket.
+        root = post(&mut g, root, 1, vec![1000 + i, 2, 9000]).0;
+    }
+    let (root, anchor) = post(&mut g, root, 0, vec![1, 2, 9001]);
+    (c, g, root, anchor, expected)
+}
+
+#[test]
+fn partition_table_threshold_matrix() {
+    for (n, keys) in [
+        (1, 1),
+        (2, 2),
+        (3, 3),
+        (4, 4),
+        (5, 5),
+        (8, 8),
+        (16, 16),
+        (64, 64),
+        (128, 128),
+        (128, 1),
+        (128, 2),
+        (128, 4),
+    ] {
+        println!("partition_case rows={n} keys={keys}");
+        allocation_checkpoint(n, "start");
+        let (c, mut g, root, p, expected) = table_fixture(n, keys);
+        let mut a = Arena::default();
+        allocation_checkpoint(n, "prepared");
+        for _ in 0..8 {
+            let mut m = Matches::new(
+                &g,
+                root.clone(),
+                c.clone(),
+                0,
+                Condition::TRUE,
+                Some((0, p)),
+            )
+            .unwrap();
+            let result = drain(&mut m, &g, &mut a);
+            assert_eq!(
+                result.iter().map(|m| m.occurrences[1]).collect::<Vec<_>>(),
+                expected
+            );
+            assert!(result.iter().all(|m| m.support == Condition::TRUE));
+        }
+        let stats = g.restriction_diagnostics();
+        assert_eq!(stats.producer_candidates, n);
+        assert_eq!(stats.retained_partitions, keys as usize);
+        assert_eq!(stats.created, 1);
+        assert_eq!(stats.reused, 7);
+        allocation_checkpoint(n, "readback");
+        println!(
+            "partition_diagnostics data={}",
+            serde_json::to_string(&stats).unwrap()
+        );
+        drop(root);
+        let mut collector = g.collect(std::iter::empty());
+        let mut ticks = 0;
+        while !collector.done() {
+            collector.tick(&mut g);
+            ticks += 1;
+        }
+        drop(collector);
+        while !g.release_tick() {
+            ticks += 1;
+        }
+        assert_eq!(g.restriction_diagnostics().retained_rows, 0);
+        assert_eq!(g.restriction_diagnostics().retained_partitions, 0);
+        assert_eq!(g.restriction_diagnostics().partition_table_bytes, 0);
+        assert_eq!(g.occurrence_count(), 0);
+        assert_eq!(g.index_node_count(), 0);
+        println!("partition_cleanup ticks={ticks}");
+        allocation_checkpoint(n, "released");
+        drop((g, a, c, expected));
+        allocation_checkpoint(n, "dropped");
+    }
+}
+
+#[test]
+#[ignore = "candidate resource contract; explicitly run after the baseline comparison"]
+fn tiny_partition_avoids_hash_allocation() {
+    let (c, g, root, p, expected) = table_fixture(128, 1);
+    let mut a = Arena::default();
+    let mut m = Matches::new(&g, root, c, 0, Condition::TRUE, Some((0, p))).unwrap();
+    assert_eq!(
+        drain(&mut m, &g, &mut a)
+            .iter()
+            .map(|m| m.occurrences[1])
+            .collect::<Vec<_>>(),
+        expected
+    );
+    assert_eq!(g.restriction_diagnostics().partition_hash_requests, 0);
+}
+
+#[test]
+fn partition_promotion_preserves_paused_readers_and_cancellation() {
+    for interruption in 0..24 {
+        let (c, mut g, root, p, expected) = table_fixture(16, 8);
+        let mut a = Arena::default();
+        let mut slow = Matches::new(
+            &g,
+            root.clone(),
+            c.clone(),
+            0,
+            Condition::TRUE,
+            Some((0, p)),
+        )
+        .unwrap();
+        let mut got = Vec::new();
+        while g.restriction_diagnostics().created == 0 {
+            assert!(matches!(slow.tick(&g, &mut a), MatchStatus::Pending));
+        }
+        while g.restriction_diagnostics().producer_candidates < interruption.min(16) {
+            if let MatchStatus::Found(m) = slow.tick(&g, &mut a) {
+                got.push(m.occurrences[1]);
+            }
+        }
+        let mut fast = Matches::new(&g, root.clone(), c, 0, Condition::TRUE, Some((0, p))).unwrap();
+        assert_eq!(
+            drain(&mut fast, &g, &mut a)
+                .iter()
+                .map(|m| m.occurrences[1])
+                .collect::<Vec<_>>(),
+            expected
+        );
+        while !fast.discard_tick() {}
+        drop(fast);
+        let produced = g.restriction_diagnostics().producer_candidates;
+        let mut collector = g.collect(vec![root.clone(), slow.root()].into_iter());
+        while !collector.done() {
+            collector.tick(&mut g);
+        }
+        drop(collector);
+        got.extend(
+            drain(&mut slow, &g, &mut a)
+                .iter()
+                .map(|m| m.occurrences[1]),
+        );
+        assert_eq!(got, expected);
+        assert_eq!(g.restriction_diagnostics().producer_candidates, produced);
+        while !slow.discard_tick() {}
+        drop((slow, root));
+        let mut collector = g.collect(std::iter::empty());
+        while !collector.done() {
+            collector.tick(&mut g);
+        }
+        drop(collector);
+        while !g.release_tick() {}
+        assert_eq!(g.restriction_diagnostics().partition_table_bytes, 0);
+        assert_eq!(g.occurrence_count(), 0);
+        assert_eq!(g.index_node_count(), 0);
+    }
+}
 #[test]
 fn unrelated_posts_share_the_correlated_scan_across_graph_versions() {
     let (c, mut g, mut root) = fixture(64);
