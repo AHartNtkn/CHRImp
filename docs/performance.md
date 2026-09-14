@@ -1,5 +1,41 @@
 # Performance tools
 
+## Shared restriction prefix witnesses (Round 015)
+
+Buckets with more than 128 and at most 4096 rows are traversed as ordered
+immutable Store subtrees of at most 128 rows. An exact weak allocation identity
+plus Store owner is the generation certificate: holding the weak identity
+prevents both in-place mutation and allocation-address reuse. Completed raw
+projections contain occurrence IDs and partition links, never Boolean handles.
+Each snapshot retains its own cutoff and matching reads support from that root.
+
+The existing 32-entry producer registry now also serves these fragments. A
+separate 32-entry registry shares whole-prefix plans, retaining earlier fragment
+producer leases for lagging readers even across cache eviction/collection.
+Last-reader cancellation abandons unfinished plans and releases pending roots.
+Small buckets retain the whole-bucket path. One service call traverses one
+branch, subscribes to one fragment, or performs one original producer step.
+Splits, fragment probes, and reader transitions are replacement work, not free
+row inspections; fewer service ticks alone are not a gain.
+
+`shared_restrictions` adds `prefix_splits`, `prefix_probes`, `reused_prefixes`,
+`rebuilt_prefixes`, `prefix_plans_created`, and `prefix_plans_reused` counters.
+`created`/`reused` still count row producers, including fragments; a plan hit
+is counted separately. `retained_rows`/`retained_partitions` count actual live
+buffers once even when many plans own them. `cached_prefix_plans` and
+`cached_prefix_links` count only registry-owned plans/links, excluding evicted
+plans held by readers; allocator checkpoints include all ownership and slack.
+Small graphs also pay the extra registry header and larger subscriber variant.
+
+The diagnostic `growing_prefix_versions_preserve_order_cutoffs_and_release`
+test uses the maintained measure allocator, prints phase checkpoints, and
+independently checks nine version results plus all nine old-snapshot readbacks.
+Run it alone with `--nocapture --test-threads=1` for allocation comparisons.
+Reports are outside the sampled checkpoint, so their serialization affects
+later checkpoints in `other`. It is a graph/matcher mechanism probe; maintained
+`partial-join`, `partial-join-hit`, notebook I/S and lifecycle measurements
+provide separate end-to-end controls. Round 015 evidence documents both.
+
 ## Boolean epoch experiment diagnostics
 
 With `diagnostics`, `measure` emits `condition_slab` at the existing engine

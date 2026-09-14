@@ -892,6 +892,19 @@ impl<V: Value> Store<V> {
         }
         self.empty()
     }
+    /// Split a large immutable prefix in key order. A weak witness of either
+    /// child is an allocation-generation certificate: it prevents in-place
+    /// mutation and address reuse without keeping descendant payloads alive.
+    pub(crate) fn split_prefix(&self, root: &Root<V>, limit: usize) -> Option<[Root<V>; 2]> {
+        assert!(self.contains(root), "stale or foreign prefix root");
+        if root.is_empty() || self.record(root).leaves <= limit {
+            return None;
+        }
+        match &self.record(root).node {
+            Node::Branch { left, right, .. } => Some([left.clone(), right.clone()]),
+            _ => None,
+        }
+    }
     pub fn range(&self, root: Root<V>, low: Key, high: Key) -> Cursor<V> {
         assert!(self.contains(&root), "stale or foreign index root");
         Cursor {
@@ -1441,6 +1454,43 @@ mod release_block_tests {
 #[cfg(test)]
 mod prefix_identity_tests {
     use super::*;
+    #[test]
+    fn split_prefix_witnesses_preserve_order_generation_and_stale_rejection() {
+        let mut store = Store::<u64>::default();
+        let mut root = store.empty();
+        for i in 0..256 {
+            root = store.insert(root, [2, 3, 4, i], i);
+        }
+        let [left, right] = store.split_prefix(&root, 128).unwrap();
+        assert!(store.split_prefix(&left, 128).is_none());
+        assert!(store.split_prefix(&right, 128).is_none());
+        for (subtree, start) in [(left.clone(), 0), (right.clone(), 128)] {
+            let mut cursor = store.range(subtree, [0; 4], [u64::MAX; 4]);
+            for i in start..start + 128 {
+                assert_eq!(cursor.next(&store), Some(([2, 3, 4, i], i)));
+            }
+            assert_eq!(cursor.next(&store), None);
+        }
+        let witness = left.downgrade();
+        drop((left, right));
+        root = store.insert(root, [2, 3, 4, 255], 9000);
+        let [left, right] = store.split_prefix(&root, 128).unwrap();
+        assert!(witness.matches(&left));
+        drop((left, right));
+        root = store.insert(root, [2, 3, 4, 0], 9001);
+        assert!(!witness.matches(&store.split_prefix(&root, 128).unwrap()[0]));
+        let foreign = Store::<u64>::default();
+        assert!(std::panic::catch_unwind(|| foreign.split_prefix(&root, 128)).is_err());
+        let mut gc = store.collect(std::iter::empty());
+        while !gc.done() {
+            gc.tick(&mut store);
+        }
+        drop(gc);
+        assert!(std::panic::catch_unwind(|| store.split_prefix(&root, 128)).is_err());
+        drop(root);
+        while !store.release_tick() {}
+        assert_eq!(store.node_count(), 0);
+    }
     #[test]
     fn exact_prefix_witness_survives_other_updates_and_detects_unique_mutation() {
         let mut store = Store::default();
