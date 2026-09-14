@@ -99,6 +99,11 @@ fn partition_table_threshold_matrix() {
         (128, 2),
         (128, 4),
     ] {
+        if let Ok(case) = std::env::var("CHRIMP_PARTITION_CASE")
+            && case != format!("{n}/{keys}")
+        {
+            continue;
+        }
         println!("partition_case rows={n} keys={keys}");
         allocation_checkpoint(n, "start");
         let (c, mut g, root, p, expected) = table_fixture(n, keys);
@@ -155,7 +160,6 @@ fn partition_table_threshold_matrix() {
 }
 
 #[test]
-#[ignore = "candidate resource contract; explicitly run after the baseline comparison"]
 fn tiny_partition_avoids_hash_allocation() {
     let (c, g, root, p, expected) = table_fixture(128, 1);
     let mut a = Arena::default();
@@ -218,6 +222,53 @@ fn partition_promotion_preserves_paused_readers_and_cancellation() {
         assert_eq!(g.restriction_diagnostics().producer_candidates, produced);
         while !slow.discard_tick() {}
         drop((slow, root));
+        let mut collector = g.collect(std::iter::empty());
+        while !collector.done() {
+            collector.tick(&mut g);
+        }
+        drop(collector);
+        while !g.release_tick() {}
+        assert_eq!(g.restriction_diagnostics().partition_table_bytes, 0);
+        assert_eq!(g.occurrence_count(), 0);
+        assert_eq!(g.index_node_count(), 0);
+    }
+}
+
+#[test]
+fn abandoning_each_side_of_promotion_does_not_cache_a_partial_answer() {
+    for produced in 0..=10 {
+        let (c, mut g, root, p, expected) = table_fixture(16, 8);
+        let mut a = Arena::default();
+        let mut canceled = Matches::new(
+            &g,
+            root.clone(),
+            c.clone(),
+            0,
+            Condition::TRUE,
+            Some((0, p)),
+        )
+        .unwrap();
+        while g.restriction_diagnostics().created == 0
+            || g.restriction_diagnostics().producer_candidates < produced
+        {
+            canceled.tick(&g, &mut a);
+        }
+        while !canceled.discard_tick() {}
+        drop(canceled);
+        let mut m = Matches::new(&g, root.clone(), c, 0, Condition::TRUE, Some((0, p))).unwrap();
+        assert_eq!(
+            drain(&mut m, &g, &mut a)
+                .iter()
+                .map(|m| m.occurrences[1])
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert_eq!(g.restriction_diagnostics().created, 2);
+        assert_eq!(
+            g.restriction_diagnostics().producer_candidates,
+            produced + 16
+        );
+        drop((m, root));
         let mut collector = g.collect(std::iter::empty());
         while !collector.done() {
             collector.tick(&mut g);

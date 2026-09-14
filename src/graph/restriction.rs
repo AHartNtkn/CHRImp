@@ -71,37 +71,120 @@ impl RestrictionDiagnostics {
     }
 }
 
-// Baseline adapter: keep the accepted HashMap lookup/insertion protocol.
-#[derive(Default)]
-struct Partitions(HashMap<[u64; MAX_PORTS], Partition>);
+// Tiny arrangements avoid a bucket allocation and hashing. Promotion copies at
+// most INLINE_PARTITIONS entries once; occurrence links never move with keys.
+const INLINE_PARTITIONS: usize = 2;
+type PartitionEntry = ([u64; MAX_PORTS], Partition);
+enum Partitions {
+    Inline {
+        entries: [PartitionEntry; INLINE_PARTITIONS],
+        len: usize,
+    },
+    Hash(HashMap<[u64; MAX_PORTS], Partition>),
+}
+impl Default for Partitions {
+    fn default() -> Self {
+        Self::Inline {
+            entries: [([0; MAX_PORTS], Partition::default()); INLINE_PARTITIONS],
+            len: 0,
+        }
+    }
+}
+fn partition_position(
+    entries: &[PartitionEntry],
+    key: &[u64; MAX_PORTS],
+    _work: &mut TableWork,
+) -> Result<usize, usize> {
+    entries.binary_search_by(|(candidate, _)| {
+        #[cfg(feature = "diagnostics")]
+        {
+            _work.comparisons += 1;
+        }
+        candidate.cmp(key)
+    })
+}
 impl Partitions {
+    #[cfg(feature = "diagnostics")]
     fn len(&self) -> usize {
-        self.0.len()
+        match self {
+            Self::Inline { len, .. } => *len,
+            Self::Hash(map) => map.len(),
+        }
     }
     fn get(&self, key: &[u64; MAX_PORTS], _work: &mut TableWork) -> Option<&Partition> {
-        #[cfg(feature = "diagnostics")]
-        {
-            _work.hashes += 1;
+        match self {
+            Self::Inline { entries, len } => partition_position(&entries[..*len], key, _work)
+                .ok()
+                .map(|i| &entries[i].1),
+            Self::Hash(map) => {
+                #[cfg(feature = "diagnostics")]
+                {
+                    _work.hashes += 1;
+                }
+                map.get(key)
+            }
         }
-        self.0.get(key)
     }
     fn get_mut(&mut self, key: &[u64; MAX_PORTS], _work: &mut TableWork) -> Option<&mut Partition> {
-        #[cfg(feature = "diagnostics")]
-        {
-            _work.hashes += 1;
+        match self {
+            Self::Inline { entries, len } => partition_position(&entries[..*len], key, _work)
+                .ok()
+                .map(|i| &mut entries[i].1),
+            Self::Hash(map) => {
+                #[cfg(feature = "diagnostics")]
+                {
+                    _work.hashes += 1;
+                }
+                map.get_mut(key)
+            }
         }
-        self.0.get_mut(key)
     }
     fn insert(&mut self, key: [u64; MAX_PORTS], value: Partition, _work: &mut TableWork) {
-        #[cfg(feature = "diagnostics")]
-        {
-            _work.hashes += 1;
+        match self {
+            Self::Inline { entries, len } if *len < INLINE_PARTITIONS => {
+                match partition_position(&entries[..*len], &key, _work) {
+                    Ok(i) => entries[i].1 = value,
+                    Err(i) => {
+                        entries.copy_within(i..*len, i + 1);
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            _work.shifts += (*len - i) as u64;
+                        }
+                        entries[i] = (key, value);
+                        *len += 1;
+                    }
+                }
+            }
+            Self::Inline { entries, len } => {
+                let mut map = HashMap::with_capacity(*len + 1);
+                for (key, value) in &entries[..*len] {
+                    map.insert(*key, *value);
+                }
+                #[cfg(feature = "diagnostics")]
+                {
+                    _work.promotions += 1;
+                    _work.promoted += *len as u64;
+                    _work.hashes += *len as u64 + 1;
+                }
+                map.insert(key, value);
+                *self = Self::Hash(map);
+            }
+            Self::Hash(map) => {
+                #[cfg(feature = "diagnostics")]
+                {
+                    _work.hashes += 1;
+                }
+                map.insert(key, value);
+            }
         }
-        self.0.insert(key, value);
     }
     #[cfg(feature = "diagnostics")]
     fn bytes(&self) -> usize {
-        size_of::<Self>() + hash_bytes(self.0.capacity())
+        size_of::<Self>()
+            + match self {
+                Self::Inline { .. } => 0,
+                Self::Hash(map) => hash_bytes(map.capacity()),
+            }
     }
 }
 #[cfg(feature = "diagnostics")]
@@ -111,6 +194,47 @@ fn hash_bytes(capacity: usize) -> usize {
     }
     let buckets = (capacity * 8 / 7).next_power_of_two();
     buckets * (size_of::<([u64; MAX_PORTS], Partition)>() + 1) + 16
+}
+
+#[cfg(test)]
+mod partition_tests {
+    use super::*;
+    #[test]
+    fn full_width_keys_and_updates_survive_promotion() {
+        let mut actual = Partitions::default();
+        let mut expected = std::collections::BTreeMap::new();
+        let mut work = TableWork::default();
+        let keys: Vec<_> = (0..32)
+            .map(|i| {
+                let mut key = [0; MAX_PORTS];
+                key[i % MAX_PORTS] = u64::MAX - (i / MAX_PORTS) as u64;
+                key
+            })
+            .collect();
+        // Reverse and revisit keys: promotion must retain first links, while
+        // updating only last links. Full-width values may differ at any port.
+        for (row, key) in keys.iter().rev().chain(keys.iter()).enumerate() {
+            if let Some(partition) = actual.get_mut(key, &mut work) {
+                partition.last = row;
+            } else {
+                actual.insert(
+                    *key,
+                    Partition {
+                        first: row,
+                        last: row,
+                    },
+                    &mut work,
+                );
+            }
+            let entry = expected.entry(*key).or_insert((row, row));
+            entry.1 = row;
+            for (key, &(first, last)) in &expected {
+                let p = actual.get(key, &mut work).unwrap();
+                assert_eq!((p.first, p.last), (first, last));
+            }
+            assert!(actual.get(&[0; MAX_PORTS], &mut work).is_none());
+        }
+    }
 }
 #[derive(Default)]
 pub(crate) struct Cache {
@@ -370,6 +494,7 @@ impl Graph {
             .sum();
         RestrictionDiagnostics {
             entries,
+            inline_partition_limit: INLINE_PARTITIONS,
             cached_prefix_plans,
             cached_prefix_links,
             ..*self.shared_restrictions.stats.lock().unwrap()

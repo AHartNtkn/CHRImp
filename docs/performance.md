@@ -1,5 +1,37 @@
 # Performance tools
 
+## Adaptive shared-restriction partitions (Round 017)
+
+Each row producer keeps up to two distinct projected keys in a sorted inline
+table. A third key promotes once to HashMap, copying at most two entries. Row
+links remain in the existing occurrence vector; repeated-key occurrences retain
+their order and multiplicity. Prefix plans and the Store prefix-root memo are
+unchanged. The threshold was compared at capacities one, two and four: two saves
+the tiny table allocation while limiting the header cost of promoted tables.
+
+Restriction diagnostics add `inline_partition_limit`, `inline_comparisons`,
+`partition_hash_requests`, `partition_promotions`, `promoted_entries`,
+`shifted_inline_entries`, and current/peak `partition_table_bytes`.
+Comparisons count full key comparisons, not individual words. Hash requests
+count get/get_mut/insert calls, including explicit promotion inserts, not
+internal bucket probes, rehash work or CPU instructions. Table bytes include
+the inline/header space of all live producers (including evicted subscriber-owned
+producers) and estimated HashMap backing. They exclude rows, locks and other
+producer fields. Hash backing uses the current standard-library bucket/control
+layout estimate; process requested-allocation checkpoints remain authoritative.
+Collection/drop removes released producers from the current gauge.
+
+The diagnostic `shared_restrictions` test `partition_table_threshold_matrix`
+checks eight exact ordered matches per fixture, independently recorded occurrence
+IDs and true support, one shared scan, retention, and complete release. Its
+`CHRIMP_PARTITION_CASE=ROWS/KEYS` environment selector runs one listed case in a
+fresh process so repeated-key peaks do not inherit earlier dense cases. Run the
+prebuilt test alone with `--exact partition_table_threshold_matrix --nocapture
+--test-threads=1` under `timeout --kill-after=5s 60s`. The accepted growing-prefix
+and churn probes remain complementary version/snapshot controls. Tests also
+cover promotion while readers are paused, last-reader cancellation before/after
+promotion, cache collection, and full-width keys differing in every port.
+
 ## Store prefix-root memo (Round 016)
 
 Store keeps at most 32 weak prefix lookup entries, keyed by its root allocation
