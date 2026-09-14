@@ -6,6 +6,7 @@ use std::ops::Bound::{Excluded, Included, Unbounded};
 #[derive(Default)]
 enum Phase {
     #[default]
+    Syntax,
     Queue,
     Parked,
     Ready,
@@ -60,6 +61,13 @@ impl Engine {
             return;
         }
         match self.cancellation.phase {
+            Phase::Syntax => {
+                // Views opened during discard must see the frozen remaining
+                // expressions, including bodies already removed from queues.
+                if self.promote_body_syntax_tick() {
+                    self.cancellation.phase = Phase::Queue;
+                }
+            }
             Phase::Queue => {
                 if let Some(task) = self.queue.front_mut() {
                     if task.task.discard_tick() {

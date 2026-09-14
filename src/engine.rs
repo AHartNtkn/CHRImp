@@ -225,6 +225,10 @@ pub struct Engine {
     pending_root: PendingRoot,
     release_turn: usize,
     obligations: obligations::Obligations,
+    // Completion certificates remain persistent. Syntax is already owned by
+    // live bodies until the first view, or cancellation's frozen-state barrier.
+    body_syntax: bool,
+    syntax_promotion: obligations::Promotion,
     ready: Option<Ready>,
     output: Option<Output>,
     observer: Option<Observe>,
@@ -289,6 +293,8 @@ impl Engine {
             pending_root,
             release_turn: 0,
             obligations,
+            body_syntax: record_history,
+            syntax_promotion: obligations::Promotion::default(),
             arena: Arena::default(),
             ids: FreshIds::default(),
             variables: Arc::new(vec![]),
@@ -726,12 +732,12 @@ impl Engine {
                 }
             }
             Task::Body(b) => {
-                let previous = self.obligation_parts(b);
+                let previous = self.body_syntax.then(|| self.obligation_parts(b));
                 let done = self.body_tick(s.id, b);
                 if done {
                     self.graph.retire_scope();
                 }
-                if !done && self.obligation_parts(b) != previous {
+                if !done && previous.is_some_and(|parts| self.obligation_parts(b) != parts) {
                     self.sync_obligation(s.id, b);
                 }
                 done

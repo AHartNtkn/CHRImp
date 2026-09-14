@@ -17,11 +17,13 @@ use std::{
 
 #[path = "interactions.rs"]
 mod interactions;
+#[path = "pending.rs"]
+mod pending;
 #[path = "sessions.rs"]
 pub mod sessions;
 pub use interactions::Options as InteractionOptions;
 
-pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive life-held-output life-archive-fixed life-archive-rotate life-inspections life-held-output-conditional life-archive-fixed-conditional life-archive-rotate-conditional life-inspections-conditional life-held-output-structural life-archive-fixed-structural life-archive-rotate-structural life-inspections-structural runtime";
+pub const CASES: &str = "life-alias life-propagation life-dependent life-snapshot life-history life-history-choice life-archive life-held-output life-archive-fixed life-archive-rotate life-inspections life-held-output-conditional life-archive-fixed-conditional life-archive-rotate-conditional life-inspections-conditional life-held-output-structural life-archive-fixed-structural life-archive-rotate-structural life-inspections-structural life-pending-cancel life-pending-snapshot runtime";
 const REWRITE: &str = "p(X) <=> q(X). q(X) <=> done(X).";
 fn check(ok: bool, why: &str) -> Result<(), String> {
     if ok { Ok(()) } else { Err(why.into()) }
@@ -923,6 +925,8 @@ fn run_inner(
         "life-held-output" | "life-archive-fixed" | "life-archive-rotate" | "life-inspections"
     ) {
         interactions::run(case, n, options, max_ticks, timeout)
+    } else if matches!(case, "life-pending-cancel" | "life-pending-snapshot") {
+        pending::run(case, n, max_ticks, timeout)
     } else if case == "life-archive" {
         archive(n, max_ticks, timeout)
     } else if case == "runtime" {

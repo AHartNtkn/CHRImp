@@ -16,6 +16,158 @@ fn engine(program: &str, query: &str, history: bool) -> Engine {
         history,
     )
 }
+
+#[test]
+fn ordinary_bodies_do_not_retain_duplicate_syntax_and_still_deliver_both_answers() {
+    let mut e = engine("p(X) <=> q(X),q(Y).", "p(A);p(A)", false);
+    let mut answers = 0;
+    let mut facts = 0;
+    let mut ports = vec![];
+    for tick in 0..100000 {
+        e.advance(1);
+        assert_eq!(e.memory().obligation_descriptors, 0, "tick {tick}");
+        match e.take_output() {
+            Some(Output::Fact { .. }) => facts += 1,
+            Some(Output::Port { variable }) => ports.push(variable),
+            Some(Output::End) => {
+                assert_eq!(facts, 2);
+                assert_eq!(ports.len(), 2);
+                assert_ne!(ports[0], ports[1], "body-only variable was not fresh");
+                ports.clear();
+                facts = 0;
+                answers += 1;
+            }
+            _ => {}
+        }
+        if tick % 97 == 0 {
+            e.request_collection();
+            e.maintain(100000);
+        }
+        if e.delivery_done() {
+            break;
+        }
+    }
+    assert!(e.delivery_done());
+    assert_eq!(answers, 2);
+    assert_eq!(e.applications(), 2);
+    assert_eq!(e.snapshots().count(), 0);
+    e.cancel();
+    for _ in 0..100000 {
+        e.advance(1);
+        if e.cancel_done() {
+            break;
+        }
+    }
+    assert!(e.cancel_done());
+    assert_eq!(e.memory().pending_nodes, 0);
+    assert_eq!(e.memory().obligation_descriptors, 0);
+    assert_eq!(e.memory().graph_nodes, 0);
+}
+
+#[test]
+fn first_syntax_capture_at_each_early_suspension_survives_collection_and_cancel() {
+    // Literal relation multisets, including a duplicate occurrence. A fresh
+    // engine for each offset makes every view exercise the first promotion.
+    for ticks in 2..82 {
+        let mut e = engine("", "(a(A),a(A));(b(A),(c(A);d(A)))", false);
+        let mut expected = vec![];
+        for names in [vec!["a", "a"], vec!["b", "c"], vec!["b", "d"]] {
+            let mut ids = names
+                .iter()
+                .map(|name| {
+                    e.program()
+                        .signatures()
+                        .iter()
+                        .position(|s| s.name == *name)
+                        .unwrap()
+                })
+                .collect::<Vec<_>>();
+            ids.sort();
+            expected.push(ids);
+        }
+        expected.sort();
+        e.advance(ticks);
+        assert!(e.take_output().is_none());
+        e.request_collection();
+        e.maintain(100000);
+        let applications = e.applications();
+        // Alternate the two public routes into first-time syntax capture.
+        let (snapshot, view) = if ticks % 2 == 0 {
+            let snapshot = e.capture_snapshot().unwrap();
+            e.cancel();
+            (
+                Some(snapshot),
+                e.start_inspection(Some(snapshot), vec![]).unwrap(),
+            )
+        } else {
+            e.cancel();
+            (None, e.start_inspection(None, vec![]).unwrap())
+        };
+        for _ in 0..100000 {
+            e.advance(1);
+            if e.cancel_done() {
+                break;
+            }
+        }
+        assert!(e.cancel_done());
+        if let Some(snapshot) = snapshot {
+            e.release_snapshot(snapshot).unwrap();
+        }
+        let mut events = vec![];
+        for _ in 0..100000 {
+            e.advance_inspection(view, 1).unwrap();
+            if let Some(event) = e.take_inspection_output(view).unwrap() {
+                events.push(event);
+            }
+            if e.inspection_status(view).unwrap().done {
+                break;
+            }
+        }
+        assert!(e.inspection_status(view).unwrap().done);
+        assert_eq!(remaining(events), expected, "capture after {ticks} ticks");
+        assert_eq!(e.applications(), applications);
+        e.release_inspection(view).unwrap();
+        e.maintain(100000);
+        assert_eq!(e.memory().obligation_descriptors, 0);
+        assert_eq!(e.memory().pending_nodes, 0);
+        assert_eq!(e.memory().graph_nodes, 0);
+    }
+}
+
+#[test]
+fn first_view_during_cancellation_preserves_syntax_after_bodies_are_discarded() {
+    let mut checked = 0;
+    for cancel_ticks in 0..40 {
+        let mut e = engine("", "a(A),a(A),b(A),b(A),c(A),c(A)", false);
+        e.advance(60);
+        e.cancel();
+        e.advance(cancel_ticks);
+        e.maintain(100000);
+        // Once cancellation releases its roots, the current view is empty.
+        if e.memory().pending_nodes == 0 {
+            continue;
+        }
+        let snapshot = e.capture_snapshot().unwrap();
+        let actual = remaining(project(&mut e, snapshot));
+        assert_eq!(
+            actual,
+            vec![vec![0, 0, 1, 1, 2, 2]],
+            "cancel tick {cancel_ticks}"
+        );
+        checked += 1;
+        e.release_snapshot(snapshot).unwrap();
+        for _ in 0..100000 {
+            e.advance(1);
+            if e.cancel_done() {
+                break;
+            }
+        }
+        assert!(e.cancel_done());
+        assert_eq!(e.memory().obligation_descriptors, 0);
+        assert_eq!(e.memory().pending_nodes, 0);
+    }
+    assert!(checked >= 10, "did not exercise cancellation suspensions");
+}
 fn project(e: &mut Engine, snapshot: ViewId) -> Vec<Output> {
     project_selected(e, snapshot, vec![])
 }

@@ -323,6 +323,35 @@ target/release/examples/constructor_probe program.chr --query 'app(R,A,B),app(R,
 
 The probe reports source progress and bounded cleanup separately. A cleanup limit is a censored release, not a completed timing. Its normalization counters describe admitted work, not CPU shares. Preparation-reuse measurements use the shared immutable prepared plan; source recognition is not repeated for each engine. Historical comparison modes remain on the research branches.
 
+## Pending syntax promotion probes
+
+`life-pending-snapshot` and `life-pending-cancel` stop at an exact unposted
+prefix: SIZE scheduled tasks, no posted facts or applications, and SIZE
+relations of arity SIZE, all using the one query identity. SIZE must be at
+least two. These probes separate preparation, source admission, first and
+second capture, cancellation, projection/validation, release, and final
+Engine/Prepared destruction. Snapshot mode validates both retained views
+after cancellation: exact relation multiplicity, each ordered port, and zero
+source applications. Cancellation mode measures the same prefix without a view.
+
+```sh
+cargo build --offline --release --features diagnostics --example measure
+python3 examples/perf.py --binary target/release/examples/measure --out /tmp/pending-syntax --repeat 5 --warmup 0 --seconds 10 --total-seconds 60 -- life-pending-snapshot 64 50000000 3 --detail
+```
+
+Before the first syntax view, ordinary execution owns remaining expressions in
+live bodies. Completion certificates remain persistent. First capture scans
+queued/parked tasks and materializes live body descriptors synchronously;
+subsequent captures retain persistent roots. Cancellation performs this barrier
+one task per service turn, preserving views requested during discard. The
+diagnostic counters `syntax_promotions`, `syntax_promotion_tasks`, and
+`syntax_descriptors_materialized` distinguish this displaced work from ordinary
+execution. History-enabled engines start on the persistent path.
+
+The raw `pending_*` phase clocks describe completed probe boundaries; the
+general comparator may keep their latency summaries unavailable because the
+overall source is intentionally unfinished. Do not interpret that as zero cost.
+
 ## Certified structural storage probes
 
 The four retained-reader interaction cases also accept `-structural`. They use

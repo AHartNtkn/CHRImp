@@ -25,6 +25,15 @@ Prepared programs derive constructor applicability once, and both ordinary and r
 
 Structural applications retain their source rule IDs and names. A logical step stops after head consumption with the actual RHS pending; field equalities then execute as source bodies, and terminal failure retains the mutation lane until its active support is updated. Recording captures actual source-corresponding Post, Merge, Application and Failure events. Dispatch inspection exposes only alternatives still pending. History controls recording without selecting a different executor. This schedule need not match historical prototype schedules, so their timing results are not production measurements.
 
+Ordinary execution keeps pending syntax in live bodies until the first requested
+view. `tests/pending_body.rs` checks descriptor-free execution, fresh variables
+and both answers, first capture at 80 suspension points, and views opened during
+cancellation after task discard begins. Existing descriptor-epoch, conditional
+projection, step/history and alias-retention tests also cover the promoted path.
+The maintained `life-pending-snapshot` and `life-pending-cancel` measurements
+exercise growing pending frontiers and exact post-cancellation syntax/release
+oracles; see `docs/performance.md`.
+
 ## Performance and limits
 
 The existing `measure` executable covers unsuccessful and successful joins, conditional equality and consumption, correlated choices with two answers, independently sized answer streams, recursive reachability, preparation, continuing execution, retained archives, and actual notebook programs. `life-archive` holds a fixed number of snapshots while measuring 2,048 additional applications; `life-history-choice` grows history with a live choice. These distinguish archive size from useful execution work.

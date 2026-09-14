@@ -1,4 +1,4 @@
-//! Persistent remaining expressions, independent of scheduler continuations.
+//! Persistent completion certificates and demand-materialized remaining syntax.
 use super::*;
 use crate::condition::cleanup_substitution;
 type Root = crate::store::Root<Pending>;
@@ -23,6 +23,14 @@ pub(super) struct Obligation {
 pub(super) struct Pending {
     pub scope: Condition,
     body: Option<u64>,
+}
+/// Scalar scan position only: bodies retain all syntax and condition ownership
+/// while promotion runs. Source admission must stay frozen until it completes.
+#[derive(Default)]
+pub(super) struct Promotion {
+    queue: usize,
+    parked: bool,
+    after: Option<u64>,
 }
 struct Descriptor {
     variables: Arc<Vec<u64>>,
@@ -410,6 +418,73 @@ impl Collector {
     }
 }
 impl Engine {
+    /// Materialize at most one scheduled entry. Cancellation calls this once
+    /// per service turn before discarding any bodies; a public capture drains
+    /// it synchronously at the coherent view boundary. No Boolean work or
+    /// source execution is needed, and no additional GC roots are introduced.
+    pub(super) fn promote_body_syntax_tick(&mut self) -> bool {
+        if self.body_syntax {
+            return true;
+        }
+        let scheduled = if self.syntax_promotion.parked {
+            match self.syntax_promotion.after {
+                Some(id) => self.parked.range((Excluded(id), Unbounded)).next(),
+                None => self.parked.first_key_value(),
+            }
+            .map(|(_, scheduled)| scheduled)
+        } else {
+            self.queue.get(self.syntax_promotion.queue)
+        };
+        if let Some(scheduled) = scheduled {
+            let id = scheduled.id;
+            // Compaction removes FALSE certificate leaves before their queued
+            // tasks finish budgeted discard. Such tasks have no syntax scope.
+            if let Task::Body(body) = &scheduled.task
+                && scheduled.scope != Condition::FALSE
+            {
+                let parts = self.obligation_parts(body);
+                let variables = body.variables.clone();
+                let key = [id, 0, 0, 0];
+                let mut pending = self
+                    .obligations
+                    .index
+                    .get(&self.pending_root, &key)
+                    .expect("scheduled promotion owner");
+                debug_assert!(pending.body.is_none());
+                pending.body = self.obligations.update_descriptor(None, parts, &variables);
+                if pending.body.is_some() {
+                    self.pending_root = self.obligations.index.insert(
+                        std::mem::take(&mut self.pending_root),
+                        key,
+                        pending,
+                    );
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.diagnostics.syntax_descriptors_materialized += 1;
+                    }
+                }
+            }
+            if self.syntax_promotion.parked {
+                self.syntax_promotion.after = Some(id);
+            } else {
+                self.syntax_promotion.queue += 1;
+            }
+            #[cfg(feature = "diagnostics")]
+            {
+                self.diagnostics.syntax_promotion_tasks += 1;
+            }
+        } else if !self.syntax_promotion.parked {
+            self.syntax_promotion.parked = true;
+        } else {
+            self.body_syntax = true;
+            #[cfg(feature = "diagnostics")]
+            {
+                self.diagnostics.syntax_promotions += 1;
+            }
+        }
+        self.body_syntax
+    }
+
     pub(super) fn finish_body_record(&mut self, id: u64) {
         // Only a history record publishes this intermediate point. Otherwise
         // the scheduler removes the completed task at this same tick's end.
@@ -441,6 +516,9 @@ impl Engine {
     /// environment. Give its syntax a new descriptor; captured roots keep the
     /// preceding application's descriptor immutable.
     pub(super) fn replace_body_record(&mut self, id: u64, body: &Body) {
+        if !self.body_syntax {
+            return;
+        }
         let key = [id, 0, 0, 0];
         let mut pending = self
             .obligations
@@ -456,6 +534,9 @@ impl Engine {
                 .insert(std::mem::take(&mut self.pending_root), key, pending);
     }
     pub(super) fn sync_obligation(&mut self, id: u64, body: &Body) {
+        if !self.body_syntax {
+            return;
+        }
         let key = [id, 0, 0, 0];
         let mut pending = self
             .obligations
@@ -477,7 +558,7 @@ impl Engine {
     }
     pub(super) fn pending_task(&mut self, scope: Condition, task: &Task) -> Pending {
         let body = match task {
-            Task::Body(body) => {
+            Task::Body(body) if self.body_syntax => {
                 let parts = self.obligation_parts(body);
                 self.obligations
                     .update_descriptor(None, parts, &body.variables)
@@ -840,6 +921,8 @@ mod tests {
         )
         .unwrap();
         let mut e = Engine::new(Arc::new(code));
+        // Exercise persistent descriptor epochs after the one-way promotion.
+        while !e.promote_body_syntax_tick() {}
         while !e.queue.iter().any(|s| matches!(s.task, Task::Body(_))) {
             e.advance(1);
         }

@@ -106,6 +106,12 @@ pub struct Diagnostics {
     pub merge_support_changes: u64,
     pub certificates_started: u64,
     pub obligation_rows_scanned: u64,
+    /// One-way syntax barriers completed (first view or cancellation).
+    pub syntax_promotions: u64,
+    /// Queued/parked entries visited by the barrier, including non-body tasks.
+    pub syntax_promotion_tasks: u64,
+    /// Nonempty body descriptors allocated by the barrier; a subset of its tasks.
+    pub syntax_descriptors_materialized: u64,
     pub certificates_published: u64,
     pub output_events: u64,
     pub complete_answers: u64,

@@ -336,6 +336,11 @@ impl Engine {
         Ok(())
     }
     fn snapshot(&mut self, kind: SnapshotKind, scope: Condition) -> Snapshot {
+        // External captures run between service turns, with no collector or
+        // task temporarily outside its registry. Recording starts promoted.
+        // First capture visits each queued/parked task and inserts its body
+        // descriptor; later captures retain the existing root/epoch publication.
+        while !self.promote_body_syntax_tick() {}
         // Every new syntax view freezes the current descriptor epoch. Reusing
         // an existing Snapshot only shares its already-frozen ownership root.
         self.obligations.freeze_syntax();
